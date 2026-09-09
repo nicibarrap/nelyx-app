@@ -1,0 +1,496 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String                 @id @default(cuid())
+  nombre                String
+  email                 String                 @unique
+  password              String
+  rol                   Rol                    @default(USER)
+  activo                Boolean                @default(true)
+  negocio               String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  // ── Multi-usuario: un dueño puede crear "empleados" que inician sesión
+  // por su cuenta (PIN corto), viendo los mismos datos del negocio, pero
+  // solo los módulos que el dueño les habilite. Un User con
+  // cuentaPrincipalId != null ES un empleado; si es null, es una cuenta
+  // dueña normal (como hoy, sin cambios).
+  cuentaPrincipalId     String?
+  cuentaPrincipal       User?                  @relation("EmpleadosDeCuenta", fields: [cuentaPrincipalId], references: [id], onDelete: Cascade)
+  empleados             User[]                 @relation("EmpleadosDeCuenta")
+  pin                   String?                // hash del PIN — solo empleados, nunca texto plano
+  modulosPermitidos     String[]               @default([])
+  movimientos           Movimiento[]
+  movimientosStock      MovimientoStock[]
+  productos             Producto[]
+  deudas                Deuda[]
+  categoriasPersonalizadas CategoriaPersonalizada[]
+  contactosCobranza     ContactoCobranza[]
+  plantillasCobranza    PlantillaCobranza[]
+  costosRecurrentes     CostoFijoRecurrente[]
+  clientes              Cliente[]
+  proveedores           Proveedor[]
+  cuentasPorCobrar      CuentaPorCobrar[]
+  eventosCalendario     EventoCalendario[]
+  suscripcionNelyx      SuscripcionNelyx?
+  pushSubscriptions     PushSubscription[]
+  notificaciones        Notificacion[]
+  notificacionConfig    NotificacionConfig?
+  conexionesPago        ConexionPago[]
+}
+
+enum Rol {
+  ADMIN
+  USER
+}
+
+model Movimiento {
+  id           String         @id @default(cuid())
+  tipo         TipoMovimiento
+  monto        Decimal        @db.Decimal(12, 2)
+  fecha        DateTime
+  descripcion  String?
+  categoria    String?
+  productoId   String?
+  producto     Producto?      @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  clienteId    String?
+  cliente      Cliente?       @relation(fields: [clienteId], references: [id])
+  proveedorId  String?
+  proveedor    Proveedor?     @relation(fields: [proveedorId], references: [id])
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime       @default(now())
+  movimientosStock MovimientoStock[]
+  costoUnitario Decimal?      @db.Decimal(12, 2)
+  utilidad      Decimal?      @db.Decimal(12, 2)
+  margen        Float?
+  metodoPago    String?
+  @@index([userId, fecha])
+  @@index([userId, tipo, categoria])
+  @@index([userId, tipo])
+  @@index([productoId])
+}
+
+enum TipoMovimiento {
+  VENTA
+  GASTO
+  COSTO_FIJO
+  INGRESO_EXTRA
+  RETIRO
+}
+
+model Producto {
+  id          String       @id @default(cuid())
+  nombre      String
+  precio      Decimal?     @db.Decimal(12, 2)
+  costo       Decimal?     @db.Decimal(12, 2)
+  descripcion String?
+  categoria   String?
+  sku         String?
+  codigoBarras String?
+  unidadMedida        String  @default("unidad")
+  unidadPersonalizada String?
+  formaVenta          String  @default("unidad")
+  controlaInventario  Boolean @default(true)
+  imagenBase64        String? @db.Text
+  unidadVentaCantidad Float?
+  unidadVentaTipo     String?
+  ventaMinima         Float?
+  stock       Int?
+  stockMinimo Int?         @default(5)
+  activo      Boolean      @default(true)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movimientos Movimiento[]
+  movimientosStock MovimientoStock[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@index([userId])
+  @@index([userId, activo])
+  @@unique([userId, sku])
+  @@unique([userId, codigoBarras])
+}
+
+model Deuda {
+  id            String      @id @default(cuid())
+  acreedor      String
+  tipo          String      @default("Otros")
+  entidad       String?
+  monto         Decimal     @db.Decimal(12, 2)
+  montoPagado   Decimal     @default(0) @db.Decimal(12, 2)
+  descripcion   String?
+  fechaDeuda    DateTime
+  fechaVence      DateTime?
+  fechaPrimerPago DateTime?
+  cuotaManual     Decimal?    @db.Decimal(12, 2)
+  tipoTasa        String?     @default("mensual")
+  pagada          Boolean     @default(false)
+  interes       Decimal?    @db.Decimal(5, 2)
+  cuotas        Int?
+  cuotasPagadas Int         @default(0)
+  valorCuota    Decimal?    @db.Decimal(12, 2)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pagos         PagoDeuda[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  @@index([userId, pagada])
+}
+
+model PagoDeuda {
+  id          String   @id @default(cuid())
+  deudaId     String
+  deuda       Deuda    @relation(fields: [deudaId], references: [id], onDelete: Cascade)
+  monto       Decimal  @db.Decimal(12, 2)
+  fecha       DateTime
+  descripcion String?
+  createdAt   DateTime @default(now())
+  @@index([deudaId])
+}
+
+model CategoriaPersonalizada {
+  id        String   @id @default(cuid())
+  nombre    String
+  tipo      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([nombre, tipo, userId])
+  @@index([userId, tipo])
+}
+
+model CostoFijoRecurrente {
+  id               String            @id @default(cuid())
+  nombre           String
+  monto            Decimal           @db.Decimal(12, 2)
+  categoria        String?
+  descripcion      String?
+  fechaInicio      DateTime          // única fecha que define desde cuándo y en qué día del mes se repite
+  fechaTermino     DateTime?         // opcional — si no se pone, se repite indefinidamente
+  estado           String            @default("activo")
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generaciones     GeneracionCosto[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  @@index([userId])
+}
+
+model GeneracionCosto {
+  id           String              @id @default(cuid())
+  costoFijoId  String
+  costoFijo    CostoFijoRecurrente @relation(fields: [costoFijoId], references: [id], onDelete: Cascade)
+  mes          Int
+  anio         Int
+  movimientoId String?
+  pagado       Boolean             @default(false)
+  fechaPagado  DateTime?
+  createdAt    DateTime            @default(now())
+  @@unique([costoFijoId, mes, anio])
+}
+
+model Cliente {
+  id               String        @id @default(cuid())
+  nombre           String
+  apellido         String?
+  empresa          String?
+  telefono         String?
+  email            String?
+  direccion        String?
+  ciudad           String?
+  tipoCliente      String?       @default("Minorista")
+  frecuenciaCompra String?
+  metodoPago       String?       @default("Efectivo")
+  limiteCredito    Decimal?      @db.Decimal(12, 2)
+  diasPago         Int?          @default(0)
+  esFrecuente      Boolean       @default(false)
+  esVip            Boolean       @default(false)
+  permiteCredito   Boolean       @default(false)
+  activo           Boolean       @default(true)
+  observaciones    String?
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movimientos      Movimiento[]
+  notas            NotaCliente[]
+  cuentasPorCobrar CuentaPorCobrar[]
+  contactosCobranza ContactoCobranza[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  @@index([userId])
+}
+
+model NotaCliente {
+  id        String   @id @default(cuid())
+  texto     String
+  clienteId String
+  cliente   Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Proveedor {
+  id            String          @id @default(cuid())
+  nombre        String
+  empresa       String?
+  rut           String?
+  telefono      String?
+  email         String?
+  direccion     String?
+  ciudad        String?
+  categoria     String?         @default("Otros")
+  esFavorito    Boolean         @default(false)
+  activo        Boolean         @default(true)
+  observaciones String?
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movimientos   Movimiento[]
+  movimientosStock MovimientoStock[]
+  notas         NotaProveedor[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  @@index([userId])
+}
+
+model NotaProveedor {
+  id          String    @id @default(cuid())
+  texto       String
+  proveedorId String
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+}
+
+model CuentaPorCobrar {
+  id             String       @id @default(cuid())
+  numero         Int
+  clienteId      String
+  cliente        Cliente      @relation(fields: [clienteId], references: [id])
+  movimientoId   String?
+  montoOriginal  Decimal      @db.Decimal(12, 2)
+  saldoPendiente Decimal      @db.Decimal(12, 2)
+  fechaVenta     DateTime
+  fechaVence     DateTime?
+  estado         String       @default("pendiente")
+  observaciones  String?
+  costoAsociado  Decimal?     @db.Decimal(12, 2)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pagos          PagoCuenta[]
+  contactos      ContactoCobranza[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  @@index([userId])
+  @@index([clienteId])
+  @@index([userId, estado])
+}
+
+model PagoCuenta {
+  id         String          @id @default(cuid())
+  cuentaId   String
+  cuenta     CuentaPorCobrar @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  monto      Decimal         @db.Decimal(12, 2)
+  fecha      DateTime
+  descripcion String?
+  metodoPago  String?        @default("Efectivo")
+  createdAt  DateTime        @default(now())
+}
+
+model EventoCalendario {
+  id          String   @id @default(cuid())
+  titulo      String
+  descripcion String?
+  fecha       DateTime
+  tipo        String   @default("evento")
+  color       String   @default("azul")
+  estado      String   @default("pendiente")
+  prioridad   String   @default("media")
+  horaLimite  String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([userId, fecha])
+}
+
+model SuscripcionNelyx {
+  id                   String       @id @default(cuid())
+  userId               String       @unique
+  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 String       @default("mensual")
+  estado               String       @default("prueba_gratuita")
+  fechaInicio          DateTime     @default(now())
+  fechaFinPrueba       DateTime?
+  fechaProximoCobro    DateTime?
+  precioPlan           Decimal      @default(0) @db.Decimal(12,2)
+  renovacionAutomatica Boolean      @default(true)
+  ultimoAcceso         DateTime?
+  notas                String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  pagos                PagoNelyx[]
+  cobros               CobroNelyx[]
+  @@index([estado])
+}
+
+model PagoNelyx {
+  id             String           @id @default(cuid())
+  suscripcionId  String
+  suscripcion    SuscripcionNelyx @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
+  fecha          DateTime         @default(now())
+  monto          Decimal          @db.Decimal(12,2)
+  metodoPago     String           @default("transferencia")
+  observacion    String?
+  estado         String           @default("pagado")
+  createdAt      DateTime         @default(now())
+  cobro          CobroNelyx?
+  @@index([suscripcionId])
+}
+
+// Cuenta por cobrar INTERNA de Nelyx hacia sus clientes suscriptores.
+// Visible únicamente en /admin/clientes. Sin relación con el módulo
+// "Cuentas por cobrar" de cada negocio (CuentaPorCobrar / Cliente).
+model CobroNelyx {
+  id               String           @id @default(cuid())
+  suscripcionId    String
+  suscripcion      SuscripcionNelyx @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
+  plan             String
+  monto            Decimal          @db.Decimal(12,2)
+  fechaEmision     DateTime         @default(now())
+  fechaVencimiento DateTime
+  estado           String           @default("pendiente")
+  pagoId           String?          @unique
+  pago             PagoNelyx?       @relation(fields: [pagoId], references: [id])
+  createdAt        DateTime         @default(now())
+  @@index([suscripcionId])
+  @@index([estado])
+}
+
+// ── Notificaciones push ────────────────────────────────────────────────
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  @@index([userId])
+}
+
+model NotificacionConfig {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendario     Boolean @default(true)
+  tareas         Boolean @default(true)
+  deudas         Boolean @default(true)
+  costosFijos    Boolean @default(true)
+  cuentasCobrar  Boolean @default(true)
+  flujoCaja      Boolean @default(true)
+  clientes       Boolean @default(true)
+  inventario     Boolean @default(true)
+  reportes       Boolean @default(true)
+  renovaciones   Boolean @default(true)
+  alertasGenerales Boolean @default(true)
+  permisoPedido  Boolean @default(false)
+  updatedAt      DateTime @updatedAt
+}
+
+model Notificacion {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoria   String   // calendario | tareas | deudas | costosFijos | cuentasCobrar | flujoCaja | clientes | inventario | reportes | renovaciones | alertasGenerales
+  prioridad   String   @default("media") // alta | media | baja
+  titulo      String
+  mensaje     String
+  accionUrl   String?
+  leida       Boolean  @default(false)
+  claveUnica  String   @unique // evita duplicados: ej "cf:<id>:2026-7:3"
+  createdAt   DateTime @default(now())
+  @@index([userId, leida])
+  @@index([userId, createdAt])
+}
+
+// ── Kardex de inventario ────────────────────────────────────────────────
+// Registro inmutable de cada modificación de stock, con trazabilidad
+// completa. Nunca se edita ni se borra un registro existente — cada
+// movimiento de stock (venta, reposición, ajuste, merma, etc.) crea una
+// fila nueva. El stock actual en Producto.stock es siempre el resultado
+// acumulado de este historial.
+model MovimientoStock {
+  id             String    @id @default(cuid())
+  productoId     String
+  producto       Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tipo           String    // venta | reposicion | ajuste_manual | correccion | producto_danado | merma | consumo_interno | regalo | devolucion | inventario_inicial | otro
+  cantidad       Int       // delta real aplicado (positivo = entrada, negativo = salida), ya en unidad interna
+  stockAnterior  Int
+  stockPosterior Int
+  observacion    String?
+  proveedorId    String?
+  proveedor      Proveedor? @relation(fields: [proveedorId], references: [id])
+  movimientoId   String?
+  movimiento     Movimiento? @relation(fields: [movimientoId], references: [id], onDelete: SetNull)
+  costoUnitario  Decimal?  @db.Decimal(12, 2)
+  costoTotal     Decimal?  @db.Decimal(12, 2)
+  fechaVencimiento           DateTime? // opcional — fecha en que vence este lote/reposición específico
+  avisoVencimientoDescartado Boolean   @default(false) // el dueño ya "resolvió" este aviso (lo vendió o lo botó)
+  createdAt      DateTime  @default(now())
+  @@index([productoId, createdAt])
+  @@index([userId])
+  @@index([userId, fechaVencimiento])
+}
+
+// ── Centro de Cobranza ──────────────────────────────────────────────────
+model ContactoCobranza {
+  id            String          @id @default(cuid())
+  cuentaId      String
+  cuenta        CuentaPorCobrar @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  clienteId     String
+  cliente       Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canal         String          // whatsapp | email
+  nivel         Int             // 1 | 2 | 3
+  mensaje       String?
+  createdAt     DateTime        @default(now())
+  @@index([cuentaId, createdAt])
+  @@index([clienteId])
+}
+
+model PlantillaCobranza {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nivel     Int       // 1 | 2 | 3
+  mensaje   String   @db.Text
+  updatedAt DateTime @updatedAt
+  @@unique([userId, nivel])
+}
+
+// ── Integración con máquinas de pago (Transbank, Mercado Pago, etc.) ────
+// Diseño: una fila por negocio+proveedor. Las credenciales las entrega el
+// proveedor real al negocio (no las genera Nelyx) — acá solo se guardan
+// para poder hablarle a su API cuando se cobra desde Venta.
+model ConexionPago {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proveedor         String   // "mercadopago" | "transbank" | "getnet" | "bancoestado"
+  accessToken       String   @db.Text
+  terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo
+  activo            Boolean  @default(true)
+  ultimaConexionOk  DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@unique([userId, proveedor])
+}
+
