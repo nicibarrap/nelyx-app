@@ -377,8 +377,6 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         <div className="lg:col-span-2 space-y-5">
 
-
-
       {/* Productos */}
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
         <div className="flex items-center justify-between mb-2.5">
@@ -478,8 +476,14 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
                 className={`${inp} pl-8 h-16 text-3xl font-bold text-right`} />
             </div>
             {/* Calculadora — pensada para feriantes y mostradores: ingresar el monto
-                a puro toque, sin necesidad de abrir el teclado del celular. */}
-            <div className="grid grid-cols-3 gap-2">
+                a puro toque, sin necesidad de abrir el teclado del celular.
+                max-w-xs es la pieza clave: sin un límite en el conjunto,
+                cada botón (aspect-square) crece con el ancho real de la
+                columna, que en pantallas grandes es amplia — volviéndose
+                gigante. Con el conjunto acotado, cada botón queda en un
+                tamaño cómodo para el dedo, sin importar cuán ancha sea
+                la pantalla. */}
+            <div className="grid grid-cols-3 gap-2 max-w-xs">
               {["7","8","9","4","5","6","1","2","3"].map(d => (
                 <button key={d} type="button" onClick={() => setMontoLibre(prev => (prev === "0" ? "" : prev) + d)}
                   className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
