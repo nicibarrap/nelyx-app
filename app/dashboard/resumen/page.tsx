@@ -7,6 +7,7 @@ import { hoyEnChile } from "@/lib/timezone"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
 import { FiltroPeriodo } from "@/components/shared/filtro-periodo"
+import { KpiTooltip } from "@/components/shared/kpi-tooltip"
 import { GraficoMensual } from "@/components/dashboard/grafico-mensual"
 import Link from "next/link"
 
@@ -236,13 +237,7 @@ export default async function ResumenPage({ searchParams }: { searchParams: { me
         {cards.map((c) => (
           <div key={c.label} className={`${c.bg} border ${c.border} rounded-2xl p-4 card-hover`}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider flex items-center gap-1 group relative">
-                {c.label}
-                <span className="text-[var(--c-text4)] normal-case font-normal cursor-help">ⓘ</span>
-                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 max-w-[calc(100vw-2rem)] bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-3 text-[11px] normal-case font-normal text-[var(--c-text2)] leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-30 shadow-2xl">
-                  {c.tip}
-                </span>
-              </p>
+              <KpiTooltip label={c.label} tip={c.tip} />
               <span className={`w-7 h-7 rounded-lg ${c.iconBg} flex items-center justify-center text-sm font-bold`}>{c.icon}</span>
             </div>
             <p className={`text-xl font-bold ${c.color} leading-none`}>{c.valor}</p>

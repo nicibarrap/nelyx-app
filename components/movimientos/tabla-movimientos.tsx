@@ -52,6 +52,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 {m.descripcion && <p className="text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
                 <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
                   {formatFecha(m.fecha)}
+                  {m.realizadoPorNombre && <span className="opacity-60"> · {m.realizadoPorNombre}</span>}
                   {m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`}
                 </p>
               </div>

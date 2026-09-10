@@ -365,15 +365,18 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
         <div className="lg:col-span-2 space-y-5">
 
       {/* Fecha / Hora */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-4 py-2.5">
-          <label className="text-[10px] text-[var(--c-text4)] flex items-center gap-1">📅 Fecha</label>
-          <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
-            className="w-full bg-transparent text-sm text-[var(--c-text)] outline-none mt-0.5 capitalize" />
-        </div>
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-4 py-2.5">
-          <p className="text-[10px] text-[var(--c-text4)] flex items-center gap-1">🕐 Hora</p>
-          <p className="text-sm text-[var(--c-text)] mt-0.5">{horaLabel || "—"}</p>
+      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
+        <p className="text-sm font-semibold text-[var(--c-text)] flex items-center gap-1.5 mb-2.5">🗓️ Fecha y hora</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] text-[var(--c-text4)] flex items-center gap-1">📅 Fecha</label>
+            <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
+              className="w-full bg-transparent text-sm text-[var(--c-text)] outline-none mt-0.5 capitalize" />
+          </div>
+          <div>
+            <p className="text-[10px] text-[var(--c-text4)] flex items-center gap-1">🕐 Hora</p>
+            <p className="text-sm text-[var(--c-text)] mt-0.5">{horaLabel || "—"}</p>
+          </div>
         </div>
       </div>
 

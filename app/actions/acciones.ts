@@ -76,6 +76,7 @@ export async function ingresarMovimiento(formData: FormData) {
         utilidad: utilidadSnap,
         margen: margenSnap,
         userId: session.user.id,
+        realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
       }
     })
   }
@@ -232,6 +233,7 @@ export async function registrarVenta(items: Array<{
           margen: margenSnap,
           metodoPago: metodoPago || null,
           userId: session.user.id,
+          realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
         }
       })
     }
@@ -691,6 +693,7 @@ export async function registrarPago(deudaId: string, formData: FormData) {
       descripcion: `Pago deuda: ${deuda.acreedor}${descripcion ? ` - ${descripcion}` : ""}`,
       categoria: "Otros",
       userId: session.user.id,
+      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
     }
   })
   revalidatePath("/dashboard/deudas")
@@ -758,6 +761,7 @@ export async function crearCostoUnico(formData: FormData) {
       descripcion: nombre,
       categoria,
       userId: session.user.id,
+      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
     }
   })
   revalidatePath("/dashboard/costos-fijos")
@@ -880,6 +884,7 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
       descripcion: generacion.costoFijo.nombre,
       categoria: generacion.costoFijo.categoria || "Costos fijos",
       userId: session.user.id,
+      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
     }
   })
   await db.generacionCosto.update({
@@ -1153,6 +1158,7 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
       categoria: "Cobros",
       clienteId: cuenta.clienteId,
       userId: session.user.id,
+      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
     }
   })
 

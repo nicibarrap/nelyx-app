@@ -72,6 +72,10 @@ model Movimiento {
   utilidad      Decimal?      @db.Decimal(12, 2)
   margen        Float?
   metodoPago    String?
+  // Quién lo hizo de verdad — solo se llena cuando fue un empleado (no el
+  // dueño), y se guarda el nombre tal cual en ese momento (no una relación
+  // a User), para que sobreviva aunque ese empleado se elimine después.
+  realizadoPorNombre String?
   @@index([userId, fecha])
   @@index([userId, tipo, categoria])
   @@index([userId, tipo])
