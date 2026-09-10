@@ -477,28 +477,29 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             </div>
             {/* Calculadora — pensada para feriantes y mostradores: ingresar el monto
                 a puro toque, sin necesidad de abrir el teclado del celular.
-                El límite de ancho es la pieza clave: sin él, cada botón
-                (aspect-square) crece con el ancho real de la columna, que
-                en pantallas grandes es amplia — volviéndose gigante. Con
-                el conjunto acotado a un tamaño de botón cómodo para el
-                dedo (~75px), sin importar cuán ancha sea la pantalla. */}
-            <div className="grid grid-cols-3 gap-2 max-w-[240px]">
+                Rectangular, llenando todo el ancho disponible, con altura
+                fija cómoda — no cuadrada. "Cuadrado + ancho completo" son
+                dos pedidos que no pueden cumplirse a la vez en un
+                contenedor ancho (uno da botones gigantes, el otro botones
+                angostos con espacio vacío al lado) — se prioriza llenar
+                el espacio, como se pidió. */}
+            <div className="grid grid-cols-3 gap-2">
               {["7","8","9","4","5","6","1","2","3"].map(d => (
                 <button key={d} type="button" onClick={() => setMontoLibre(prev => (prev === "0" ? "" : prev) + d)}
-                  className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
+                  className="h-14 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
                   {d}
                 </button>
               ))}
               <button type="button" onClick={() => setMontoLibre("")}
-                className="aspect-square rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 active:scale-95 transition-all">
+                className="h-14 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 active:scale-95 transition-all">
                 C
               </button>
               <button type="button" onClick={() => setMontoLibre(prev => (prev === "0" ? "" : prev) + "0")}
-                className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
+                className="h-14 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
                 0
               </button>
               <button type="button" onClick={() => setMontoLibre(prev => prev.slice(0, -1))}
-                className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-lg font-bold hover:border-sky-500/40 active:scale-95 transition-all">
+                className="h-14 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-lg font-bold hover:border-sky-500/40 active:scale-95 transition-all">
                 ⌫
               </button>
             </div>
