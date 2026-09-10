@@ -22,13 +22,22 @@ export function KpiTooltip({ label, tip }: { label: string; tip: string }) {
     const centro = rect.left + rect.width / 2
     const mitadTooltip = ANCHO_TOOLTIP / 2
 
+    // El límite no es el borde de toda la ventana — el sidebar ocupa una
+    // porción real a la izquierda, con más capa (z-index) por encima, así
+    // que un tooltip "correctamente" posicionado según la ventana completa
+    // puede terminar tapado detrás del sidebar. Se usa el <main> real
+    // (el área de contenido, ya sin el sidebar) como límite verdadero.
+    const areaContenido = el.closest("main")
+    const limiteIzq = areaContenido ? areaContenido.getBoundingClientRect().left : 0
+    const limiteDer = window.innerWidth
+
     let ajuste = 0
     const bordeIzquierdo = centro - mitadTooltip
     const bordeDerecho = centro + mitadTooltip
-    if (bordeIzquierdo < MARGEN_PANTALLA) {
-      ajuste = MARGEN_PANTALLA - bordeIzquierdo
-    } else if (bordeDerecho > window.innerWidth - MARGEN_PANTALLA) {
-      ajuste = (window.innerWidth - MARGEN_PANTALLA) - bordeDerecho
+    if (bordeIzquierdo < limiteIzq + MARGEN_PANTALLA) {
+      ajuste = (limiteIzq + MARGEN_PANTALLA) - bordeIzquierdo
+    } else if (bordeDerecho > limiteDer - MARGEN_PANTALLA) {
+      ajuste = (limiteDer - MARGEN_PANTALLA) - bordeDerecho
     }
     setOffsetX(ajuste)
   }

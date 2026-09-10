@@ -345,7 +345,20 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
           <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center text-xl flex-shrink-0">🛒</div>
           <div>
             <h1 className="text-xl font-bold text-[var(--c-text)] tracking-tight">Venta</h1>
-            <p className="text-xs text-[var(--c-text3)]">Registra tus ventas de forma rápida y simple</p>
+            {/* Fecha y hora, compacta — es el dato menos usado de toda la
+                pantalla (casi siempre es "ahora mismo"), así que no
+                necesita el protagonismo de una tarjeta propia. Se puede
+                editar igual, tocando la fecha, para quien sí lo necesite. */}
+            <p className="text-xs text-[var(--c-text3)] flex items-center gap-1.5">
+              <span className="relative inline-flex items-center gap-1 hover:text-[var(--c-text2)] transition-colors cursor-pointer">
+                📅
+                <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full" title="Cambiar fecha de la venta" />
+                {fechaVenta.split("-").reverse().join("-")}
+              </span>
+              <span className="text-[var(--c-text4)]">·</span>
+              🕐 {horaLabel || "—"}
+            </p>
           </div>
         </div>
         {/* Solo celular — en PC/tablet no tiene sentido, ya que el layout
@@ -363,22 +376,6 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
           sin importar cuántos productos tenga el carrito. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         <div className="lg:col-span-2 space-y-5">
-
-      {/* Fecha / Hora */}
-      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
-        <p className="text-sm font-semibold text-[var(--c-text)] flex items-center gap-1.5 mb-2.5">🗓️ Fecha y hora</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] text-[var(--c-text4)] flex items-center gap-1">📅 Fecha</label>
-            <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
-              className="w-full bg-transparent text-sm text-[var(--c-text)] outline-none mt-0.5 capitalize" />
-          </div>
-          <div>
-            <p className="text-[10px] text-[var(--c-text4)] flex items-center gap-1">🕐 Hora</p>
-            <p className="text-sm text-[var(--c-text)] mt-0.5">{horaLabel || "—"}</p>
-          </div>
-        </div>
-      </div>
 
 
 

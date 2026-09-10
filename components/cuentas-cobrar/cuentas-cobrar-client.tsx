@@ -533,8 +533,11 @@ export function CuentasCobrarClient({ cuentasData, clientes, scoreClientes, metr
           )}
         </div>
 
-        {/* Panel detalle */}
-        <div>
+        {/* Panel detalle — queda fijo en su lugar (sticky) y con su propio
+            scroll interno, para que revisar el historial de un cliente no
+            obligue a desplazar toda la página ni deje espacio vacío
+            debajo del nombre mientras se scrollea. */}
+        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           {selected ? (
             <DetalleCuenta cuenta={selected} score={scoreMap[selected.cliente.id] ?? "excelente"} onClose={() => setSelectedId(null)} onPago={() => setShowPago(true)} nombreNegocio={nombreNegocio} usuarioEnvia={usuarioEnvia} plantillas={plantillas} />
           ) : (
