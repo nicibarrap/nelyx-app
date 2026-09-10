@@ -482,20 +482,20 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             <div className="grid grid-cols-3 gap-2">
               {["7","8","9","4","5","6","1","2","3"].map(d => (
                 <button key={d} type="button" onClick={() => setMontoLibre(prev => (prev === "0" ? "" : prev) + d)}
-                  className="h-14 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
+                  className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
                   {d}
                 </button>
               ))}
               <button type="button" onClick={() => setMontoLibre("")}
-                className="h-14 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 active:scale-95 transition-all">
+                className="aspect-square rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 active:scale-95 transition-all">
                 C
               </button>
               <button type="button" onClick={() => setMontoLibre(prev => (prev === "0" ? "" : prev) + "0")}
-                className="h-14 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
+                className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-xl font-bold hover:border-sky-500/40 active:scale-95 transition-all">
                 0
               </button>
               <button type="button" onClick={() => setMontoLibre(prev => prev.slice(0, -1))}
-                className="h-14 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-lg font-bold hover:border-sky-500/40 active:scale-95 transition-all">
+                className="aspect-square rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] text-lg font-bold hover:border-sky-500/40 active:scale-95 transition-all">
                 ⌫
               </button>
             </div>
@@ -677,10 +677,15 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
         </button>
       </div>
 
-      {/* Conexiones — una sola fila compacta, sin ocupar tanta altura */}
-      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-3">
+        </div>
+      </div>
+
+      {/* Conexiones — franja horizontal completa, debajo de las 2 columnas,
+          aprovechando todo el ancho disponible en vez de apilarse angosta
+          dentro de la columna derecha. */}
+      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-3 mt-5">
         <p className="text-[10px] text-[var(--c-text4)] mb-2">Esta venta se conecta sola con:</p>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
           {[
             ["📦", "Inventario"],
             ["⇄", "Movimientos"],
@@ -688,14 +693,11 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             ["📊", "Reportes"],
             ["📋", "Por cobrar"],
           ].map(([icon, label]) => (
-            <div key={label} className="flex items-center gap-1 bg-[var(--c-card2)] rounded-lg px-2 py-1.5">
+            <div key={label} className="flex items-center justify-center gap-1.5 bg-[var(--c-card2)] rounded-lg px-2 py-2">
               <span className="text-xs flex-shrink-0">{icon}</span>
-              <span className="text-[9px] text-[var(--c-text3)] font-medium truncate">{label}</span>
+              <span className="text-[10px] text-[var(--c-text3)] font-medium truncate">{label}</span>
             </div>
           ))}
-        </div>
-      </div>
-
         </div>
       </div>
 
