@@ -26,6 +26,8 @@ model User {
   cuentaPrincipal       User?                  @relation("EmpleadosDeCuenta", fields: [cuentaPrincipalId], references: [id], onDelete: Cascade)
   empleados             User[]                 @relation("EmpleadosDeCuenta")
   pin                   String?                // hash del PIN — solo empleados, nunca texto plano
+  intentosFallidosPin   Int                    @default(0)
+  bloqueadoHastaPin     DateTime?
   modulosPermitidos     String[]               @default([])
   movimientos           Movimiento[]
   movimientosStock      MovimientoStock[]

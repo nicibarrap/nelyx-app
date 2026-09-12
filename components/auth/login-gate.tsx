@@ -4,7 +4,7 @@ import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { LoginForm } from "@/components/auth/login-form"
-import { obtenerEmpleadosParaLogin } from "@/app/actions/empleados-acciones"
+import { obtenerEmpleadosParaLogin, verificarBloqueoPin } from "@/app/actions/empleados-acciones"
 import { desemparejarDispositivo } from "@/app/actions/dispositivo-acciones"
 
 type InfoCuenta = { nombreDueno: string; negocio: string | null; empleados: { id: string; nombre: string }[] }
@@ -43,7 +43,15 @@ export function LoginGate() {
     setIsPending(true)
     const result = await signIn("empleado-pin", { cuentaId, empleadoId: empleadoElegido.id, pin: pinAUsar, redirect: false })
     setIsPending(false)
-    if (result?.error) { toast.error("PIN incorrecto"); setPin(""); pinRef.current?.focus(); return }
+    if (result?.error) {
+      const estado = await verificarBloqueoPin(empleadoElegido.id)
+      if (estado.bloqueado) {
+        toast.error(`Demasiados intentos — espera ${estado.minutosRestantes} minuto${estado.minutosRestantes === 1 ? "" : "s"} e inténtalo de nuevo.`)
+      } else {
+        toast.error("PIN incorrecto")
+      }
+      setPin(""); pinRef.current?.focus(); return
+    }
     router.push("/dashboard/resumen")
     router.refresh()
   }

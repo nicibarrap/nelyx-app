@@ -41,8 +41,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const empleado = await db.user.findFirst({ where: { id: empleadoId, cuentaPrincipalId: cuentaId, activo: true } })
         if (!empleado || !empleado.pin) return null
+
+        // Bloqueo temporal tras varios PIN incorrectos seguidos — sin
+        // esto, alguien podría probar las 10.000 combinaciones posibles
+        // de un PIN de 4 dígitos sin que nada lo frene. Se devuelve null
+        // (no se lanza un error con el mensaje) porque NextAuth nunca
+        // propaga el texto exacto de una excepción al cliente, por
+        // seguridad — el frontend distingue este caso de otra forma.
+        if (empleado.bloqueadoHastaPin && empleado.bloqueadoHastaPin > new Date()) {
+          return null
+        }
+
         const pinValido = await bcrypt.compare(pin, empleado.pin)
-        if (!pinValido) return null
+        if (!pinValido) {
+          const intentos = empleado.intentosFallidosPin + 1
+          const seBloquea = intentos >= 5
+          await db.user.update({
+            where: { id: empleado.id },
+            data: {
+              intentosFallidosPin: seBloquea ? 0 : intentos,
+              bloqueadoHastaPin: seBloquea ? new Date(Date.now() + 15 * 60 * 1000) : null,
+            },
+          })
+          return null
+        }
+        // PIN correcto — se limpia cualquier intento fallido anterior.
+        if (empleado.intentosFallidosPin > 0 || empleado.bloqueadoHastaPin) {
+          await db.user.update({ where: { id: empleado.id }, data: { intentosFallidosPin: 0, bloqueadoHastaPin: null } })
+        }
 
         const cuenta = await db.user.findUnique({ where: { id: cuentaId } })
         if (!cuenta || !cuenta.activo) return null

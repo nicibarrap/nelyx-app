@@ -93,3 +93,18 @@ export async function obtenerEmpleadosParaLogin(cuentaId: string) {
   })
   return { nombreDueno: cuenta.nombre, negocio: cuenta.negocio, empleados }
 }
+
+/**
+ * Pública — sin sesión — se consulta después de un intento fallido para
+ * saber si fue "PIN incorrecto" o "ya estás bloqueado por varios
+ * intentos", ya que NextAuth nunca deja pasar el mensaje exacto de un
+ * error de autorización hasta el cliente.
+ */
+export async function verificarBloqueoPin(empleadoId: string) {
+  const empleado = await db.user.findUnique({ where: { id: empleadoId }, select: { bloqueadoHastaPin: true } })
+  if (!empleado?.bloqueadoHastaPin || empleado.bloqueadoHastaPin <= new Date()) {
+    return { bloqueado: false, minutosRestantes: 0 }
+  }
+  const minutosRestantes = Math.ceil((empleado.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
+  return { bloqueado: true, minutosRestantes }
+}

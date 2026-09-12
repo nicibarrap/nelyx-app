@@ -1,17 +1,26 @@
 "use server"
 import { cookies } from "next/headers"
+import { auth } from "@/lib/auth"
 
 const NOMBRE_COOKIE = "nelyx_dispositivo_cuenta"
 const UN_ANIO = 60 * 60 * 24 * 365
 
-/** Se llama justo después de que el dueño inicia sesión con su email y
- * contraseña — deja este dispositivo "recordado" para esa cuenta, así la
- * próxima vez (y cualquier empleado que use este mismo aparato) ve
- * directo la pantalla de "¿quién eres?" en vez de tener que pedirle al
- * dueño que vuelva a escribir su contraseña cada vez. */
-export async function emparejarDispositivo(cuentaId: string) {
-  cookies().set(NOMBRE_COOKIE, cuentaId, {
-    maxAge: UN_ANIO, path: "/", sameSite: "lax",
+/**
+ * Se llama SOLO cuando el dueño marcó explícitamente "Recordar este
+ * dispositivo" al iniciar sesión — nunca automático, para no emparejar
+ * sin querer un computador prestado o público (eso mostraría después los
+ * nombres de los empleados a cualquiera que lo use, y dejaría la puerta
+ * abierta a que alguien intente adivinar un PIN desde ahí).
+ *
+ * Lee la sesión directo del servidor (no recibe el id del cliente) — así
+ * es confiable incluso llamada justo después de un login recién hecho,
+ * sin depender de que el navegador ya tenga la sesión "asentada".
+ */
+export async function emparejarDispositivo() {
+  const session = await auth()
+  if (!session?.user?.id) return
+  cookies().set(NOMBRE_COOKIE, session.user.id, {
+    maxAge: UN_ANIO, path: "/", sameSite: "lax", secure: true,
   })
 }
 

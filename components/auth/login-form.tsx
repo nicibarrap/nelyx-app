@@ -3,6 +3,7 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { emparejarDispositivo } from "@/app/actions/dispositivo-acciones"
 
 export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = {}) {
   const router = useRouter()
@@ -19,11 +20,13 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
       password: form.get("password"),
       redirect: false,
     })
+    if (result?.error) { setLoading(false); toast.error("Email o contraseña incorrectos"); return }
+    // Emparejar el dispositivo solo si el dueño lo pidió explícitamente
+    // (el checkbox) — nunca automático, para no dejar "recordado" sin
+    // querer un computador prestado o público, mostrando después los
+    // nombres de los empleados a cualquiera que lo use.
+    if (remember) await emparejarDispositivo().catch(() => {})
     setLoading(false)
-    if (result?.error) { toast.error("Email o contraseña incorrectos"); return }
-    // El emparejamiento de este dispositivo con la cuenta ya no se hace
-    // acá — el middleware lo deja resuelto solo, con la sesión ya
-    // garantizada fresca, apenas se visita el dashboard.
     onLoginExitoso?.()
     router.push("/dashboard/resumen")
     router.refresh()
@@ -63,13 +66,16 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
           </button>
         </div>
       </div>
-      <label className="flex items-center gap-2.5 cursor-pointer w-fit group">
+      <label className="flex items-start gap-2.5 cursor-pointer w-fit group">
         <div onClick={()=>setRemember(!remember)}
-          className="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all cursor-pointer flex-shrink-0"
+          className="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all cursor-pointer flex-shrink-0 mt-0.5"
           style={remember?{background:"#3b82f6",borderColor:"#3b82f6"}:{borderColor:"rgba(255,255,255,0.2)"}}>
           {remember&&<svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
         </div>
-        <span className="text-sm text-white/45 group-hover:text-white/65 transition-colors select-none">Recordarme</span>
+        <span className="text-sm text-white/45 group-hover:text-white/65 transition-colors select-none">
+          Recordar este dispositivo
+          <span className="block text-xs text-white/30 mt-0.5">Si tienes empleados con acceso, la próxima vez podrán entrar solo con su PIN. Desmárcalo en computadores prestados o públicos.</span>
+        </span>
       </label>
       <button type="submit" disabled={loading}
         className="w-full h-12 font-semibold text-white rounded-xl transition-all flex items-center justify-center gap-2"

@@ -1,8 +1,6 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 
-const COOKIE_DISPOSITIVO = "nelyx_dispositivo_cuenta"
-
 export default auth(async (req) => {
   const { pathname } = req.nextUrl
   const session = req.auth
@@ -59,21 +57,6 @@ export default auth(async (req) => {
       if (modulo && modulo !== "sin-permiso" && !modulosFrescos.includes(modulo)) {
         respuesta = NextResponse.redirect(new URL(`/dashboard/sin-permiso?modulo=${modulo}`, req.url))
       }
-    }
-  }
-
-  // Emparejar este dispositivo con la cuenta — se hace acá, del lado del
-  // servidor con la sesión ya resuelta y garantizada fresca, en vez de
-  // depender de una llamada desde el cliente justo después del login
-  // (que puede fallar por timing/caché). Así, cualquier visita al
-  // dashboard con sesión válida deja el aparato "recordado" para la
-  // próxima vez — sea el dueño o un empleado quien entró.
-  if (pathname.startsWith("/dashboard") && session.user?.id) {
-    const cookieActual = req.cookies.get(COOKIE_DISPOSITIVO)?.value
-    if (cookieActual !== session.user.id) {
-      respuesta.cookies.set(COOKIE_DISPOSITIVO, session.user.id, {
-        maxAge: 60 * 60 * 24 * 365, path: "/", sameSite: "lax", secure: true,
-      })
     }
   }
 
