@@ -89,22 +89,27 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
 
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
     <>
-      <div className="px-4 py-5 border-b border-[var(--c-border2)] flex items-center justify-between">
-        {!collapsed || isMobile ? (
+      <div className={`px-4 py-5 border-b border-[var(--c-border2)] flex items-center ${collapsed && !isMobile ? "justify-center" : "justify-between"}`}>
+        {(!collapsed || isMobile) && (
           <>
             <img src={LOGO_B64} alt="Nelyx" className="logo-dark h-7 sm:h-8 w-auto max-w-[150px] object-contain flex-shrink-0" />
             <img src={LOGO_B64_LIGHT} alt="Nelyx" className="logo-light h-7 sm:h-8 w-auto max-w-[150px] object-contain flex-shrink-0" />
           </>
-        ) : (
-          <>
-            <img src="/icon-x.png" alt="Nelyx" className="logo-dark w-8 h-8 object-contain mx-auto" />
-            <img src="/icon-x-light.png" alt="Nelyx" className="logo-light w-8 h-8 object-contain mx-auto" />
-          </>
         )}
-        {!isMobile && (
-          <button onClick={() => setCollapsed(!collapsed)}
+        {collapsed && !isMobile && (
+          // El propio ícono expande el menú — así no compite por espacio
+          // con un botón aparte dentro de una franja de apenas 64px, que
+          // es justo lo que hacía que el botón de abrir quedara sin
+          // espacio y pareciera "desaparecido".
+          <button onClick={() => setCollapsed(false)} title="Expandir menú" className="p-1 rounded-lg hover:bg-[var(--c-card2)] transition-colors">
+            <img src="/icon-x.png" alt="Expandir menú" className="logo-dark w-8 h-8 object-contain" />
+            <img src="/icon-x-light.png" alt="Expandir menú" className="logo-light w-8 h-8 object-contain" />
+          </button>
+        )}
+        {!isMobile && !collapsed && (
+          <button onClick={() => setCollapsed(true)} title="Ocultar menú"
             className="text-[var(--c-text4)] hover:text-[var(--c-text2)] transition-colors ml-auto p-1 rounded-lg hover:bg-[var(--c-card2)]">
-            <span className="text-xs">{collapsed ? "▶" : "◀"}</span>
+            <span className="text-xs">◀</span>
           </button>
         )}
         {isMobile && (

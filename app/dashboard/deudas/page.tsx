@@ -134,7 +134,7 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
         ].map((c) => (
           <div key={c.label} className={`${c.bg} border ${c.border} rounded-2xl p-4`}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium leading-tight">{c.label}</p>
+              <p className="text-[10px] text-[var(--c-text3)] uppercase tracking-wide font-medium leading-tight">{c.label}</p>
               <div className={`w-7 h-7 rounded-xl ${c.bg} border ${c.border} flex items-center justify-center text-sm`}>
                 {c.icon}
               </div>

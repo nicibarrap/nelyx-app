@@ -155,7 +155,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
               {t.label}
               {t.count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                  filtroActual === t.key ? "bg-sky-500/20 text-sky-400" : "bg-zinc-800 text-[var(--c-text3)]"
+                  filtroActual === t.key ? "bg-sky-500/20 text-sky-400" : "bg-[var(--c-card2)] text-[var(--c-text3)]"
                 }`}>{t.count}</span>
               )}
             </button>
@@ -195,7 +195,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${cfg.color} ${cfg.bg} ${cfg.border}`}>
                           {d.estado}
                         </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-[var(--c-text3)] border border-zinc-700">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--c-card2)] text-[var(--c-text3)] border border-[var(--c-border)]">
                           {d.tipo}
                         </span>
                       </div>
