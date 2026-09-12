@@ -40,7 +40,9 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
     .reduce((a, p) => a + Number(p.monto), 0)
   const interesesAcumulados = pendientes.reduce((a, d) => {
     if (!d.interes || !d.cuotas || !d.valorCuota) return a
-    const totalAPagar = Number(d.valorCuota) * d.cuotas
+    // Si el usuario cargó el total exacto que le mostró su banco, se usa
+    // ese — la multiplicación simple es solo una estimación de respaldo.
+    const totalAPagar = d.montoTotal ? Number(d.montoTotal) : Number(d.valorCuota) * d.cuotas
     return a + (totalAPagar - Number(d.monto))
   }, 0)
 

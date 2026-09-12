@@ -644,6 +644,8 @@ export async function crearDeuda(formData: FormData) {
   const cuotaManualStr = formData.get("cuotaManual") as string
   const cuotaManual = cuotaManualStr ? parseFloat(cuotaManualStr) : null
   const tipoTasa = (formData.get("tipoTasa") as string) || "mensual"
+  const montoTotalStr = formData.get("montoTotal") as string
+  const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
 
   await db.deuda.create({
     data: {
@@ -660,6 +662,7 @@ export async function crearDeuda(formData: FormData) {
       valorCuota: cuotaManual ?? valorCuota,
       cuotaManual,
       tipoTasa,
+      montoTotal,
       userId: session.user.id,
     },
   })
@@ -712,6 +715,8 @@ export async function editarDeuda(id: string, formData: FormData) {
   const cuotas = formData.get("cuotas") ? parseInt(formData.get("cuotas") as string) : null
   const valorCuota = cuotas && interes ? calcularValorCuota(monto, interes, cuotas) : null
   const fechaPrimerPagoStr = formData.get("fechaPrimerPago") as string
+  const montoTotalStr = formData.get("montoTotal") as string
+  const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
 
   await db.deuda.update({
     where: { id },
@@ -727,6 +732,7 @@ export async function editarDeuda(id: string, formData: FormData) {
       interes,
       cuotas,
       valorCuota,
+      montoTotal,
     }
   })
   revalidatePath("/dashboard/deudas")

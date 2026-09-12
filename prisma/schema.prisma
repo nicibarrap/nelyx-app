@@ -140,6 +140,12 @@ model Deuda {
   cuotas        Int?
   cuotasPagadas Int         @default(0)
   valorCuota    Decimal?    @db.Decimal(12, 2)
+  // El total "de verdad" que muestra el banco — bancos reales suman
+  // seguros/impuestos que no se pueden derivar solo de tasa+cuotas, así
+  // que se deja como un valor que el usuario puede copiar tal cual desde
+  // su banco. Si no se informa, se sigue calculando como cuota × cuotas
+  // (comportamiento de siempre, no rompe deudas ya creadas).
+  montoTotal    Decimal?    @db.Decimal(12, 2)
   userId        String
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   pagos         PagoDeuda[]

@@ -28,6 +28,7 @@ const sel = "w-full h-11 bg-[var(--c-input)] border border-[var(--c-border)] rou
 type DeudaEditar = {
   id: string; acreedor: string; tipo: string; entidad: string | null
   monto: number; valorCuota: number | null; cuotas: number | null
+  montoTotal: number | null
   fechaDeuda: Date; fechaVence: Date | null; fechaPrimerPago: Date | null
   descripcion: string | null
 }
@@ -46,13 +47,20 @@ export function FormularioDeuda({ deudaEditar, onClose }: Props = {}) {
   const [cuota, setCuota]           = useState(deudaEditar?.valorCuota ?? 0)
   const [cuotaDisplay, setCuotaDisplay] = useState(deudaEditar?.valorCuota ? formatMiles(deudaEditar.valorCuota) : "")
   const [cuotas, setCuotas]         = useState(deudaEditar?.cuotas?.toString() ?? "")
+  // El total que calcula Nelyx (cuota × cuotas) es solo una estimación —
+  // los bancos reales suman seguros/impuestos que no podemos conocer, así
+  // que se deja editable para que el usuario copie el número exacto que
+  // le mostró su banco, en vez de confiar en nuestra estimación.
+  const [totalManual, setTotalManual] = useState<number | null>(deudaEditar?.montoTotal ?? null)
+  const [totalDisplay, setTotalDisplay] = useState(deudaEditar?.montoTotal ? formatMiles(deudaEditar.montoTotal) : "")
   const [fechaDeuda, setFechaDeuda] = useState(deudaEditar?.fechaDeuda?.toISOString().split("T")[0] ?? localToday())
   const [fechaPrimerPago, setFechaPrimerPago] = useState(deudaEditar?.fechaPrimerPago?.toISOString().split("T")[0] ?? "")
   const [fechaVence, setFechaVence] = useState(deudaEditar?.fechaVence?.toISOString().split("T")[0] ?? "")
   const [descripcion, setDescripcion] = useState(deudaEditar?.descripcion ?? "")
 
   const cuotasNum = Math.min(360, Math.max(1, parseInt(cuotas) || 0))
-  const totalPagar = cuota > 0 && cuotasNum > 0 ? cuota * cuotasNum : 0
+  const totalCalculado = cuota > 0 && cuotasNum > 0 ? cuota * cuotasNum : 0
+  const totalPagar = totalManual ?? totalCalculado
   const totalInteres = monto > 0 && totalPagar > monto ? totalPagar - monto : 0
 
   useEffect(() => {
@@ -73,6 +81,7 @@ export function FormularioDeuda({ deudaEditar, onClose }: Props = {}) {
     fd.append("monto", monto.toString())
     fd.append("cuotaManual", cuota.toString())
     fd.append("cuotas", cuotasNum.toString())
+    if (totalManual != null) fd.append("montoTotal", totalManual.toString())
     fd.append("fechaDeuda", fechaDeuda)
     if (fechaPrimerPago) fd.append("fechaPrimerPago", fechaPrimerPago)
     if (fechaVence) fd.append("fechaVence", fechaVence)
@@ -162,15 +171,29 @@ export function FormularioDeuda({ deudaEditar, onClose }: Props = {}) {
 
                 {/* Resumen simple */}
                 {cuota > 0 && cuotasNum > 0 && (
-                  <div className="mt-3 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-4 py-3 grid grid-cols-3 gap-3 text-center">
-                    <div>
-                      <p className="text-[10px] text-[var(--c-text3)]">Total a pagar</p>
-                      <p className="text-sm font-bold text-[var(--c-text)]">{formatCLP(totalPagar)}</p>
+                  <div className="mt-3 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-4 py-3">
+                    <div className="grid grid-cols-2 gap-3 items-end">
+                      <div>
+                        <label className="text-[10px] text-[var(--c-text3)] block mb-1">Total a pagar</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text4)] text-xs">$</span>
+                          <input value={totalDisplay || formatMiles(totalCalculado)}
+                            onChange={e => {
+                              const n = parseMiles(e.target.value)
+                              setTotalDisplay(formatMiles(n))
+                              setTotalManual(n !== totalCalculado ? n : null)
+                            }}
+                            className="w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg pl-6 pr-2 text-sm font-bold text-[var(--c-text)] outline-none focus:border-sky-500" inputMode="numeric" />
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] text-[var(--c-text3)]">Cuotas</p>
+                        <p className="text-sm font-bold text-sky-400">{cuotasNum} meses</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-[var(--c-text3)]">Cuotas</p>
-                      <p className="text-sm font-bold text-sky-400">{cuotasNum} meses</p>
-                    </div>
+                    <p className="text-[10px] text-[var(--c-text4)] mt-2 leading-relaxed">
+                      💡 Estimamos {formatCLP(totalCalculado)} (cuota × cuotas) — pero tu banco puede cobrar más por seguros o impuestos. <span className="text-[var(--c-text3)]">Reemplaza este número por el total exacto que te muestra tu banco</span>, para que coincida perfecto.
+                    </p>
                   </div>
                 )}
               </div>
