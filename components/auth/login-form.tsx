@@ -3,13 +3,14 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { emparejarDispositivo } from "@/app/actions/dispositivo-acciones"
+import { obtenerEmpleadosDeMiCuenta } from "@/app/actions/empleados-acciones"
+import { SelectorIdentidad } from "@/components/auth/selector-identidad"
 
 export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = {}) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
-  const [remember, setRemember] = useState(true)
+  const [infoParaElegir, setInfoParaElegir] = useState<{ cuentaId: string; nombreDueno: string; negocio: string | null; emailDueno?: string; empleados: { id: string; nombre: string }[] } | null>(null)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -21,15 +22,27 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
       redirect: false,
     })
     if (result?.error) { setLoading(false); toast.error("Email o contraseña incorrectos"); return }
-    // Emparejar el dispositivo solo si el dueño lo pidió explícitamente
-    // (el checkbox) — nunca automático, para no dejar "recordado" sin
-    // querer un computador prestado o público, mostrando después los
-    // nombres de los empleados a cualquiera que lo use.
-    if (remember) await emparejarDispositivo().catch(() => {})
+
+    // Si esta cuenta tiene empleados, se pregunta "¿quién eres ahora?"
+    // antes de entrar — siempre, cada vez, nunca se salta la contraseña
+    // del dueño para llegar a esta pantalla.
+    const info = await obtenerEmpleadosDeMiCuenta()
     setLoading(false)
+    if (info && info.empleados.length > 0) {
+      setInfoParaElegir(info)
+      return
+    }
+    entrarAlDashboard()
+  }
+
+  function entrarAlDashboard() {
     onLoginExitoso?.()
     router.push("/dashboard/resumen")
     router.refresh()
+  }
+
+  if (infoParaElegir) {
+    return <SelectorIdentidad info={infoParaElegir} cuentaId={infoParaElegir.cuentaId} onListo={entrarAlDashboard} oscuro />
   }
 
   const inp = "w-full h-12 rounded-xl px-4 pl-11 text-sm text-white placeholder:text-white/25 outline-none transition-all focus:ring-2 focus:ring-blue-500/20"
@@ -66,17 +79,6 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
           </button>
         </div>
       </div>
-      <label className="flex items-start gap-2.5 cursor-pointer w-fit group">
-        <div onClick={()=>setRemember(!remember)}
-          className="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all cursor-pointer flex-shrink-0 mt-0.5"
-          style={remember?{background:"#3b82f6",borderColor:"#3b82f6"}:{borderColor:"rgba(255,255,255,0.2)"}}>
-          {remember&&<svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
-        </div>
-        <span className="text-sm text-white/45 group-hover:text-white/65 transition-colors select-none">
-          Recordar este dispositivo
-          <span className="block text-xs text-white/30 mt-0.5">Si tienes empleados con acceso, la próxima vez podrán entrar solo con su PIN. Desmárcalo en computadores prestados o públicos.</span>
-        </span>
-      </label>
       <button type="submit" disabled={loading}
         className="w-full h-12 font-semibold text-white rounded-xl transition-all flex items-center justify-center gap-2"
         style={{background:"linear-gradient(135deg,#2563eb,#3b82f6)",boxShadow:"0 4px 24px rgba(37,99,235,0.35)"}}>

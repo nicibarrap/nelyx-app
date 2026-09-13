@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { LoginGate } from "@/components/auth/login-gate"
+import { LoginForm } from "@/components/auth/login-form"
 import { ComoFunciona } from "@/components/auth/como-funciona"
 
 export const metadata: Metadata = { title: "Ingresa a tu cuenta — Nelyx" }
@@ -270,7 +270,7 @@ export default function LoginPage() {
               </div>
 
               {/* Auth form */}
-              <LoginGate/>
+              <LoginForm/>
 
               {/* Trust badges inside card */}
               <div className="grid grid-cols-3 gap-2 mt-7 pt-6 border-t border-white/8">

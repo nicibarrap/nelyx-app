@@ -108,3 +108,26 @@ export async function verificarBloqueoPin(empleadoId: string) {
   const minutosRestantes = Math.ceil((empleado.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
   return { bloqueado: true, minutosRestantes }
 }
+
+/**
+ * Basado en la sesión activa (no en una cookie de dispositivo) — se usa
+ * tanto justo después de que el dueño inicia sesión, como desde "Cambiar
+ * de usuario" dentro del dashboard. Requiere sesión válida — a diferencia
+ * de obtenerEmpleadosParaLogin, que es pública porque se usa antes de
+ * autenticarse.
+ */
+export async function obtenerEmpleadosDeMiCuenta() {
+  const session = await auth()
+  if (!session?.user?.id) return null
+  // session.user.id siempre es la cuenta (dueño), sea quien sea quien
+  // esté actuando ahora mismo — así funciona igual estés como dueño o
+  // como un empleado viendo el selector para cambiar de nuevo.
+  const cuenta = await db.user.findUnique({ where: { id: session.user.id }, select: { nombre: true, negocio: true, email: true } })
+  if (!cuenta) return null
+  const empleados = await db.user.findMany({
+    where: { cuentaPrincipalId: session.user.id, activo: true },
+    select: { id: true, nombre: true },
+    orderBy: { nombre: "asc" },
+  })
+  return { cuentaId: session.user.id, nombreDueno: cuenta.nombre, negocio: cuenta.negocio, emailDueno: cuenta.email, empleados }
+}

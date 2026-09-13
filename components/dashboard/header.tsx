@@ -1,8 +1,12 @@
 "use client"
 import { signOut } from "next-auth/react"
 import { useState, useEffect } from "react"
+import { createPortal } from "react-dom"
+import { toast } from "sonner"
 import { NotificationBell } from "@/components/notificaciones/notification-bell"
 import { ThemeToggle } from "@/components/shared/theme-toggle"
+import { obtenerEmpleadosDeMiCuenta } from "@/app/actions/empleados-acciones"
+import { SelectorIdentidad } from "@/components/auth/selector-identidad"
 
 function usePWA() {
   const [installPrompt, setInstallPrompt] = useState<any>(null)
@@ -28,6 +32,22 @@ function usePWA() {
 export function Header({ session }: { session: any }) {
   const [open, setOpen] = useState(false)
   const { canInstall, install } = usePWA()
+  const [infoParaElegir, setInfoParaElegir] = useState<{ cuentaId: string; nombreDueno: string; negocio: string | null; emailDueno?: string; empleados: { id: string; nombre: string }[] } | null>(null)
+  const [cargandoSelector, setCargandoSelector] = useState(false)
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
+
+  async function handleCambiarUsuario() {
+    setOpen(false)
+    setCargandoSelector(true)
+    const info = await obtenerEmpleadosDeMiCuenta()
+    setCargandoSelector(false)
+    if (!info || info.empleados.length === 0) {
+      toast.error("Aún no has creado ningún usuario adicional", { description: "Puedes crearlos desde el menú \"Usuarios\"." })
+      return
+    }
+    setInfoParaElegir(info)
+  }
 
   const iniciales = session?.user?.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) ?? "U"
   const hora = new Date().getHours()
@@ -94,6 +114,14 @@ export function Header({ session }: { session: any }) {
                   )}
                 </div>
 
+                {/* Cambiar de usuario */}
+                <div className="p-1.5 border-b border-[var(--c-border2)]">
+                  <button onClick={handleCambiarUsuario} disabled={cargandoSelector}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[var(--c-text2)] hover:bg-[var(--c-hover)] rounded-xl transition-all disabled:opacity-50">
+                    <span>🔄</span> {cargandoSelector ? "Cargando..." : "Cambiar de usuario"}
+                  </button>
+                </div>
+
                 {/* Cerrar sesión */}
                 <div className="p-1.5">
                   <button onClick={() => signOut({ callbackUrl: "/auth/login" })}
@@ -106,6 +134,24 @@ export function Header({ session }: { session: any }) {
           )}
         </div>
       </div>
+
+      {infoParaElegir && montado && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-bold text-[var(--c-text)]">Cambiar de usuario</p>
+              <button onClick={() => setInfoParaElegir(null)} className="text-[var(--c-text4)] hover:text-[var(--c-text2)] text-lg">✕</button>
+            </div>
+            <SelectorIdentidad
+              info={infoParaElegir}
+              cuentaId={infoParaElegir.cuentaId}
+              esEmpleadoActual={!!session?.user?.esEmpleado}
+              onListo={() => { setInfoParaElegir(null); window.location.href = "/dashboard/resumen" }}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </header>
   )
 }
