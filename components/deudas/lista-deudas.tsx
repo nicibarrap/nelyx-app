@@ -262,6 +262,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
               <p className="text-[10px] text-[var(--c-text3)] mb-1">Monto original</p>
               <p className="text-sm font-bold text-[var(--c-text)]">{formatCLP(Number(deudaDetalle.monto))}</p>
             </div>
+            {deudaDetalle.montoTotal != null && (
+              <div>
+                <p className="text-[10px] text-[var(--c-text3)] mb-1">Total a pagar (con interés)</p>
+                <p className="text-sm font-bold text-[var(--c-text)]">{formatCLP(Number(deudaDetalle.montoTotal))}</p>
+              </div>
+            )}
             <div>
               <p className="text-[10px] text-[var(--c-text3)] mb-1">Pagado</p>
               <p className="text-sm font-bold text-green-400">{formatCLP(Number(deudaDetalle.montoPagado))}</p>
@@ -308,7 +314,11 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
             <div className="flex justify-between mt-1.5">
               <span className="text-[10px] text-[var(--c-text3)]">{pctPagado}% completado</span>
               {deudaDetalle.cuotas && (
-                <span className="text-[10px] text-[var(--c-text3)]">Faltan {deudaDetalle.cuotas - deudaDetalle.cuotasPagadas} cuotas</span>
+                <span className="text-[10px] text-[var(--c-text3)]">
+                  {deudaDetalle.cuotasPagadas >= deudaDetalle.cuotas && saldoPendiente > 0
+                    ? "Queda un saldo por cerrar"
+                    : `Faltan ${Math.max(0, deudaDetalle.cuotas - deudaDetalle.cuotasPagadas)} cuotas`}
+                </span>
               )}
             </div>
           </div>
@@ -318,7 +328,17 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
             <div className="px-5 pb-4">
               {!showPago ? (
                 <button
-                  onClick={() => setShowPago(true)}
+                  onClick={() => {
+                    // El último pago sugiere el SALDO EXACTO restante, no
+                    // la cuota "de siempre" — los bancos reales casi
+                    // nunca tienen una última cuota idéntica a las demás
+                    // (absorbe el redondeo), así que sugerir el saldo real
+                    // asegura que la deuda cierre en $0 justo al final.
+                    const esUltimaCuota = deudaDetalle.cuotas != null && deudaDetalle.cuotasPagadas + 1 >= deudaDetalle.cuotas
+                    const sugerido = esUltimaCuota ? saldoPendiente : (deudaDetalle.valorCuota ? Number(deudaDetalle.valorCuota) : saldoPendiente)
+                    setPagoMontoDisplay(sugerido > 0 ? Math.round(sugerido).toLocaleString("es-CL") : "")
+                    setShowPago(true)
+                  }}
                   className="w-full h-9 bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-semibold rounded-xl hover:bg-sky-500/20 transition-colors"
                 >
                   + Registrar pago
@@ -326,6 +346,11 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
               ) : (
                 <form onSubmit={handlePago} className="space-y-3 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-4">
                   <p className="text-xs font-semibold text-[var(--c-text)]">Registrar pago</p>
+                  {deudaDetalle.cuotas != null && deudaDetalle.cuotasPagadas + 1 >= deudaDetalle.cuotas && (
+                    <p className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+                      💡 Esta es tu última cuota — sugerimos el saldo exacto que falta, no el valor de cuota de siempre, para que cierre perfecto en $0. Ajústalo si tu banco te cobró un monto distinto.
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-[10px] text-[var(--c-text3)] block mb-1">Monto ($) *</label>

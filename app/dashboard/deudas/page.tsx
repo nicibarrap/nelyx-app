@@ -185,7 +185,7 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
                         <p className="text-xs font-medium text-[var(--c-text)] truncate">{d.acreedor}</p>
                         <p className="text-[10px] text-[var(--c-text3)]">
                           {d.fechaVence ? formatFechaCorta(d.fechaVence) : "Sin fecha"}
-                          {d.cuotas ? ` · Cuota ${d.cuotasPagadas + 1}/${d.cuotas}` : ""}
+                          {d.cuotas ? (d.cuotasPagadas + 1 > d.cuotas ? " · Pago final pendiente" : ` · Cuota ${d.cuotasPagadas + 1}/${d.cuotas}`) : ""}
                         </p>
                       </div>
                       <span className="text-xs font-bold text-orange-400 flex-shrink-0">{formatCLP(monto)}</span>
