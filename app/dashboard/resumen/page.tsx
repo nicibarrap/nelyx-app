@@ -79,7 +79,7 @@ export default async function ResumenPage({ searchParams }: { searchParams: { me
 
   const totalPorCobrar = Number(cuentasPorCobrar._sum.saldoPendiente ?? 0)
   const countPorCobrar = cuentasPorCobrar._count
-  const totalPendiente = deudas.reduce((a,d) => a+Number(d.monto)-Number(d.montoPagado), 0)
+  const totalPendiente = deudas.reduce((a,d) => a+Number(d.montoTotal ?? d.monto)-Number(d.montoPagado), 0)
   const m = calcularMetricas(movimientos, totalPendiente)
 
   // ── Comparación vs mes anterior (Financial Engine — misma lógica, sin duplicar) ──

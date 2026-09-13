@@ -12,6 +12,7 @@ interface Deuda {
   tipo: string
   entidad: string | null
   monto: any
+  montoTotal?: any
   montoPagado: any
   descripcion: string | null
   fechaDeuda: Date
@@ -133,8 +134,13 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
     })
   }
 
-  const saldoPendiente = deudaDetalle ? Number(deudaDetalle.monto) - Number(deudaDetalle.montoPagado) : 0
-  const pctPagado = deudaDetalle ? Math.min(100, Math.round((Number(deudaDetalle.montoPagado) / Number(deudaDetalle.monto)) * 100)) : 0
+  // El total "real" a pagar es el que el usuario cargó desde su banco
+  // (montoTotal) si existe — un crédito con interés siempre debe más que
+  // el monto original prestado, así que usar solo "monto" subestimaría lo
+  // que realmente falta pagar.
+  const totalRealDetalle = deudaDetalle ? Number(deudaDetalle.montoTotal ?? deudaDetalle.monto) : 0
+  const saldoPendiente = deudaDetalle ? totalRealDetalle - Number(deudaDetalle.montoPagado) : 0
+  const pctPagado = deudaDetalle ? Math.min(100, Math.round((Number(deudaDetalle.montoPagado) / totalRealDetalle) * 100)) : 0
 
   return (
     <>
@@ -169,11 +175,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
             <p className="text-sm">Sin deudas en esta categoría</p>
           </div>
         ) : (
-          <div className="divide-y divide-[#111]">
+          <div className="divide-y divide-[var(--c-border2)]">
             {deudas.map(d => {
               const cfg = ESTADO_CONFIG[d.estado]
-              const saldo = Number(d.monto) - Number(d.montoPagado)
-              const pct = Math.min(100, Math.round((Number(d.montoPagado) / Number(d.monto)) * 100))
+              const totalReal = Number(d.montoTotal ?? d.monto)
+              const saldo = totalReal - Number(d.montoPagado)
+              const pct = Math.min(100, Math.round((Number(d.montoPagado) / totalReal) * 100))
               const isSelected = deudaDetalle?.id === d.id
 
               return (

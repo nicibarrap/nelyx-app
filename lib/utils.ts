@@ -33,12 +33,16 @@ export function calcularEstadoDeuda(deuda: {
   pagada: boolean
   monto: any
   montoPagado: any
+  montoTotal?: any
   fechaVence: Date | null | undefined
 }): EstadoDeuda {
   if (deuda.pagada) return "Pagada"
   const hoy = new Date()
   const montoPagado = Number(deuda.montoPagado)
-  const monto = Number(deuda.monto)
+  // El total real a cubrir es el que el usuario cargó desde su banco
+  // (incluye interés/seguros/impuestos) si existe — comparar solo contra
+  // el capital original marcaría la deuda "al día" antes de tiempo.
+  const monto = Number(deuda.montoTotal ?? deuda.monto)
   if (deuda.fechaVence) {
     const vence = new Date(deuda.fechaVence)
     if (vence < hoy) return "Vencida"

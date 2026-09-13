@@ -685,7 +685,12 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   const descripcion = (formData.get("descripcion") as string) || null
   if (isNaN(montoPago) || montoPago <= 0) throw new Error("Monto inválido")
   const nuevoMontoPagado = Number(deuda.montoPagado) + montoPago
-  const pagadaCompleta = Number(deuda.monto) - nuevoMontoPagado <= 0
+  // El total real a cubrir es el que el usuario cargó desde su banco
+  // (montoTotal) si existe — comparar solo contra el capital original
+  // marcaría la deuda "pagada" antes de tiempo, mientras todavía se debe
+  // el interés/seguros reales.
+  const totalReal = Number(deuda.montoTotal ?? deuda.monto)
+  const pagadaCompleta = totalReal - nuevoMontoPagado <= 0
   await db.pagoDeuda.create({ data: { deudaId, monto: montoPago, fecha, descripcion } })
   await db.deuda.update({ where: { id: deudaId }, data: { montoPagado: nuevoMontoPagado, pagada: pagadaCompleta, cuotasPagadas: { increment: 1 } } })
   await db.movimiento.create({

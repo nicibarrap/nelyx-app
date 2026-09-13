@@ -84,12 +84,12 @@ export default async function AlertasPage() {
   const totalAlertas = vencidas.length + proximas.length + agotados.length + stockBajo.length + costosGeneraMañana.length + costosPendientesAtrasados.length + costosGeneradosSinPagar.length + lotesConDias.length
 
   const alertasDeuda = [
-    ...vencidas.map(d => ({ id: d.id, tipo: "error" as const, titulo: `Deuda vencida: ${d.acreedor}`, desc: `Venció el ${d.fechaVence ? formatFechaCorta(d.fechaVence) : "—"}`, monto: Number(d.monto)-Number(d.montoPagado) })),
+    ...vencidas.map(d => ({ id: d.id, tipo: "error" as const, titulo: `Deuda vencida: ${d.acreedor}`, desc: `Venció el ${d.fechaVence ? formatFechaCorta(d.fechaVence) : "—"}`, monto: Number(d.montoTotal ?? d.monto)-Number(d.montoPagado) })),
     ...proximas.map(d => {
       const dias = d.fechaVence ? Math.ceil((new Date(d.fechaVence).getTime()-hoy.getTime())/86400000) : null
-      return { id: d.id, tipo: "warning" as const, titulo: `Pago próximo: ${d.acreedor}`, desc: dias !== null ? `Vence en ${dias} día${dias!==1?"s":""}` : "Próxima a vencer", monto: Number(d.monto)-Number(d.montoPagado) }
+      return { id: d.id, tipo: "warning" as const, titulo: `Pago próximo: ${d.acreedor}`, desc: dias !== null ? `Vence en ${dias} día${dias!==1?"s":""}` : "Próxima a vencer", monto: Number(d.montoTotal ?? d.monto)-Number(d.montoPagado) }
     }),
-    ...alDia.map(d => ({ id: d.id, tipo: "info" as const, titulo: `Deuda al día: ${d.acreedor}`, desc: d.fechaVence ? `Vence el ${formatFechaCorta(d.fechaVence)}` : "Sin fecha", monto: Number(d.monto)-Number(d.montoPagado) })),
+    ...alDia.map(d => ({ id: d.id, tipo: "info" as const, titulo: `Deuda al día: ${d.acreedor}`, desc: d.fechaVence ? `Vence el ${formatFechaCorta(d.fechaVence)}` : "Sin fecha", monto: Number(d.montoTotal ?? d.monto)-Number(d.montoPagado) })),
   ]
 
   const iconoTipo = { error: "🔴", warning: "🟠", info: "🔵" }

@@ -29,11 +29,15 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
 
   // Métricas
   const pendientes = deudasConEstado.filter(d => !d.pagada)
-  const deudaTotal = pendientes.reduce((a, d) => a + Number(d.monto) - Number(d.montoPagado), 0)
+  // El total real a cubrir es el que el usuario cargó desde su banco
+  // (montoTotal) si existe — un crédito con interés siempre debe más que
+  // el capital original prestado.
+  const saldoDe = (d: { monto: any; montoTotal?: any; montoPagado: any }) => Number(d.montoTotal ?? d.monto) - Number(d.montoPagado)
+  const deudaTotal = pendientes.reduce((a, d) => a + saldoDe(d), 0)
   const proximasVencer = pendientes.filter(d => d.estado === "Próxima a vencer")
-  const montoProximas = proximasVencer.reduce((a, d) => a + Number(d.monto) - Number(d.montoPagado), 0)
+  const montoProximas = proximasVencer.reduce((a, d) => a + saldoDe(d), 0)
   const vencidas = pendientes.filter(d => d.estado === "Vencida")
-  const montoVencidas = vencidas.reduce((a, d) => a + Number(d.monto) - Number(d.montoPagado), 0)
+  const montoVencidas = vencidas.reduce((a, d) => a + saldoDe(d), 0)
   const pagadoEsteMes = deudas
     .flatMap(d => d.pagos)
     .filter(p => new Date(p.fecha) >= inicioMes)
@@ -57,7 +61,7 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
   // Datos para gráfico
   const datosPorTipo = TIPOS_DEUDA.map(tipo => {
     const deudasTipo = pendientes.filter(d => d.tipo === tipo)
-    const monto = deudasTipo.reduce((a, d) => a + Number(d.monto) - Number(d.montoPagado), 0)
+    const monto = deudasTipo.reduce((a, d) => a + saldoDe(d), 0)
     return { tipo, monto, cantidad: deudasTipo.length }
   }).filter(d => d.monto > 0)
 
@@ -171,7 +175,7 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
               <div className="space-y-3">
                 {proximosPagos.map(d => {
                   const cfg = ESTADO_CONFIG[d.estado]
-                  const monto = d.valorCuota ? Number(d.valorCuota) : Number(d.monto) - Number(d.montoPagado)
+                  const monto = d.valorCuota ? Number(d.valorCuota) : saldoDe(d)
                   return (
                     <div key={d.id} className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-xl ${cfg.bg} border ${cfg.border} flex items-center justify-center text-xs font-bold ${cfg.color} flex-shrink-0`}>
