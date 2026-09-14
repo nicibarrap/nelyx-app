@@ -63,7 +63,10 @@ model Movimiento {
   productoId   String?
   producto     Producto?      @relation(fields: [productoId], references: [id], onDelete: SetNull)
   clienteId    String?
-  cliente      Cliente?       @relation(fields: [clienteId], references: [id])
+  // SetNull, no Cascade — si se elimina un cliente, sus ventas y
+  // movimientos pasados deben seguir existiendo en el historial (solo
+  // pierden la referencia al cliente, no se borran).
+  cliente      Cliente?       @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   proveedorId  String?
   proveedor    Proveedor?     @relation(fields: [proveedorId], references: [id])
   userId       String
@@ -280,8 +283,11 @@ model NotaProveedor {
 model CuentaPorCobrar {
   id             String       @id @default(cuid())
   numero         Int
-  clienteId      String
-  cliente        Cliente      @relation(fields: [clienteId], references: [id])
+  clienteId      String?
+  // SetNull, no Cascade — el historial de una cuenta por cobrar (ya
+  // pagada o no) es un registro financiero del negocio, debe sobrevivir
+  // aunque el cliente se elimine de la plataforma.
+  cliente        Cliente?     @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   movimientoId   String?
   montoOriginal  Decimal      @db.Decimal(12, 2)
   saldoPendiente Decimal      @db.Decimal(12, 2)

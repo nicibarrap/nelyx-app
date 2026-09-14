@@ -446,7 +446,7 @@ export function CuentasCobrarClient({ cuentasData, clientes, scoreClientes, metr
             <div className="flex gap-1 flex-wrap mb-3 overflow-x-auto">
               {TABS.map(t => (
                 <button key={t.key} onClick={() => setFiltro(t.key)}
-                  className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border whitespace-nowrap transition-all ${filtro === t.key ? "bg-sky-500/10 text-sky-400 border-sky-500/20" : "border-transparent text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
+                  className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border whitespace-nowrap transition-all outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${filtro === t.key ? "bg-sky-500/10 text-sky-400 border-sky-500/20" : "border-transparent text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
                   {t.label}
                 </button>
               ))}

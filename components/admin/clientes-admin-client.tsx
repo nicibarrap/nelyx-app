@@ -492,7 +492,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
           <div className="flex items-center gap-1 px-4 pt-3 overflow-x-auto">
             {TABS.map(t => (
               <button key={t.key} onClick={() => setFiltro(t.key)}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${filtro === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text4)] hover:text-[var(--c-text)]"}`}>
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${filtro === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text4)] hover:text-[var(--c-text)]"}`}>
                 {t.label}
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${filtro === t.key ? "bg-sky-500/20" : "bg-white/5"}`}>{t.count}</span>
               </button>

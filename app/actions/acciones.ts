@@ -970,8 +970,15 @@ export async function actualizarCliente(id: string, formData: FormData) {
 
 export async function eliminarCliente(id: string) {
   const session = await getSession()
+  // No se permite eliminar si tiene una cuenta por cobrar todavía
+  // pendiente — borrarlo ahí perdería de vista a quién cobrarle. Su
+  // historial de ventas y cuentas ya pagadas sí se preserva siempre
+  // (quedan sin cliente asociado, pero no se borran).
+  const pendiente = await db.cuentaPorCobrar.findFirst({ where: { clienteId: id, userId: session.user.id, estado: { not: "pagada" } } })
+  if (pendiente) throw new Error("Este cliente tiene una cuenta por cobrar pendiente — cóbrala o márcala como pagada antes de eliminarlo.")
   await db.cliente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/clientes")
+  revalidatePath("/dashboard/venta")
 }
 
 export async function toggleActivoCliente(id: string, activo: boolean) {

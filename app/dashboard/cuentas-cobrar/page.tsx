@@ -75,7 +75,11 @@ export default async function CuentasCobrarPage() {
 
     return {
       id: c.id, numero: c.numero,
-      cliente: { id: c.cliente.id, nombre: c.cliente.nombre, apellido: c.cliente.apellido, empresa: c.cliente.empresa, telefono: c.cliente.telefono, email: c.cliente.email },
+      // El cliente puede haber sido eliminado — el registro histórico de
+      // la cuenta por cobrar se conserva igual, solo se muestra genérico.
+      cliente: c.cliente
+        ? { id: c.cliente.id, nombre: c.cliente.nombre, apellido: c.cliente.apellido, empresa: c.cliente.empresa, telefono: c.cliente.telefono, email: c.cliente.email }
+        : { id: "", nombre: "Cliente eliminado", apellido: null, empresa: null, telefono: null, email: null },
       movimientoId: c.movimientoId,
       montoOriginal: Number(c.montoOriginal),
       saldoPendiente: Number(c.saldoPendiente),

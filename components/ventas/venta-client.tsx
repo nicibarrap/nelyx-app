@@ -1,9 +1,10 @@
 "use client"
 import { useState, useTransition, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { registrarVenta } from "@/app/actions/acciones"
+import { registrarVenta, eliminarCliente } from "@/app/actions/acciones"
 import { iniciarCobroMaquina, consultarCobroMaquina } from "@/app/actions/pagos-acciones"
 import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
@@ -57,6 +58,28 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
     clienteSearch.length === 0 || `${c.nombre} ${c.apellido ?? ""} ${c.telefono ?? ""} ${c.empresa ?? ""}`.toLowerCase().includes(clienteSearch.toLowerCase())
   )
   const clienteSeleccionado = clientes.find(c => c.id === clienteId) ?? null
+  const [confirmarEliminarCliente, setConfirmarEliminarCliente] = useState(false)
+  const [eliminandoCliente, setEliminandoCliente] = useState(false)
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
+
+  function handleEliminarCliente() {
+    if (!clienteSeleccionado) return
+    setEliminandoCliente(true)
+    startTransition(async () => {
+      try {
+        await eliminarCliente(clienteSeleccionado.id)
+        toast.success("Cliente eliminado — su historial de ventas se conserva")
+        setClienteId("")
+        setConfirmarEliminarCliente(false)
+        router.refresh()
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo eliminar")
+      } finally {
+        setEliminandoCliente(false)
+      }
+    })
+  }
 
   // Productos (carrito)
   const [items, setItems] = useState<ItemVenta[]>([])
@@ -591,7 +614,10 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
                 {clienteSeleccionado.telefono && <p className="text-[11px] text-[var(--c-text4)]">{clienteSeleccionado.telefono}</p>}
               </div>
             </div>
-            <button onClick={() => setClienteId("")} className="text-[var(--c-text4)] hover:text-red-400 text-sm px-2 flex-shrink-0">✕</button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={() => setConfirmarEliminarCliente(true)} title="Eliminar cliente permanentemente" className="text-[var(--c-text4)] hover:text-red-400 text-sm px-2">🗑️</button>
+              <button onClick={() => setClienteId("")} title="Quitar de esta venta (no lo elimina)" className="text-[var(--c-text4)] hover:text-red-400 text-sm px-2">✕</button>
+            </div>
           </div>
         ) : (
           <div className="relative">
@@ -741,6 +767,25 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             )}
           </div>
         </div>
+      )}
+
+      {confirmarEliminarCliente && clienteSeleccionado && montado && createPortal(
+        <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 max-w-sm w-full">
+            <p className="text-sm font-bold text-[var(--c-text)] mb-1">¿Eliminar a {clienteSeleccionado.nombre}?</p>
+            <p className="text-xs text-[var(--c-text3)] mb-4">Su historial de ventas y movimientos se conserva — solo se elimina la ficha del cliente. Si tiene una cuenta por cobrar pendiente, no se podrá eliminar hasta resolverla.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmarEliminarCliente(false)} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">
+                Cancelar
+              </button>
+              <button onClick={handleEliminarCliente} disabled={eliminandoCliente}
+                className="flex-1 h-10 bg-red-500 hover:bg-red-400 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all">
+                {eliminandoCliente ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

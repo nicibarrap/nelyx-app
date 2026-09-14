@@ -98,7 +98,7 @@ export async function GET(req: Request) {
   for (const cc of cuentas) {
     if (!cc.fechaVence) continue
     const diff = diasEntreChile(ahora, cc.fechaVence)
-    const nombreCliente = `${cc.cliente.nombre} ${cc.cliente.apellido ?? ""}`.trim()
+    const nombreCliente = cc.cliente ? `${cc.cliente.nombre} ${cc.cliente.apellido ?? ""}`.trim() : "Cliente eliminado"
     if (diff === 1) {
       if (await notificar({ userId: cc.userId, categoria: "cuentasCobrar", prioridad: "media", titulo: `Cobro a ${nombreCliente} vence mañana`, mensaje: `Saldo: ${Number(cc.saldoPendiente).toLocaleString("es-CL")}`, accionUrl: "/dashboard/cuentas-cobrar", claveUnica: `cxc:${cc.id}:mañana` })) enviadas++
     } else if (diff <= 0 && cc.estado === "vencida") {

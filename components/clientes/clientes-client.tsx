@@ -222,7 +222,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
         <div className="flex gap-1 mt-4">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${tab === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${tab === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
               {t.label}
             </button>
           ))}

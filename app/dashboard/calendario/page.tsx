@@ -63,7 +63,7 @@ export default async function CalendarioPage() {
     actividadReciente.push({ id: `act-pagodeuda-${p.id}`, icono: "✅", titulo: "Deuda pagada", detalle: p.deuda.acreedor, monto: -Number(p.monto), fecha: p.createdAt.toISOString() })
   }
   for (const p of pagosCuenta) {
-    const nombreCliente = `${p.cuenta.cliente.nombre} ${p.cuenta.cliente.apellido ?? ""}`.trim()
+    const nombreCliente = p.cuenta.cliente ? `${p.cuenta.cliente.nombre} ${p.cuenta.cliente.apellido ?? ""}`.trim() : "Cliente eliminado"
     actividadReciente.push({ id: `act-pagocuenta-${p.id}`, icono: "💰", titulo: "Cuenta por cobrar pagada", detalle: nombreCliente, monto: Number(p.monto), fecha: p.createdAt.toISOString() })
   }
   for (const g of generacionesRecientes) {
@@ -95,7 +95,7 @@ export default async function CalendarioPage() {
     })),
     cuentasPorCobrar: cuentasPorCobrar.map(cc => ({
       id: cc.id, numero: cc.numero,
-      clienteNombre: `${cc.cliente.nombre} ${cc.cliente.apellido ?? ""}`.trim(),
+      clienteNombre: cc.cliente ? `${cc.cliente.nombre} ${cc.cliente.apellido ?? ""}`.trim() : "Cliente eliminado",
       monto: Number(cc.montoOriginal), saldoPendiente: Number(cc.saldoPendiente),
       fechaVence: cc.fechaVence?.toISOString() ?? null, estado: cc.estado,
     })),

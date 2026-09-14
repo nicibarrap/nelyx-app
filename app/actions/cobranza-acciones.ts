@@ -32,6 +32,7 @@ export async function actualizarPlantillaCobranza(nivel: NivelCobranza, mensaje:
     create: { userId: session.user.id, nivel, mensaje },
   })
   revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/cuentas-cobrar")
 }
 
 export async function restaurarPlantillaCobranza(nivel: NivelCobranza) {
