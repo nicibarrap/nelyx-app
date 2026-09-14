@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearProveedor, actualizarProveedor, eliminarProveedor, toggleActivoProveedor, toggleFavoritoProveedor, crearNotaProveedor, eliminarNotaProveedor } from "@/app/actions/acciones"
@@ -264,6 +265,7 @@ interface Props {
 }
 
 export function ProveedoresClient({ proveedoresData, metricas }: Props) {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [filtro, setFiltro] = useState<"todos"|"activos"|"inactivos"|"favoritos">("todos")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -296,7 +298,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
     <div className="space-y-5 animate-fade-up">
       {(showForm || editando) && (
         <FormProveedor proveedor={editando} onClose={() => { setShowForm(false); setEditando(null) }}
-          onSuccess={() => { setShowForm(false); setEditando(null); window.location.reload() }} />
+          onSuccess={() => { setShowForm(false); setEditando(null); router.refresh() }} />
       )}
 
       {/* Header */}

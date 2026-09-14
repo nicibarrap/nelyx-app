@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearCliente, actualizarCliente, eliminarCliente, crearNotaCliente, eliminarNotaCliente, toggleActivoCliente } from "@/app/actions/acciones"
@@ -141,6 +142,8 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
   const [tab, setTab] = useState<"resumen"|"compras"|"notas"|"cuentas">("resumen")
   const [nota, setNota] = useState("")
   const [isPending, start] = useTransition()
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
   const cuentasPendientes = (cliente.cuentasPorCobrar ?? []).filter(cc => cc.estado !== "pagada")
   const [cuentaExpandidaId, setCuentaExpandidaId] = useState<string | null>(cuentasPendientes[0]?.id ?? null)
 
@@ -159,6 +162,21 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
         toast.success(cliente.activo ? "Cliente desactivado" : "Cliente reactivado")
         onClose()
       } catch { toast.error("Error") }
+    })
+  }
+
+  const [confirmarEliminar, setConfirmarEliminar] = useState(false)
+  function handleEliminar() {
+    start(async () => {
+      try {
+        await eliminarCliente(cliente.id)
+        toast.success("Cliente eliminado — su historial de ventas se conserva")
+        setConfirmarEliminar(false)
+        onClose()
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo eliminar")
+        setConfirmarEliminar(false)
+      }
     })
   }
 
@@ -199,6 +217,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
               {cliente.activo ? "⏸ Desactivar" : "▶ Reactivar"}
             </button>
             <button onClick={onEdit} className="text-xs px-3 py-1.5 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] rounded-xl hover:border-sky-500/30 hover:text-sky-400 transition-all">✏️ Editar</button>
+            <button onClick={() => setConfirmarEliminar(true)} className="text-xs px-3 py-1.5 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] rounded-xl hover:border-red-500/30 hover:text-red-400 transition-all">🗑️ Eliminar</button>
             <button onClick={onClose} className="text-[var(--c-text3)] w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-lg">×</button>
           </div>
         </div>
@@ -222,7 +241,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
         <div className="flex gap-1 mt-4">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all outline-none focus:outline-none ${tab === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all outline-none focus:outline-none border ${tab === t.key ? "bg-sky-500/10 text-sky-400 border-sky-500/20" : "border-transparent text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
               {t.label}
             </button>
           ))}
@@ -414,6 +433,25 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
           </div>
         )}
       </div>
+
+      {confirmarEliminar && montado && createPortal(
+        <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 max-w-sm w-full">
+            <p className="text-sm font-bold text-[var(--c-text)] mb-1">¿Eliminar a {cliente.nombre}?</p>
+            <p className="text-xs text-[var(--c-text3)] mb-4">Su historial de ventas y movimientos se conserva — solo se elimina la ficha del cliente. Si tiene una cuenta por cobrar pendiente, no se podrá eliminar hasta resolverla.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmarEliminar(false)} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">
+                Cancelar
+              </button>
+              <button onClick={handleEliminar} disabled={isPending}
+                className="flex-1 h-10 bg-red-500 hover:bg-red-400 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all">
+                {isPending ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -427,6 +465,7 @@ interface Props {
 }
 
 export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioEnvia, plantillas }: Props) {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [filtro, setFiltro] = useState<"todos"|"deuda"|"frecuentes"|"inactivos">("todos")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -467,7 +506,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
         <FormCliente
           cliente={editando}
           onClose={() => { setShowForm(false); setEditando(null) }}
-          onSuccess={() => { setShowForm(false); setEditando(null); window.location.reload() }}
+          onSuccess={() => { setShowForm(false); setEditando(null); router.refresh() }}
         />
       )}
 

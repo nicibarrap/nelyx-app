@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearEmpleado, actualizarEmpleado, toggleActivoEmpleado } from "@/app/actions/empleados-acciones"
@@ -100,6 +101,7 @@ function FormEmpleado({ empleado, onCerrar, onGuardado }: { empleado?: Empleado;
 }
 
 export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Empleado[] }) {
+  const router = useRouter()
   const [empleados, setEmpleados] = useState(empleadosIniciales)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando, setEditando] = useState<Empleado | null>(null)
@@ -107,7 +109,7 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
 
   function recargar() {
     setMostrarForm(false); setEditando(null)
-    window.location.reload()
+    router.refresh()
   }
 
   function handleToggle(emp: Empleado) {

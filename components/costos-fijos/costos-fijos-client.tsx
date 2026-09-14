@@ -1,6 +1,7 @@
 "use client"
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { crearCostoRecurrente, crearCostoUnico, actualizarEstadoCosto, eliminarCostoRecurrente, marcarCostoPagado, crearCategoriaPersonalizada } from "@/app/actions/acciones"
 import { formatCLP, formatFechaCorta } from "@/lib/utils"
@@ -333,6 +334,7 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
 }
 
 export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gastosVariables, excedenteOperativo, resultadoCobertura, mes, anio, conteoEstados, proximosCostos, costosUnicosEsteMes, dbCategorias = [] }: Props) {
+  const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [pagandoId, setPagandoId] = useState<string | null>(null)
   const [isPending, start] = useTransition()
@@ -463,7 +465,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
       {showForm && (
         <div className="bg-[var(--c-card)] border border-sky-500/20 rounded-2xl p-5 animate-fade-up">
           <h3 className="text-sm font-bold text-[var(--c-text)] mb-4">Nuevo costo fijo</h3>
-          <FormCosto onSuccess={() => { setShowForm(false); window.location.reload() }} dbCategorias={dbCategorias} />
+          <FormCosto onSuccess={() => { setShowForm(false); router.refresh() }} dbCategorias={dbCategorias} />
         </div>
       )}
 
@@ -556,7 +558,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
                       </div>
                     </div>
                     {pagandoId === c.id && (
-                      <FormMarcarPagado costo={c} onClose={() => setPagandoId(null)} onSuccess={() => { setPagandoId(null); window.location.reload() }} />
+                      <FormMarcarPagado costo={c} onClose={() => setPagandoId(null)} onSuccess={() => { setPagandoId(null); router.refresh() }} />
                     )}
                   </div>
                 </div>

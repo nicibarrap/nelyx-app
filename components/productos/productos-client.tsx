@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { crearProducto, actualizarProducto, crearCategoriaPersonalizada, toggleProducto, ajustarStock, eliminarProducto } from "@/app/actions/acciones"
@@ -691,6 +692,7 @@ function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDe
 }
 
 export function ProductosClient({ productosData, customCategorias = [], customUnidades = [] }: { productosData: Producto[]; customCategorias?: string[]; customUnidades?: string[] }) {
+  const router = useRouter()
   const [inventarioActivo, setInventarioActivo] = useState(() => {
     if (typeof window !== "undefined") return localStorage.getItem("nelyx_inventario") === "1"
     return false
@@ -741,8 +743,10 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
   }, [productos])
 
   function handleFormSuccess() {
-    // Reload data by refreshing - Next.js will revalidate
-    window.location.reload()
+    // router.refresh() revalida los datos del servidor sin destruir el
+    // DOM completo — a diferencia de window.location.reload(), nunca
+    // arriesga perder la clase de tema (claro/oscuro) ya aplicada.
+    router.refresh()
   }
 
   const FILTROS = [

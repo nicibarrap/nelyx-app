@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearCuentaPorCobrar, registrarPagoCuenta, eliminarCuentaPorCobrar, registrarVenta } from "@/app/actions/acciones"
@@ -372,6 +373,7 @@ function DetalleCuenta({ cuenta, score, onClose, onPago, nombreNegocio, usuarioE
 }
 
 export function CuentasCobrarClient({ cuentasData, clientes, scoreClientes, metricas, productos = [], nombreNegocio, usuarioEnvia, plantillas }: Props) {
+  const router = useRouter()
   const [filtro, setFiltro] = useState<"todas"|"pendientes"|"vencidas"|"porVencer"|"pagadas">("todas")
   const [search, setSearch] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -405,8 +407,8 @@ export function CuentasCobrarClient({ cuentasData, clientes, scoreClientes, metr
 
   return (
     <div className="space-y-5 animate-fade-up">
-      {showForm && <FormCuenta clientes={clientes} productos={productos} onClose={() => setShowForm(false)} onSuccess={() => { setShowForm(false); window.location.reload() }} />}
-      {showPago && selected && <FormPago cuenta={selected} onClose={() => setShowPago(false)} onSuccess={() => { setShowPago(false); window.location.reload() }} />}
+      {showForm && <FormCuenta clientes={clientes} productos={productos} onClose={() => setShowForm(false)} onSuccess={() => { setShowForm(false); router.refresh() }} />}
+      {showPago && selected && <FormPago cuenta={selected} onClose={() => setShowPago(false)} onSuccess={() => { setShowPago(false); router.refresh() }} />}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
