@@ -152,7 +152,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
             <button
               key={t.key}
               onClick={() => handleFiltro(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
+              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 outline-none focus:outline-none ${
                 filtroActual === t.key
                   ? "text-sky-400 border-b-2 border-sky-500 bg-sky-500/5"
                   : "text-[var(--c-text3)] hover:text-[var(--c-text2)]"

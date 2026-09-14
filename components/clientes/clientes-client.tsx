@@ -222,7 +222,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
         <div className="flex gap-1 mt-4">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${tab === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all outline-none focus:outline-none ${tab === t.key ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
               {t.label}
             </button>
           ))}
@@ -297,47 +297,59 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
                 </div>
               </div>
             )}
-            {/* Lista compras - crédito + contado */}
-            {(cliente.movimientos.filter(m => m.tipo === "VENTA").length + (cliente.cuentasPorCobrar?.length ?? 0)) === 0 ? (
-              <div className="text-center py-10">
-                <p className="text-3xl mb-2">🛒</p>
-                <p className="text-sm text-[var(--c-text3)]">Sin compras registradas</p>
-                <p className="text-xs text-[var(--c-text4)] mt-1">Las ventas asociadas a este cliente aparecerán aquí</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {(cliente.cuentasPorCobrar ?? []).map((cc) => (
-                  <div key={cc.id} className="flex items-center justify-between bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-4 py-3 hover:bg-[var(--c-hover)] transition-all">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sm flex-shrink-0">📋</div>
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--c-text)]">{cc.descripcion ?? `Venta #${cc.numero}`}</p>
-                        <p className="text-xs text-[var(--c-text3)]">{new Date(cc.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>
+            {/* Lista compras - crédito + contado, fusionadas y ordenadas
+                por fecha real — antes eran 2 bloques separados en
+                secuencia (todo el crédito primero, todo el contado
+                después), lo que rompía el orden cronológico real cuando
+                se mezclaban entre sí. */}
+            {(() => {
+              const comprasOrdenadas = [
+                ...(cliente.cuentasPorCobrar ?? []).map(cc => ({ tipo: "credito" as const, fecha: cc.fecha, data: cc })),
+                ...cliente.movimientos.filter(m => m.tipo === "VENTA").map((m, i) => ({ tipo: "contado" as const, fecha: m.fecha, data: { ...m, _key: i } })),
+              ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+
+              if (comprasOrdenadas.length === 0) return (
+                <div className="text-center py-10">
+                  <p className="text-3xl mb-2">🛒</p>
+                  <p className="text-sm text-[var(--c-text3)]">Sin compras registradas</p>
+                  <p className="text-xs text-[var(--c-text4)] mt-1">Las ventas asociadas a este cliente aparecerán aquí</p>
+                </div>
+              )
+
+              return (
+                <div className="space-y-2">
+                  {comprasOrdenadas.map((item, idx) => item.tipo === "credito" ? (
+                    <div key={`cc-${item.data.id}`} className="flex items-center justify-between bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-4 py-3 hover:bg-[var(--c-hover)] transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sm flex-shrink-0">📋</div>
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--c-text)]">{item.data.descripcion ?? `Venta #${item.data.numero}`}</p>
+                          <p className="text-xs text-[var(--c-text3)]">{new Date(item.data.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-sky-400">{formatCLP(item.data.monto)}</p>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${item.data.estado === "pagada" ? "bg-emerald-500/10 text-emerald-400" : item.data.estado === "vencida" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-[var(--c-warning)]"}`}>{item.data.estado === "pagada" ? "✓ Pagada" : item.data.estado === "vencida" ? "Vencida" : "Pendiente"}</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-sky-400">{formatCLP(cc.monto)}</p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${cc.estado === "pagada" ? "bg-emerald-500/10 text-emerald-400" : cc.estado === "vencida" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-[var(--c-warning)]"}`}>{cc.estado === "pagada" ? "✓ Pagada" : cc.estado === "vencida" ? "Vencida" : "Pendiente"}</span>
-                    </div>
-                  </div>
-                ))}
-                {cliente.movimientos.filter(m => m.tipo === "VENTA").map((m, i) => (
-                  <div key={i} className="flex items-center justify-between bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-4 py-3 hover:bg-[var(--c-hover)] transition-all">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-sm flex-shrink-0">💰</div>
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--c-text)]">{m.descripcion ?? "Venta"}</p>
-                        <p className="text-xs text-[var(--c-text3)]">{new Date(m.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>
+                  ) : (
+                    <div key={`mv-${idx}`} className="flex items-center justify-between bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-4 py-3 hover:bg-[var(--c-hover)] transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-sm flex-shrink-0">💰</div>
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--c-text)]">{item.data.descripcion ?? "Venta"}</p>
+                          <p className="text-xs text-[var(--c-text3)]">{new Date(item.data.fecha).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-emerald-400">+{formatCLP(item.data.monto)}</p>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold">✓ Pagada</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-emerald-400">+{formatCLP(m.monto)}</p>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold">✓ Pagada</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
