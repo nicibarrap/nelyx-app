@@ -89,12 +89,25 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
 
   // Texto compacto para que quepa DENTRO del recuadro sin desbordarse —
   // el monto exacto completo sigue disponible al pasar el mouse (title).
-  function formatoCompacto(valor: number) {
+  function formatoMillones(valor: number) {
+    return `$${(valor / 1_000_000).toFixed(valor % 1_000_000 === 0 ? 0 : 1)}M`
+  }
+  // Para celular: abreviado siempre ($134k) — poco espacio horizontal.
+  // Para PC/pantallas grandes: el monto completo ($134.320) — sí hay
+  // espacio, y es más preciso de un vistazo. Los millones se abrevian
+  // en cualquier pantalla, ya que un número completo ahí sería enorme.
+  function formatoCompactoMovil(valor: number) {
     if (valor <= 0) return ""
     if (modo === "cantidad") return String(valor)
-    if (valor >= 1_000_000) return `$${(valor / 1_000_000).toFixed(valor % 1_000_000 === 0 ? 0 : 1)}M`
+    if (valor >= 1_000_000) return formatoMillones(valor)
     if (valor >= 1_000) return `$${Math.round(valor / 1000)}k`
     return `$${valor}`
+  }
+  function formatoCompletoEscritorio(valor: number) {
+    if (valor <= 0) return ""
+    if (modo === "cantidad") return String(valor)
+    if (valor >= 1_000_000) return formatoMillones(valor)
+    return formatCLP(valor)
   }
 
   return (
@@ -132,7 +145,10 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
                   return (
                     <td key={i} className="rounded-lg h-10 text-center align-middle" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)}>
                       {valor > 0 && (
-                        <span className="text-[10px] font-semibold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">{formatoCompacto(valor)}</span>
+                        <span className="text-[10px] font-semibold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] whitespace-nowrap">
+                          <span className="sm:hidden">{formatoCompactoMovil(valor)}</span>
+                          <span className="hidden sm:inline">{formatoCompletoEscritorio(valor)}</span>
+                        </span>
                       )}
                     </td>
                   )
