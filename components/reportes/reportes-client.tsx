@@ -87,6 +87,16 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
     return modo === "monto" ? formatCLP(valor) : `${valor} venta${valor === 1 ? "" : "s"}`
   }
 
+  // Texto compacto para que quepa DENTRO del recuadro sin desbordarse —
+  // el monto exacto completo sigue disponible al pasar el mouse (title).
+  function formatoCompacto(valor: number) {
+    if (valor <= 0) return ""
+    if (modo === "cantidad") return String(valor)
+    if (valor >= 1_000_000) return `$${(valor / 1_000_000).toFixed(valor % 1_000_000 === 0 ? 0 : 1)}M`
+    if (valor >= 1_000) return `$${Math.round(valor / 1000)}k`
+    return `$${valor}`
+  }
+
   return (
     <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-5 print-section">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-0.5">
@@ -120,7 +130,11 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
                 {BLOQUES.map((b, i) => {
                   const valor = b.reduce((a, h) => a + heatmap[dia][h], 0)
                   return (
-                    <td key={i} className="rounded-lg h-9" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)} />
+                    <td key={i} className="rounded-lg h-10 text-center align-middle" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)}>
+                      {valor > 0 && (
+                        <span className="text-[10px] font-semibold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">{formatoCompacto(valor)}</span>
+                      )}
+                    </td>
                   )
                 })}
               </tr>
