@@ -1,4 +1,5 @@
 "use client"
+import { useState } from "react"
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { formatCLP } from "@/lib/utils"
 
@@ -9,7 +10,9 @@ type ReportData = {
   diagnostico: string[]
   oportunidades: string[]
   graficoAnual: PuntoAnual[]
-  heatmap: number[][] // [día 0-6][hora 0-23], día 0 = domingo
+  heatmapMonto: number[][] // [día 0-6][hora 0-23], día 0 = domingo — suma de $ vendidos
+  heatmapCantidad: number[][] // mismo formato — cantidad de ventas (no monto)
+  semanasDeDatos: number // para avisar cuando la muestra todavía es chica
   resumenEjecutivo: string
   negocio: string
 }
@@ -65,7 +68,9 @@ function TooltipAnual({ active, payload }: any) {
 
 const DIAS_CORTO = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"]
 
-function MapaCalor({ heatmap }: { heatmap: number[][] }) {
+function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapMonto: number[][]; heatmapCantidad: number[][]; semanasDeDatos: number }) {
+  const [modo, setModo] = useState<"monto" | "cantidad">("monto")
+  const heatmap = modo === "monto" ? heatmapMonto : heatmapCantidad
   const max = Math.max(1, ...heatmap.flat())
   // Agrupa en bloques de 3 horas para que la grilla sea legible en celular
   const BLOQUES = [[6,7,8],[9,10,11],[12,13,14],[15,16,17],[18,19,20],[21,22,23]]
@@ -77,10 +82,27 @@ function MapaCalor({ heatmap }: { heatmap: number[][] }) {
     return `rgba(56,189,248,${0.12 + intensidad * 0.75})`
   }
 
+  function formatoCelda(valor: number) {
+    if (valor <= 0) return undefined
+    return modo === "monto" ? formatCLP(valor) : `${valor} venta${valor === 1 ? "" : "s"}`
+  }
+
   return (
     <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-5 print-section">
-      <p className="text-sm font-semibold text-[var(--c-text)]">Cuándo vendes más</p>
-      <p className="text-[11px] text-[var(--c-text4)] mt-0.5 mb-4">Entre más intenso el color, más ventas en ese día y horario — de un vistazo, sin leer números.</p>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-0.5">
+        <p className="text-sm font-semibold text-[var(--c-text)]">Cuándo vendes más</p>
+        <div className="flex bg-[var(--c-card2)] border border-[var(--c-border)] rounded-lg p-0.5">
+          <button onClick={() => setModo("monto")} className={`text-[10px] px-2.5 py-1 rounded-md font-semibold transition-all ${modo === "monto" ? "bg-sky-500/15 text-sky-400" : "text-[var(--c-text3)]"}`}>Por monto</button>
+          <button onClick={() => setModo("cantidad")} className={`text-[10px] px-2.5 py-1 rounded-md font-semibold transition-all ${modo === "cantidad" ? "bg-sky-500/15 text-sky-400" : "text-[var(--c-text3)]"}`}>Por N° de ventas</button>
+        </div>
+      </div>
+      <p className="text-[11px] text-[var(--c-text4)] mt-1 mb-1">
+        {modo === "monto" ? "Entre más intenso el color, más dinero vendiste en ese día y horario." : "Entre más intenso el color, más clientes atendiste en ese día y horario — útil para decidir cuándo necesitas más gente en el mostrador."}
+      </p>
+      <p className="text-[10px] text-[var(--c-text4)]/80 mb-4">
+        {semanasDeDatos > 0 && semanasDeDatos < 8 && <span className="text-[var(--c-warning)]">⚠️ Basado en solo {semanasDeDatos} semana{semanasDeDatos === 1 ? "" : "s"} de datos — el patrón se vuelve más confiable con más historial. </span>}
+        La hora es cuando registraste la venta en Nelyx; si sueles anotar varias ventas juntas al final del día, el horario real puede variar.
+      </p>
       <div className="overflow-x-auto">
         <table className="w-full border-separate" style={{ borderSpacing: 3 }}>
           <thead>
@@ -98,7 +120,7 @@ function MapaCalor({ heatmap }: { heatmap: number[][] }) {
                 {BLOQUES.map((b, i) => {
                   const valor = b.reduce((a, h) => a + heatmap[dia][h], 0)
                   return (
-                    <td key={i} className="rounded-lg h-9" style={{ backgroundColor: colorCelda(valor) }} title={valor > 0 ? formatCLP(valor) : undefined} />
+                    <td key={i} className="rounded-lg h-9" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)} />
                   )
                 })}
               </tr>
@@ -167,7 +189,7 @@ export function ReportesClient({ data }: { data: ReportData }) {
       </div>
 
       {/* Mapa de calor semanal — reemplaza "Hábitos del negocio" con algo visual */}
-      <MapaCalor heatmap={data.heatmap} />
+      <MapaCalor heatmapMonto={data.heatmapMonto} heatmapCantidad={data.heatmapCantidad} semanasDeDatos={data.semanasDeDatos} />
     </div>
   )
 }

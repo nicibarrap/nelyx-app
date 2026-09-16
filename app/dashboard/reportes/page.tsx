@@ -41,7 +41,7 @@ export default async function ReportesPage() {
     }),
     db.movimiento.findMany({
       where: { userId, fecha: { gte: inicio12Meses, lt: finMes }, tipo: { in: ["VENTA", "GASTO", "COSTO_FIJO", "INGRESO_EXTRA", "RETIRO"] } },
-      select: { tipo: true, monto: true, fecha: true, clienteId: true, productoId: true },
+      select: { tipo: true, monto: true, fecha: true, createdAt: true, clienteId: true, productoId: true },
     }),
     db.deuda.findMany({ where: { userId, pagada: false } }),
     db.cuentaPorCobrar.findMany({
@@ -144,19 +144,30 @@ export default async function ReportesPage() {
     return totalVentas > 0 ? Math.round((suma / totalVentas) * 100) : 0
   })()
 
-  // ── Día/hora de mayor venta (diagnóstico) y mapa de calor semanal completo
-  // (día × hora), todo del mismo recorrido de datos, sin consulta nueva ──
+  // ── Día/hora de mayor venta (diagnóstico) y mapa de calor semanal —
+  // ahora sobre 12 meses de datos (mov12Meses), no solo el mes actual.
+  // Con un solo mes, cada día de la semana tenía apenas 4-5 muestras —
+  // suficiente para que una sola venta grande "inventara" un patrón falso.
+  // Con 12 meses, cada día de la semana acumula ~48-52 muestras reales.
+  const ventasParaPatron = mov12Meses.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
   const ventasPorDiaSemana: Record<number, number> = {}
-  const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
-  for (const m of ventasMes) {
+  const heatmapMonto: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  const heatmapCantidad: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  for (const m of ventasParaPatron) {
     const dow = new Date(m.fecha).getDay()
     ventasPorDiaSemana[dow] = (ventasPorDiaSemana[dow] ?? 0) + Number(m.monto)
     const hora = new Date(m.createdAt ?? m.fecha).getHours()
-    heatmap[dow][hora] += Number(m.monto)
+    heatmapMonto[dow][hora] += Number(m.monto)
+    heatmapCantidad[dow][hora] += 1
   }
   const diasOrdenados = Object.entries(ventasPorDiaSemana).sort((a, b) => b[1] - a[1])
   const mejorDia = diasOrdenados[0] ? DIAS_NOMBRE[Number(diasOrdenados[0][0])] : null
   const peorDia = diasOrdenados.length > 1 ? DIAS_NOMBRE[Number(diasOrdenados[diasOrdenados.length - 1][0])] : null
+  // Semanas reales de datos usadas — para avisar con transparencia cuando
+  // la muestra todavía es chica (negocio recién empezando en Nelyx).
+  const semanasDeDatos = ventasParaPatron.length > 0
+    ? Math.max(1, Math.round((finMes.getTime() - new Date(Math.min(...ventasParaPatron.map(m => new Date(m.fecha).getTime()))).getTime()) / (7 * 86400000)))
+    : 0
 
   // ── Método de pago (aproximado por cliente registrado) ──
   const ventasConCliente = ventasMes.filter(m => m.cliente)
@@ -261,7 +272,9 @@ export default async function ReportesPage() {
         diagnostico,
         oportunidades,
         graficoAnual,
-        heatmap,
+        heatmapMonto,
+        heatmapCantidad,
+        semanasDeDatos,
         resumenEjecutivo,
         negocio: session?.user?.negocio ?? session?.user?.name ?? "Tu negocio",
       }}
