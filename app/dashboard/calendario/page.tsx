@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { hoyEnChile } from "@/lib/timezone"
-import { obtenerProyectosTarea } from "@/app/actions/acciones"
+import { obtenerProyectosTarea, generarOcurrenciasPendientes } from "@/app/actions/acciones"
 import { CalendarioClient } from "@/components/calendario/calendario-client"
 
 export const metadata: Metadata = { title: "Calendario" }
@@ -15,6 +15,10 @@ export default async function CalendarioPage() {
   const anio = hoy.getFullYear()
   const inicioAnio = new Date(anio, 0, 1)
   const finAnio = new Date(anio + 1, 2, 1)
+
+  // Extiende el horizonte materializado de tareas recurrentes antes de leer
+  // eventosCalendario — mismo patrón perezoso que generarCostosDelMes.
+  await generarOcurrenciasPendientes(userId)
 
   const [
     costosFijos, deudas, cuentasPorCobrar, eventosCalendario, movimientos,
@@ -106,7 +110,7 @@ export default async function CalendarioPage() {
       id: e.id, titulo: e.titulo, descripcion: e.descripcion,
       fecha: e.fecha.toISOString(), tipo: e.tipo, estado: e.estado,
       prioridad: e.prioridad, horaLimite: (e as any).horaLimite ?? null,
-      proyectoId: (e as any).proyectoId ?? null,
+      proyectoId: (e as any).proyectoId ?? null, serieId: (e as any).serieId ?? null,
     })),
     proyectosTarea: proyectosTarea.map(p => ({ id: p.id, nombre: p.nombre, color: p.color })),
     actividadReciente,

@@ -2,7 +2,7 @@
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
 import { useState, useTransition, useMemo } from "react"
 import { toast } from "sonner"
-import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario } from "@/app/actions/acciones"
+import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario, moverEventoCalendario } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
 import { COLORES_PROYECTO } from "@/components/configuracion/proyectos-tarea-client"
 import Link from "next/link"
@@ -21,6 +21,15 @@ const TIPO_CONFIG: Record<string,{icon:string;bg:string;text:string;border:strin
   recordatorio:  {icon:"🔔",bg:"bg-amber-500/15", text:"text-amber-300",border:"border-amber-500/20", label:"Recordatorio",dot:"bg-amber-400"},
   evento:        {icon:"📅",bg:"bg-slate-500/15", text:"text-slate-300",border:"border-slate-500/20", label:"Evento",      dot:"bg-slate-400"},
 }
+
+const FRECUENCIA_OPTS: {value:string;label:string}[] = [
+  {value:"ninguna",  label:"Sin repetición"},
+  {value:"diaria",   label:"Todos los días"},
+  {value:"semanal",  label:"Semanal (elige días)"},
+  {value:"mensual",  label:"Mensual (mismo día)"},
+  {value:"lun_a_vie",label:"Lunes a Viernes"},
+]
+const DIAS_SEMANA_OPTS = [{v:0,l:"Lun"},{v:1,l:"Mar"},{v:2,l:"Mié"},{v:3,l:"Jue"},{v:4,l:"Vie"},{v:5,l:"Sáb"},{v:6,l:"Dom"}]
 
 const PRIORIDAD_CFG: Record<string,{label:string;cls:string}> = {
   baja:    {label:"Baja",   cls:"bg-slate-500/20 text-slate-300"},
@@ -41,6 +50,7 @@ type CalEvent = {
   monto?:number|null; estado?:string|null; hora?:string|null
   prioridad?:string|null; descripcion?:string|null; isManual?:boolean
   proyectoId?:string|null; proyectoColor?:string|null; proyectoNombre?:string|null
+  serieId?:string|null
 }
 type Filtro = "todas"|"costos"|"deudas"|"cobros"|"tareas"|"recordatorios"
 type Vista = "mes"|"semana"|"agenda"
@@ -50,7 +60,7 @@ type CalData = {
   costosFijos: {id:string;nombre:string;monto:number;categoria:string|null;fechaInicio:string;fechaTermino:string|null;generaciones:{id:string;mes:number;anio:number;pagado:boolean}[]}[]
   deudas: {id:string;acreedor:string;monto:number;valorCuota:number|null;fechaVence:string|null;fechaPrimerPago:string|null}[]
   cuentasPorCobrar: {id:string;numero:number;clienteNombre:string;monto:number;saldoPendiente:number;fechaVence:string|null;estado:string}[]
-  eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string;horaLimite:string|null;proyectoId:string|null}[]
+  eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string;horaLimite:string|null;proyectoId:string|null;serieId:string|null}[]
   proyectosTarea: {id:string;nombre:string;color:string}[]
   actividadReciente: {id:string;icono:string;titulo:string;detalle:string;monto:number|null;fecha:string}[]
 }
@@ -112,7 +122,7 @@ function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
     const ref=new Date(e.fecha)
     if(ref.getUTCFullYear()!==anio||ref.getUTCMonth()+1!==mes)continue
     const proyecto=e.proyectoId?data.proyectosTarea.find(p=>p.id===e.proyectoId):null
-    evs.push({id:e.id,titulo:e.titulo,tipo:e.tipo,fecha:isoToKey(e.fecha),estado:e.estado,hora:e.horaLimite,prioridad:e.prioridad,descripcion:e.descripcion,isManual:true,proyectoId:e.proyectoId,proyectoColor:proyecto?.color??null,proyectoNombre:proyecto?.nombre??null})
+    evs.push({id:e.id,titulo:e.titulo,tipo:e.tipo,fecha:isoToKey(e.fecha),estado:e.estado,hora:e.horaLimite,prioridad:e.prioridad,descripcion:e.descripcion,isManual:true,proyectoId:e.proyectoId,proyectoColor:proyecto?.color??null,proyectoNombre:proyecto?.nombre??null,serieId:e.serieId})
   }
   return evs
 }
@@ -137,11 +147,13 @@ function mondayOf(key:string){return addDias(key,-getDOW(key))}
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
 
-function EventPill({ev}:{ev:CalEvent}){
+function EventPill({ev,onDragStart}:{ev:CalEvent;onDragStart?:(e:React.DragEvent,ev:CalEvent)=>void}){
   const completada = ev.tipo==="tarea" && ev.estado==="completada"
+  const arrastrable = !!onDragStart && (ev.tipo==="tarea"||ev.tipo==="recordatorio")
   if(completada){
     return(
-      <div className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate bg-slate-500/10 text-slate-500 border border-slate-500/10 opacity-50 transition-all duration-300">
+      <div draggable={arrastrable} onDragStart={arrastrable?e=>onDragStart!(e,ev):undefined}
+        className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate bg-slate-500/10 text-slate-500 border border-slate-500/10 opacity-50 transition-all duration-300 ${arrastrable?"cursor-grab active:cursor-grabbing":""}`}>
         <span className="flex-shrink-0 text-[9px]">✓</span>
         <span className="truncate min-w-0 line-through">{ev.titulo}</span>
       </div>
@@ -150,9 +162,11 @@ function EventPill({ev}:{ev:CalEvent}){
   const cfg=TIPO_CONFIG[ev.tipo]??TIPO_CONFIG.evento
   const hexProyecto=ev.proyectoColor?COLORES_PROYECTO[ev.proyectoColor]:null
   return(
-    <div className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 ${hexProyecto?"":cfg.bg} ${hexProyecto?"":cfg.text} border ${hexProyecto?"":cfg.border}`}
+    <div draggable={arrastrable} onDragStart={arrastrable?e=>onDragStart!(e,ev):undefined}
+      className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 ${hexProyecto?"":cfg.bg} ${hexProyecto?"":cfg.text} border ${hexProyecto?"":cfg.border} ${arrastrable?"cursor-grab active:cursor-grabbing":""}`}
       style={hexProyecto?{backgroundColor:`${hexProyecto}26`,color:hexProyecto,borderColor:`${hexProyecto}40`}:undefined}>
       <span className="flex-shrink-0 text-[9px]">{hexProyecto?"●":cfg.icon}</span>
+      {ev.serieId&&<span className="flex-shrink-0 text-[8px] opacity-70" title="Tarea recurrente">🔁</span>}
       <span className="truncate min-w-0">{ev.titulo}</span>
       {ev.monto!=null&&ev.monto>0&&<span className="flex-shrink-0 font-bold ml-auto">{formatCLP(ev.monto)}</span>}
     </div>
@@ -174,10 +188,19 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
   const[tipo,setTipo]=useState(editingEv?.tipo??"tarea")
   const[prioridad,setPrioridad]=useState(editingEv?.prioridad??"media")
   const[proyectoId,setProyectoId]=useState(editingEv?.proyectoId??"")
+  const[frecuencia,setFrecuencia]=useState("ninguna")
+  const[diasSemana,setDiasSemana]=useState<number[]>([])
+  const[fechaFinSerie,setFechaFinSerie]=useState("")
   const isEdit=!!editingEv?.isManual
+  const eraRecurrente=!!editingEv?.serieId
+
+  function toggleDia(v:number){
+    setDiasSemana(prev=>prev.includes(v)?prev.filter(d=>d!==v):[...prev,v].sort())
+  }
 
   function handleSubmit(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault()
+    if(!isEdit&&frecuencia==="semanal"&&diasSemana.length===0){toast.error("Elige al menos un día de la semana");return}
     start(async()=>{
       try{
         const fd=new FormData()
@@ -187,7 +210,12 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         fd.set("estado",editingEv?.estado??"pendiente");fd.set("prioridad",prioridad)
         fd.set("proyectoId",proyectoId)
         if(isEdit&&editingEv?.id){await actualizarEventoCalendario(editingEv.id,fd);toast.success("✅ Evento actualizado")}
-        else{await crearEventoCalendario(fd);toast.success("✅ Evento creado")}
+        else{
+          fd.set("frecuencia",frecuencia)
+          diasSemana.forEach(d=>fd.append("diasSemana",String(d)))
+          if(fechaFinSerie)fd.set("fechaFinSerie",fechaFinSerie)
+          await crearEventoCalendario(fd);toast.success(frecuencia==="ninguna"?"✅ Evento creado":"✅ Tarea recurrente creada")
+        }
         onClose()
       }catch(err:any){toast.error(err?.message??"Error")}
     })
@@ -200,10 +228,13 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
   return(
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
-        <p className="text-sm font-bold text-[var(--c-text)]">{isEdit?"Editar evento":"+ Nuevo evento"}</p>
+        <p className="text-sm font-bold text-[var(--c-text)]">{isEdit?"Editar evento":"+ Nueva tarea"}</p>
         <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-xs text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
       </div>
       <div className="flex-1 px-5 py-4 space-y-3 overflow-y-auto">
+        {eraRecurrente&&(
+          <p className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Guardar cambios solo actualizará esta ocurrencia — las demás no se ven afectadas.</p>
+        )}
         <div>
           <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Tipo</label>
           <select value={tipo} onChange={e=>setTipo(e.target.value)} className={sel2}>
@@ -254,6 +285,34 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         </div>
         {proyectos.length===0&&(
           <p className="text-[10px] text-[var(--c-text4)]">Crea categorías desde Configuración → Tareas para organizar tus tareas por proyecto.</p>
+        )}
+        {/* La repetición solo se define al crear — editar una ocurrencia ya
+            existente la desengancha de su serie (ver nota arriba). */}
+        {!isEdit&&tipo==="tarea"&&(
+          <div className="space-y-2 pt-1 border-t border-[var(--c-border2)]">
+            <div>
+              <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">🔁 Repetición</label>
+              <select value={frecuencia} onChange={e=>setFrecuencia(e.target.value)} className={sel2}>
+                {FRECUENCIA_OPTS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            {frecuencia==="semanal"&&(
+              <div className="flex flex-wrap gap-1.5">
+                {DIAS_SEMANA_OPTS.map(d=>(
+                  <button key={d.v} type="button" onClick={()=>toggleDia(d.v)}
+                    className={`h-7 px-2.5 rounded-lg text-[11px] font-semibold border transition-all ${diasSemana.includes(d.v)?"bg-sky-500 border-sky-500 text-white":"border-[var(--c-border)] text-[var(--c-text3)] hover:bg-[var(--c-hover)]"}`}>
+                    {d.l}
+                  </button>
+                ))}
+              </div>
+            )}
+            {frecuencia!=="ninguna"&&(
+              <div>
+                <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Repetir hasta (opcional)</label>
+                <input type="date" value={fechaFinSerie} onChange={e=>setFechaFinSerie(e.target.value)} min={fecha} className={inp2}/>
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="px-5 py-4 border-t border-[var(--c-border)] flex gap-2">
@@ -366,6 +425,24 @@ export function CalendarioClient({data}:{data:CalData}){
     start(async()=>{try{await actualizarEstadoEventoCalendario(id,nuevoEstado)}catch{toast.error("Error")}})
   }
 
+  // Drag & drop: mover una tarea/recordatorio de un día a otro, reutilizando
+  // moverEventoCalendario. Costos fijos, deudas y CxC no se arrastran — su
+  // fecha se deriva de otros módulos, no tiene sentido moverla acá.
+  function handleDragStartEvento(e:React.DragEvent,ev:CalEvent){
+    e.dataTransfer.setData("text/plain",JSON.stringify({id:ev.id,origen:ev.fecha}))
+    e.dataTransfer.effectAllowed="move"
+  }
+  function handleDropEnDia(destKey:string,e:React.DragEvent){
+    e.preventDefault()
+    const raw=e.dataTransfer.getData("text/plain")
+    if(!raw)return
+    try{
+      const{id,origen}=JSON.parse(raw) as{id:string;origen:string}
+      if(!id||origen===destKey)return
+      start(async()=>{try{await moverEventoCalendario(id,destKey);toast.success("Tarea movida")}catch{toast.error("No se pudo mover")}})
+    }catch{}
+  }
+
   const diffColor=(diff:number)=>diff<0?"text-red-400":diff===0?"text-[var(--c-warning)]":diff<=2?"text-[var(--c-warning)]":"text-[var(--c-text3)]"
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
   const mesLabel=`${MESES[viewMes-1]} ${viewAnio}`
@@ -424,7 +501,7 @@ export function CalendarioClient({data}:{data:CalData}){
       </div>
 
       {/* Main: calendar + panel */}
-      <div className={`grid gap-4 ${isPanelOpen||isFormOpen?"lg:grid-cols-[1fr_320px]":"grid-cols-1"}`}>
+      <div className={`grid gap-4 ${isPanelOpen?"lg:grid-cols-[1fr_320px]":"grid-cols-1"}`}>
 
         {/* Calendar */}
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
@@ -444,16 +521,21 @@ export function CalendarioClient({data}:{data:CalData}){
                   const cellEvs=byDay[cell.key]??[]
                   return(
                     <div key={idx} onClick={()=>{setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
-                      className={`relative min-h-[80px] sm:min-h-[100px] p-1 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
+                      onDragOver={e=>e.preventDefault()} onDrop={e=>handleDropEnDia(cell.key,e)}
+                      className={`group relative min-h-[80px] sm:min-h-[100px] p-1 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
                         ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""}`}>
-                      <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold mb-1
-                        ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
-                        {cell.day}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold
+                          ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
+                          {cell.day}
+                        </div>
+                        <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(true);setEditingEv(null)}}
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                          title="Agregar tarea">+</button>
                       </div>
-                      {isHoy&&<span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse-soft"/>}
                       {/* Desktop: event pills */}
                       <div className="hidden sm:flex flex-col gap-0.5">
-                        {cellEvs.slice(0,3).map(ev=><EventPill key={ev.id} ev={ev}/>)}
+                        {cellEvs.slice(0,3).map(ev=><EventPill key={ev.id} ev={ev} onDragStart={handleDragStartEvento}/>)}
                         {cellEvs.length>3&&(
                           <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
                             className="text-[9px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
@@ -492,15 +574,21 @@ export function CalendarioClient({data}:{data:CalData}){
                 const[y,m,d]=key.split("-").map(Number)
                 return(
                   <div key={key} onClick={()=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
-                    className={`relative min-h-[280px] p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)]
+                    onDragOver={e=>e.preventDefault()} onDrop={e=>handleDropEnDia(key,e)}
+                    className={`group relative min-h-[280px] p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)]
                       ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""}`}>
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(key)]}</span>
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
-                        ${isHoy?"bg-sky-500 text-white":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>{d}</div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(key)]}</span>
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+                          ${isHoy?"bg-sky-500 text-white":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>{d}</div>
+                      </div>
+                      <button onClick={e=>{e.stopPropagation();setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
+                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                        title="Agregar tarea">+</button>
                     </div>
                     <div className="flex flex-col gap-0.5">
-                      {dayE.map(ev=><EventPill key={ev.id} ev={ev}/>)}
+                      {dayE.map(ev=><EventPill key={ev.id} ev={ev} onDragStart={handleDragStartEvento}/>)}
                     </div>
                   </div>
                 )
@@ -650,9 +738,14 @@ export function CalendarioClient({data}:{data:CalData}){
           </div>
         )}
 
-        {/* Form panel */}
-        {isFormOpen&&(
-          <div className="bg-[var(--c-card)] border border-sky-500/20 rounded-2xl overflow-hidden flex flex-col min-h-[400px] animate-scale-in">
+      </div>
+
+      {/* Modal de tarea/evento */}
+      {isFormOpen&&(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={()=>{setShowForm(false);setEditingEv(null)}}>
+          <div onClick={e=>e.stopPropagation()}
+            className="w-full max-w-md max-h-[85vh] bg-[var(--c-card)] border border-sky-500/20 rounded-2xl overflow-hidden flex flex-col animate-scale-in">
             <FormEvento
               defaultDate={selectedDay??localToday()}
               editingEv={editingEv}
@@ -660,8 +753,8 @@ export function CalendarioClient({data}:{data:CalData}){
               onClose={()=>{setShowForm(false);setEditingEv(null)}}
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tareas pendientes + Actividad reciente */}
       <div className="grid md:grid-cols-2 gap-4">

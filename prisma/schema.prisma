@@ -42,6 +42,7 @@ model User {
   cuentasPorCobrar      CuentaPorCobrar[]
   eventosCalendario     EventoCalendario[]
   proyectosTareas       ProyectoTarea[]
+  seriesRecurrentes     SerieRecurrente[]
   suscripcionNelyx      SuscripcionNelyx?
   pushSubscriptions     PushSubscription[]
   notificaciones        Notificacion[]
@@ -330,13 +331,16 @@ model EventoCalendario {
   prioridad   String         @default("media")
   horaLimite  String?
   proyectoId  String?
-  proyecto    ProyectoTarea? @relation(fields: [proyectoId], references: [id], onDelete: SetNull)
+  proyecto    ProyectoTarea?   @relation(fields: [proyectoId], references: [id], onDelete: SetNull)
+  serieId     String?
+  serie       SerieRecurrente? @relation(fields: [serieId], references: [id], onDelete: SetNull)
   userId      String
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   @@index([userId, fecha])
   @@index([proyectoId])
+  @@index([serieId])
 }
 
 // Categorías/proyectos para organizar tareas del Calendario (estilo Asana):
@@ -352,6 +356,23 @@ model ProyectoTarea {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   @@unique([nombre, userId])
+  @@index([userId])
+}
+
+// Regla de repetición de una tarea (estilo Asana). Las ocurrencias se
+// materializan como filas EventoCalendario reales (serieId apunta acá) para
+// que completar/editar/arrastrar una sola ocurrencia no afecte a las demás.
+// Un job perezoso (ver generarOcurrenciasPendientes) va extendiendo el
+// horizonte materializado cada vez que el dueño abre el Calendario.
+model SerieRecurrente {
+  id          String             @id @default(cuid())
+  frecuencia  String             // diaria | semanal | mensual | lun_a_vie
+  diasSemana  Int[]              @default([]) // solo para "semanal": 0=lun..6=dom
+  fechaFin    DateTime?          // null = indefinida
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventos     EventoCalendario[]
+  createdAt   DateTime           @default(now())
   @@index([userId])
 }
 

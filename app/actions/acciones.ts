@@ -1228,6 +1228,9 @@ export async function crearEventoCalendario(formData: FormData) {
   const estado = (formData.get("estado") as string) || "pendiente"
   const horaLimite = (formData.get("horaLimite") as string | null) || null
   const proyectoId = (formData.get("proyectoId") as string | null)?.trim() || null
+  const frecuencia = (formData.get("frecuencia") as string | null) || "ninguna"
+  const diasSemana = formData.getAll("diasSemana").map(v => Number(v)).filter(n => Number.isInteger(n) && n >= 0 && n <= 6)
+  const fechaFinSerie = (formData.get("fechaFinSerie") as string | null)?.trim() || null
 
   if (!titulo || !fecha) throw new Error("Título y fecha son requeridos")
 
@@ -1238,9 +1241,29 @@ export async function crearEventoCalendario(formData: FormData) {
     ? await db.proyectoTarea.findFirst({ where: { id: proyectoId, userId: session.user.id }, select: { id: true } })
     : null
 
-  await db.eventoCalendario.create({
-    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, color: "azul", userId: session.user.id, proyectoId: proyectoValido?.id ?? null }
-  })
+  const dataBase = { titulo, descripcion, tipo, prioridad, estado, horaLimite, color: "azul", userId: session.user.id, proyectoId: proyectoValido?.id ?? null }
+
+  if (frecuencia === "ninguna") {
+    await db.eventoCalendario.create({ data: { ...dataBase, fecha: new Date(fecha) } })
+  } else {
+    // Repetición estilo Asana: se materializan filas reales (no una regla
+    // virtual) para que completar/editar/arrastrar una sola ocurrencia no
+    // afecte a las demás. El horizonte se extiende solo en generarOcurrenciasPendientes.
+    const fechaAncla = new Date(fecha)
+    const serie = await db.serieRecurrente.create({
+      data: { frecuencia, diasSemana, fechaFin: fechaFinSerie ? new Date(fechaFinSerie) : null, userId: session.user.id }
+    })
+    const hastaHorizonte = new Date(fechaAncla)
+    hastaHorizonte.setUTCMonth(hastaHorizonte.getUTCMonth() + HORIZONTE_SERIE_MESES)
+    let ocurrencias = calcularOcurrencias(serie, fechaAncla, fechaAncla, hastaHorizonte, TOPE_OCURRENCIAS_POR_TANDA)
+    // Si la fecha elegida no calza con la regla (ej. eligió un martes para
+    // "lunes a viernes" recién en la primera ocurrencia real), igual se crea
+    // esa primera para no perder el evento que el usuario pidió explícitamente.
+    if (ocurrencias.length === 0 || ocurrencias[0].getTime() !== fechaAncla.getTime()) ocurrencias = [fechaAncla, ...ocurrencias]
+    await db.eventoCalendario.createMany({
+      data: ocurrencias.map(f => ({ ...dataBase, fecha: f, serieId: serie.id }))
+    })
+  }
   revalidatePath("/dashboard/calendario")
   revalidatePath("/dashboard/alertas")
 }
@@ -1262,14 +1285,99 @@ export async function actualizarEventoCalendario(id: string, formData: FormData)
     ? await db.proyectoTarea.findFirst({ where: { id: proyectoId, userId: session.user.id }, select: { id: true } })
     : null
 
+  // Editar una ocurrencia de una serie recurrente solo cambia esa fila: se
+  // "desengancha" de la serie (serieId: null) para no ser pisada si luego se
+  // regenera el horizonte, ni arrastrar consigo al resto de las ocurrencias.
   await db.eventoCalendario.updateMany({
     where: { id, userId: session.user.id },
-    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, proyectoId: proyectoValido?.id ?? null }
+    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, proyectoId: proyectoValido?.id ?? null, serieId: null }
   })
   // La fecha/hora cambió: se cancelan los recordatorios ya generados, el cron los reprograma con la nueva fecha
   await cancelarNotificacionesPorPrefijo(`evt:${id}:`)
   await cancelarNotificacionesPorPrefijo(`tarea:${id}:`)
   revalidatePath("/dashboard/calendario")
+}
+
+// Mueve una sola ocurrencia a otro día (drag & drop en el Calendario). Igual
+// que editar el evento, se desengancha de su serie recurrente si tenía una.
+export async function moverEventoCalendario(id: string, nuevaFecha: string) {
+  const session = await getSession()
+  if (!nuevaFecha) throw new Error("Fecha inválida")
+  await db.eventoCalendario.updateMany({
+    where: { id, userId: session.user.id },
+    data: { fecha: new Date(nuevaFecha), serieId: null }
+  })
+  await cancelarNotificacionesPorPrefijo(`evt:${id}:`)
+  await cancelarNotificacionesPorPrefijo(`tarea:${id}:`)
+  revalidatePath("/dashboard/calendario")
+}
+
+// ─── SERIES RECURRENTES (repetición de tareas, estilo Asana) ─────────────────
+// Se materializan filas EventoCalendario reales en vez de calcular las
+// ocurrencias al vuelo (a diferencia de CostoFijoRecurrente), porque cada
+// ocurrencia necesita estado y fecha independientes para completar/editar/
+// arrastrar solo esa una sin afectar al resto de la serie.
+
+const HORIZONTE_SERIE_MESES = 3
+const TOPE_OCURRENCIAS_POR_TANDA = 120
+const COLCHON_DIAS_MINIMO = 42 // 6 semanas — bajo eso, se extiende el horizonte
+
+function diaSemanaLunes0(d: Date) { return (d.getUTCDay() + 6) % 7 }
+
+function coincideFrecuencia(serie: { frecuencia: string; diasSemana: number[] }, fechaAncla: Date, fecha: Date): boolean {
+  if (serie.frecuencia === "diaria") return true
+  if (serie.frecuencia === "lun_a_vie") return diaSemanaLunes0(fecha) <= 4
+  if (serie.frecuencia === "semanal") return serie.diasSemana.includes(diaSemanaLunes0(fecha))
+  if (serie.frecuencia === "mensual") {
+    const ultimoDiaMes = new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, 0)).getUTCDate()
+    return fecha.getUTCDate() === Math.min(fechaAncla.getUTCDate(), ultimoDiaMes)
+  }
+  return false
+}
+
+function calcularOcurrencias(serie: { frecuencia: string; diasSemana: number[]; fechaFin: Date | null }, fechaAncla: Date, desde: Date, hasta: Date, tope: number): Date[] {
+  const fechas: Date[] = []
+  const limite = serie.fechaFin && serie.fechaFin < hasta ? serie.fechaFin : hasta
+  const cursor = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth(), desde.getUTCDate()))
+  const fin = new Date(Date.UTC(limite.getUTCFullYear(), limite.getUTCMonth(), limite.getUTCDate()))
+  while (cursor <= fin && fechas.length < tope) {
+    if (coincideFrecuencia(serie, fechaAncla, cursor)) fechas.push(new Date(cursor))
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return fechas
+}
+
+// Se llama al entrar a /dashboard/calendario (mismo patrón perezoso que
+// generarCostosDelMes): si el horizonte materializado de alguna serie del
+// usuario quedó corto, genera el siguiente tramo de ocurrencias.
+export async function generarOcurrenciasPendientes(userId: string) {
+  const hoy = new Date()
+  const colchon = new Date(hoy)
+  colchon.setUTCDate(colchon.getUTCDate() + COLCHON_DIAS_MINIMO)
+
+  const series = await db.serieRecurrente.findMany({
+    where: { userId, OR: [{ fechaFin: null }, { fechaFin: { gte: hoy } }] },
+    include: { eventos: { orderBy: { fecha: "desc" }, take: 1, select: { fecha: true, titulo: true, descripcion: true, tipo: true, prioridad: true, horaLimite: true, proyectoId: true } } },
+  })
+
+  for (const serie of series) {
+    const ultima = serie.eventos[0]
+    if (!ultima || ultima.fecha >= colchon) continue
+
+    const desde = new Date(ultima.fecha); desde.setUTCDate(desde.getUTCDate() + 1)
+    const hasta = new Date(hoy); hasta.setUTCMonth(hasta.getUTCMonth() + HORIZONTE_SERIE_MESES)
+    if (desde > hasta) continue
+    const ocurrencias = calcularOcurrencias(serie, ultima.fecha, desde, hasta, TOPE_OCURRENCIAS_POR_TANDA)
+    if (ocurrencias.length === 0) continue
+
+    await db.eventoCalendario.createMany({
+      data: ocurrencias.map(f => ({
+        titulo: ultima.titulo, descripcion: ultima.descripcion, tipo: ultima.tipo,
+        prioridad: ultima.prioridad, horaLimite: ultima.horaLimite, proyectoId: ultima.proyectoId,
+        estado: "pendiente", color: "azul", fecha: f, serieId: serie.id, userId,
+      })),
+    })
+  }
 }
 
 // ─── PROYECTOS DE TAREAS (categorías del Calendario) ──────────────────────────
