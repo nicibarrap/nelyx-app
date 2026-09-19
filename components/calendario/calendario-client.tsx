@@ -1,6 +1,6 @@
 "use client"
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useRef } from "react"
 import { toast } from "sonner"
 import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario, moverEventoCalendario } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
@@ -147,27 +147,45 @@ function mondayOf(key:string){return addDias(key,-getDOW(key))}
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
 
-function EventPill({ev,onDragStart}:{ev:CalEvent;onDragStart?:(e:React.DragEvent,ev:CalEvent)=>void}){
-  const completada = ev.tipo==="tarea" && ev.estado==="completada"
-  const arrastrable = !!onDragStart && (ev.tipo==="tarea"||ev.tipo==="recordatorio")
-  if(completada){
-    return(
-      <div draggable={arrastrable} onDragStart={arrastrable?e=>onDragStart!(e,ev):undefined}
-        className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate bg-slate-500/10 text-slate-500 border border-slate-500/10 opacity-50 transition-all duration-300 ${arrastrable?"cursor-grab active:cursor-grabbing":""}`}>
-        <span className="flex-shrink-0 text-[9px]">✓</span>
-        <span className="truncate min-w-0 line-through">{ev.titulo}</span>
-      </div>
-    )
-  }
+type DragHandlers = {
+  onDown:(e:React.PointerEvent<HTMLDivElement>,ev:CalEvent)=>void
+  onMove:(e:React.PointerEvent<HTMLDivElement>)=>void
+  onUp:(e:React.PointerEvent<HTMLDivElement>)=>void
+}
+
+function EventPill({ev,onToggle,drag}:{ev:CalEvent;onToggle?:(id:string,estado:string)=>void;drag?:DragHandlers}){
+  const toggleable = !!onToggle && (ev.tipo==="tarea"||ev.tipo==="recordatorio")
+  const completada = toggleable && ev.estado==="completada"
+  const arrastrable = !!drag && (ev.tipo==="tarea"||ev.tipo==="recordatorio")
   const cfg=TIPO_CONFIG[ev.tipo]??TIPO_CONFIG.evento
   const hexProyecto=ev.proyectoColor?COLORES_PROYECTO[ev.proyectoColor]:null
+
+  const pillStyle:React.CSSProperties={}
+  if(arrastrable)pillStyle.touchAction="none"
+  if(!completada&&hexProyecto){pillStyle.backgroundColor=`${hexProyecto}26`;pillStyle.color=hexProyecto;pillStyle.borderColor=`${hexProyecto}40`}
+
+  const baseClasses=completada
+    ?"bg-slate-500/10 text-slate-500 border-slate-500/10 opacity-60"
+    :hexProyecto?"":`${cfg.bg} ${cfg.text} ${cfg.border}`
+
   return(
-    <div draggable={arrastrable} onDragStart={arrastrable?e=>onDragStart!(e,ev):undefined}
-      className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 ${hexProyecto?"":cfg.bg} ${hexProyecto?"":cfg.text} border ${hexProyecto?"":cfg.border} ${arrastrable?"cursor-grab active:cursor-grabbing":""}`}
-      style={hexProyecto?{backgroundColor:`${hexProyecto}26`,color:hexProyecto,borderColor:`${hexProyecto}40`}:undefined}>
+    <div
+      onPointerDown={arrastrable?e=>drag!.onDown(e,ev):undefined}
+      onPointerMove={arrastrable?drag!.onMove:undefined}
+      onPointerUp={arrastrable?drag!.onUp:undefined}
+      onPointerCancel={arrastrable?drag!.onUp:undefined}
+      style={pillStyle}
+      className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 border ${baseClasses} ${arrastrable?"cursor-grab active:cursor-grabbing select-none":""}`}>
+      {toggleable&&(
+        <button type="button" onPointerDown={e=>e.stopPropagation()}
+          onClick={e=>{e.stopPropagation();onToggle!(ev.id,ev.estado??"")}}
+          className={`flex-shrink-0 w-3 h-3 rounded-full border flex items-center justify-center transition-all ${completada?"bg-emerald-500 border-emerald-500":"border-current opacity-70 hover:opacity-100"}`}>
+          {completada&&<span className="text-white text-[7px] leading-none">✓</span>}
+        </button>
+      )}
       <span className="flex-shrink-0 text-[9px]">{hexProyecto?"●":cfg.icon}</span>
       {ev.serieId&&<span className="flex-shrink-0 text-[8px] opacity-70" title="Tarea recurrente">🔁</span>}
-      <span className="truncate min-w-0">{ev.titulo}</span>
+      <span className={`truncate min-w-0 ${completada?"line-through":""}`}>{ev.titulo}</span>
       {ev.monto!=null&&ev.monto>0&&<span className="flex-shrink-0 font-bold ml-auto">{formatCLP(ev.monto)}</span>}
     </div>
   )
@@ -428,20 +446,44 @@ export function CalendarioClient({data}:{data:CalData}){
   // Drag & drop: mover una tarea/recordatorio de un día a otro, reutilizando
   // moverEventoCalendario. Costos fijos, deudas y CxC no se arrastran — su
   // fecha se deriva de otros módulos, no tiene sentido moverla acá.
-  function handleDragStartEvento(e:React.DragEvent,ev:CalEvent){
-    e.dataTransfer.setData("text/plain",JSON.stringify({id:ev.id,origen:ev.fecha}))
-    e.dataTransfer.effectAllowed="move"
+  // Se usa Pointer Events (no HTML5 drag/drop nativo) porque este último no
+  // funciona en pantallas táctiles — así el arrastre funciona igual con
+  // mouse, touch y lápiz. setPointerCapture hace que el mismo elemento
+  // siga recibiendo move/up aunque el dedo se mueva sobre otras celdas.
+  const dragInfo=useRef<{id:string;origen:string;titulo:string;pointerId:number;startX:number;startY:number;dragging:boolean}|null>(null)
+  const[dragVisual,setDragVisual]=useState<{titulo:string;x:number;y:number}|null>(null)
+  const[hoverDayKey,setHoverDayKey]=useState<string|null>(null)
+
+  function dragPointerDown(e:React.PointerEvent<HTMLDivElement>,ev:CalEvent){
+    dragInfo.current={id:ev.id,origen:ev.fecha,titulo:ev.titulo,pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,dragging:false}
+    e.currentTarget.setPointerCapture(e.pointerId)
   }
-  function handleDropEnDia(destKey:string,e:React.DragEvent){
+  function dragPointerMove(e:React.PointerEvent<HTMLDivElement>){
+    const st=dragInfo.current
+    if(!st||st.pointerId!==e.pointerId)return
+    const dx=e.clientX-st.startX,dy=e.clientY-st.startY
+    if(!st.dragging){
+      if(Math.hypot(dx,dy)<8)return
+      st.dragging=true
+    }
     e.preventDefault()
-    const raw=e.dataTransfer.getData("text/plain")
-    if(!raw)return
-    try{
-      const{id,origen}=JSON.parse(raw) as{id:string;origen:string}
-      if(!id||origen===destKey)return
-      start(async()=>{try{await moverEventoCalendario(id,destKey);toast.success("Tarea movida")}catch{toast.error("No se pudo mover")}})
-    }catch{}
+    setDragVisual({titulo:st.titulo,x:e.clientX,y:e.clientY})
+    const el=document.elementFromPoint(e.clientX,e.clientY)
+    const cell=el?.closest("[data-day-key]") as HTMLElement|null
+    setHoverDayKey(cell?.dataset.dayKey??null)
   }
+  function dragPointerUp(e:React.PointerEvent<HTMLDivElement>){
+    const st=dragInfo.current
+    if(!st||st.pointerId!==e.pointerId)return
+    if(st.dragging&&hoverDayKey&&hoverDayKey!==st.origen){
+      const id=st.id,dest=hoverDayKey
+      start(async()=>{try{await moverEventoCalendario(id,dest);toast.success("Tarea movida")}catch{toast.error("No se pudo mover")}})
+    }
+    dragInfo.current=null
+    setDragVisual(null)
+    setHoverDayKey(null)
+  }
+  const dragHandlers={onDown:dragPointerDown,onMove:dragPointerMove,onUp:dragPointerUp}
 
   const diffColor=(diff:number)=>diff<0?"text-red-400":diff===0?"text-[var(--c-warning)]":diff<=2?"text-[var(--c-warning)]":"text-[var(--c-text3)]"
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
@@ -519,23 +561,24 @@ export function CalendarioClient({data}:{data:CalData}){
                   const isHoy=cell.key===hoyKey
                   const isSel=cell.key===selectedDay
                   const cellEvs=byDay[cell.key]??[]
+                  const esDestinoDrag=!!dragVisual&&hoverDayKey===cell.key
                   return(
-                    <div key={idx} onClick={()=>{setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
-                      onDragOver={e=>e.preventDefault()} onDrop={e=>handleDropEnDia(cell.key,e)}
+                    <div key={idx} data-day-key={cell.key}
+                      onClick={()=>{setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
                       className={`group relative min-h-[80px] sm:min-h-[100px] p-1 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
-                        ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""}`}>
+                        ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
                       <div className="flex items-center justify-between mb-1">
                         <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold
                           ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
                           {cell.day}
                         </div>
                         <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(true);setEditingEv(null)}}
-                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
                           title="Agregar tarea">+</button>
                       </div>
                       {/* Desktop: event pills */}
                       <div className="hidden sm:flex flex-col gap-0.5">
-                        {cellEvs.slice(0,3).map(ev=><EventPill key={ev.id} ev={ev} onDragStart={handleDragStartEvento}/>)}
+                        {cellEvs.slice(0,3).map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
                         {cellEvs.length>3&&(
                           <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
                             className="text-[9px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
@@ -572,11 +615,12 @@ export function CalendarioClient({data}:{data:CalData}){
                 const isSel=key===selectedDay
                 const dayE=weekByDay[key]??[]
                 const[y,m,d]=key.split("-").map(Number)
+                const esDestinoDrag=!!dragVisual&&hoverDayKey===key
                 return(
-                  <div key={key} onClick={()=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
-                    onDragOver={e=>e.preventDefault()} onDrop={e=>handleDropEnDia(key,e)}
+                  <div key={key} data-day-key={key}
+                    onClick={()=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
                     className={`group relative min-h-[280px] p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)]
-                      ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""}`}>
+                      ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(key)]}</span>
@@ -584,11 +628,11 @@ export function CalendarioClient({data}:{data:CalData}){
                           ${isHoy?"bg-sky-500 text-white":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>{d}</div>
                       </div>
                       <button onClick={e=>{e.stopPropagation();setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
-                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
                         title="Agregar tarea">+</button>
                     </div>
                     <div className="flex flex-col gap-0.5">
-                      {dayE.map(ev=><EventPill key={ev.id} ev={ev} onDragStart={handleDragStartEvento}/>)}
+                      {dayE.map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
                     </div>
                   </div>
                 )
@@ -648,7 +692,12 @@ export function CalendarioClient({data}:{data:CalData}){
             <div className="px-5 py-4 border-b border-[var(--c-border)]">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-bold text-sky-400 uppercase tracking-wider">{DIAS[getDOW(selectedDay)]}</p>
-                <button onClick={()=>setSelectedDay(null)} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-[11px] text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={()=>{setShowForm(true);setEditingEv(null)}}
+                    className="w-6 h-6 rounded-full bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold flex items-center justify-center transition-all"
+                    title="Agregar tarea este día">+</button>
+                  <button onClick={()=>setSelectedDay(null)} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-[11px] text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
+                </div>
               </div>
               <p className="text-lg font-bold text-[var(--c-text)]">{Number(selectedDay.split("-")[2])} de {MESES[Number(selectedDay.split("-")[1])-1]}</p>
               <div className="flex gap-4 mt-3">
@@ -842,6 +891,14 @@ export function CalendarioClient({data}:{data:CalData}){
           <p className="text-xs text-[var(--c-text3)] leading-relaxed">Usa el calendario para anticipar tus pagos, organizar tus tareas y mantener el control de tu negocio. Los eventos financieros se generan automáticamente desde tus módulos.</p>
         </div>
       </div>
+
+      {/* Ghost que sigue al puntero/dedo mientras se arrastra una tarea */}
+      {dragVisual&&(
+        <div className="fixed z-[60] pointer-events-none px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500 text-white shadow-xl shadow-sky-500/30 max-w-[200px] truncate"
+          style={{left:dragVisual.x,top:dragVisual.y,transform:"translate(-50%,-140%)"}}>
+          {dragVisual.titulo}
+        </div>
+      )}
 
     </div>
   )
