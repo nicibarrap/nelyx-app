@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { hoyEnChile } from "@/lib/timezone"
+import { obtenerProyectosTarea } from "@/app/actions/acciones"
 import { CalendarioClient } from "@/components/calendario/calendario-client"
 
 export const metadata: Metadata = { title: "Calendario" }
@@ -18,6 +19,7 @@ export default async function CalendarioPage() {
   const [
     costosFijos, deudas, cuentasPorCobrar, eventosCalendario, movimientos,
     deudasRecientes, pagosDeuda, pagosCuenta, generacionesRecientes, clientesRecientes, tareasCompletadasRecientes,
+    proyectosTarea,
   ] = await Promise.all([
     db.costoFijoRecurrente.findMany({
       where: { userId, estado: "activo" },
@@ -45,6 +47,7 @@ export default async function CalendarioPage() {
     db.generacionCosto.findMany({ where: { costoFijo: { userId }, pagado: true }, orderBy: { createdAt: "desc" }, take: 6, include: { costoFijo: { select: { nombre: true } } } }),
     db.cliente.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 6, select: { id: true, nombre: true, apellido: true, createdAt: true } }),
     db.eventoCalendario.findMany({ where: { userId, tipo: "tarea", estado: "completada" }, orderBy: { updatedAt: "desc" }, take: 6, select: { id: true, titulo: true, updatedAt: true } }),
+    obtenerProyectosTarea(),
   ])
 
   // Ventas (de movimientos, ya cargados arriba)
@@ -103,11 +106,9 @@ export default async function CalendarioPage() {
       id: e.id, titulo: e.titulo, descripcion: e.descripcion,
       fecha: e.fecha.toISOString(), tipo: e.tipo, estado: e.estado,
       prioridad: e.prioridad, horaLimite: (e as any).horaLimite ?? null,
+      proyectoId: (e as any).proyectoId ?? null,
     })),
-    movimientos: movimientos.map(m => ({
-      id: m.id, tipo: m.tipo, monto: Number(m.monto),
-      fecha: m.fecha.toISOString(), descripcion: m.descripcion, categoria: m.categoria,
-    })),
+    proyectosTarea: proyectosTarea.map(p => ({ id: p.id, nombre: p.nombre, color: p.color })),
     actividadReciente,
   }
 

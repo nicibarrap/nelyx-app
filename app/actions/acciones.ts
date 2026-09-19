@@ -1227,11 +1227,19 @@ export async function crearEventoCalendario(formData: FormData) {
   const prioridad = (formData.get("prioridad") as string) || "media"
   const estado = (formData.get("estado") as string) || "pendiente"
   const horaLimite = (formData.get("horaLimite") as string | null) || null
+  const proyectoId = (formData.get("proyectoId") as string | null)?.trim() || null
 
   if (!titulo || !fecha) throw new Error("Título y fecha son requeridos")
 
+  // proyectoId es opcional y viene de un <select>: se valida que exista y sea
+  // del mismo dueño antes de guardarlo, para no quedar con una referencia rota
+  // ni permitir asignar un proyecto de otra cuenta.
+  const proyectoValido = proyectoId
+    ? await db.proyectoTarea.findFirst({ where: { id: proyectoId, userId: session.user.id }, select: { id: true } })
+    : null
+
   await db.eventoCalendario.create({
-    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, color: "azul", userId: session.user.id }
+    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, color: "azul", userId: session.user.id, proyectoId: proyectoValido?.id ?? null }
   })
   revalidatePath("/dashboard/calendario")
   revalidatePath("/dashboard/alertas")
@@ -1246,15 +1254,81 @@ export async function actualizarEventoCalendario(id: string, formData: FormData)
   const prioridad = (formData.get("prioridad") as string) || "media"
   const estado = (formData.get("estado") as string) || "pendiente"
   const horaLimite = (formData.get("horaLimite") as string | null) || null
+  const proyectoId = (formData.get("proyectoId") as string | null)?.trim() || null
 
   if (!titulo || !fecha) throw new Error("Título y fecha son requeridos")
+
+  const proyectoValido = proyectoId
+    ? await db.proyectoTarea.findFirst({ where: { id: proyectoId, userId: session.user.id }, select: { id: true } })
+    : null
+
   await db.eventoCalendario.updateMany({
     where: { id, userId: session.user.id },
-    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite }
+    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, proyectoId: proyectoValido?.id ?? null }
   })
   // La fecha/hora cambió: se cancelan los recordatorios ya generados, el cron los reprograma con la nueva fecha
   await cancelarNotificacionesPorPrefijo(`evt:${id}:`)
   await cancelarNotificacionesPorPrefijo(`tarea:${id}:`)
+  revalidatePath("/dashboard/calendario")
+}
+
+// ─── PROYECTOS DE TAREAS (categorías del Calendario) ──────────────────────────
+
+export async function obtenerProyectosTarea() {
+  const session = await getSession()
+  const proyectos = await db.proyectoTarea.findMany({
+    where: { userId: session.user.id },
+    include: {
+      eventos: {
+        where: { tipo: "tarea" },
+        select: { id: true, titulo: true, estado: true, fecha: true, horaLimite: true },
+        orderBy: { fecha: "asc" },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  })
+  return proyectos.map(p => ({
+    id: p.id, nombre: p.nombre, descripcion: p.descripcion, color: p.color,
+    tareas: p.eventos.map(e => ({ id: e.id, titulo: e.titulo, estado: e.estado, fecha: e.fecha.toISOString(), horaLimite: e.horaLimite })),
+  }))
+}
+
+export async function crearProyectoTarea(formData: FormData) {
+  const session = await getSession()
+  const nombre = (formData.get("nombre") as string)?.trim()
+  const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
+  const color = (formData.get("color") as string) || "azul"
+  if (!nombre) throw new Error("El nombre es requerido")
+
+  const existente = await db.proyectoTarea.findFirst({ where: { userId: session.user.id, nombre: { equals: nombre, mode: "insensitive" } } })
+  if (existente) throw new Error("Ya existe un proyecto con ese nombre")
+
+  await db.proyectoTarea.create({ data: { nombre, descripcion, color, userId: session.user.id } })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/calendario")
+}
+
+export async function editarProyectoTarea(id: string, formData: FormData) {
+  const session = await getSession()
+  const nombre = (formData.get("nombre") as string)?.trim()
+  const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
+  const color = (formData.get("color") as string) || "azul"
+  if (!nombre) throw new Error("El nombre es requerido")
+
+  const existente = await db.proyectoTarea.findFirst({ where: { userId: session.user.id, nombre: { equals: nombre, mode: "insensitive" }, id: { not: id } } })
+  if (existente) throw new Error("Ya existe un proyecto con ese nombre")
+
+  await db.proyectoTarea.updateMany({ where: { id, userId: session.user.id }, data: { nombre, descripcion, color } })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/calendario")
+}
+
+export async function eliminarProyectoTarea(id: string) {
+  const session = await getSession()
+  // Las tareas que tenían este proyecto asignado NO se eliminan — solo
+  // quedan sin categoría (onDelete: SetNull en el schema).
+  await db.proyectoTarea.deleteMany({ where: { id, userId: session.user.id } })
+  revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/calendario")
 }
 

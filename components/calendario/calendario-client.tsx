@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from "react"
 import { toast } from "sonner"
 import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
+import { COLORES_PROYECTO } from "@/components/configuracion/proyectos-tarea-client"
 import Link from "next/link"
 
 const inp2 = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
@@ -16,8 +17,6 @@ const TIPO_CONFIG: Record<string,{icon:string;bg:string;text:string;border:strin
   costo_fijo:    {icon:"🏠",bg:"bg-orange-500/15",text:"text-orange-300",border:"border-orange-500/20",label:"Costo fijo",  dot:"bg-orange-400"},
   deuda:         {icon:"🏦",bg:"bg-violet-500/15",text:"text-violet-300",border:"border-violet-500/20",label:"Deuda",       dot:"bg-violet-400"},
   cuenta_cobrar: {icon:"👤",bg:"bg-sky-500/15",   text:"text-sky-300",  border:"border-sky-500/20",   label:"Cobro/CxC",   dot:"bg-sky-400"},
-  venta:         {icon:"📈",bg:"bg-emerald-500/15",text:"text-emerald-300",border:"border-emerald-500/20",label:"Ingreso", dot:"bg-emerald-400"},
-  gasto:         {icon:"🛒",bg:"bg-red-500/15",   text:"text-red-300",  border:"border-red-500/20",   label:"Gasto/Costo", dot:"bg-red-400"},
   tarea:         {icon:"✅",bg:"bg-blue-500/15",  text:"text-blue-300", border:"border-blue-500/20",  label:"Tarea",       dot:"bg-blue-400"},
   recordatorio:  {icon:"🔔",bg:"bg-amber-500/15", text:"text-amber-300",border:"border-amber-500/20", label:"Recordatorio",dot:"bg-amber-400"},
   evento:        {icon:"📅",bg:"bg-slate-500/15", text:"text-slate-300",border:"border-slate-500/20", label:"Evento",      dot:"bg-slate-400"},
@@ -41,17 +40,18 @@ type CalEvent = {
   id:string; titulo:string; tipo:string; fecha:string
   monto?:number|null; estado?:string|null; hora?:string|null
   prioridad?:string|null; descripcion?:string|null; isManual?:boolean
+  proyectoId?:string|null; proyectoColor?:string|null; proyectoNombre?:string|null
 }
-type Filtro = "todas"|"ingresos"|"costos"|"deudas"|"cobros"|"tareas"|"recordatorios"
-type Vista = "mes"|"agenda"
+type Filtro = "todas"|"costos"|"deudas"|"cobros"|"tareas"|"recordatorios"
+type Vista = "mes"|"semana"|"agenda"
 
 type CalData = {
   hoy: string
   costosFijos: {id:string;nombre:string;monto:number;categoria:string|null;fechaInicio:string;fechaTermino:string|null;generaciones:{id:string;mes:number;anio:number;pagado:boolean}[]}[]
   deudas: {id:string;acreedor:string;monto:number;valorCuota:number|null;fechaVence:string|null;fechaPrimerPago:string|null}[]
   cuentasPorCobrar: {id:string;numero:number;clienteNombre:string;monto:number;saldoPendiente:number;fechaVence:string|null;estado:string}[]
-  eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string;horaLimite:string|null}[]
-  movimientos: {id:string;tipo:string;monto:number;fecha:string;descripcion:string|null;categoria:string|null}[]
+  eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string;horaLimite:string|null;proyectoId:string|null}[]
+  proyectosTarea: {id:string;nombre:string;color:string}[]
   actividadReciente: {id:string;icono:string;titulo:string;detalle:string;monto:number|null;fecha:string}[]
 }
 
@@ -105,23 +105,35 @@ function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
     if(ref.getUTCFullYear()!==anio||ref.getUTCMonth()+1!==mes)continue
     evs.push({id:`cc-${cc.id}`,titulo:cc.clienteNombre,tipo:"cuenta_cobrar",fecha:isoToKey(cc.fechaVence),monto:cc.saldoPendiente,estado:cc.estado})
   }
-  for(const m of data.movimientos){
-    const ref=new Date(m.fecha)
-    if(ref.getUTCFullYear()!==anio||ref.getUTCMonth()+1!==mes)continue
-    const key=isoToKey(m.fecha)
-    if(["VENTA","INGRESO_EXTRA"].includes(m.tipo)){
-      evs.push({id:`mov-${m.id}`,titulo:m.descripcion??"Venta",tipo:"venta",fecha:key,monto:m.monto,estado:"completado"})
-    }else if(m.tipo==="GASTO"){
-      evs.push({id:`mov-${m.id}`,titulo:m.descripcion??m.categoria??"Gasto",tipo:"gasto",fecha:key,monto:m.monto,estado:"completado"})
-    }
-  }
+  // Las ventas y otros movimientos YA NO se registran en el calendario:
+  // llenaban el recuadro de cada día y no aportaban a la planificación.
+  // Siguen disponibles en "Actividad reciente" y en Reportes.
   for(const e of data.eventosCalendario){
     const ref=new Date(e.fecha)
     if(ref.getUTCFullYear()!==anio||ref.getUTCMonth()+1!==mes)continue
-    evs.push({id:e.id,titulo:e.titulo,tipo:e.tipo,fecha:isoToKey(e.fecha),estado:e.estado,hora:e.horaLimite,prioridad:e.prioridad,descripcion:e.descripcion,isManual:true})
+    const proyecto=e.proyectoId?data.proyectosTarea.find(p=>p.id===e.proyectoId):null
+    evs.push({id:e.id,titulo:e.titulo,tipo:e.tipo,fecha:isoToKey(e.fecha),estado:e.estado,hora:e.horaLimite,prioridad:e.prioridad,descripcion:e.descripcion,isManual:true,proyectoId:e.proyectoId,proyectoColor:proyecto?.color??null,proyectoNombre:proyecto?.nombre??null})
   }
   return evs
 }
+
+function aplicarFiltro(events:CalEvent[],filtro:Filtro):CalEvent[]{
+  if(filtro==="todas")return events
+  if(filtro==="costos")return events.filter(e=>e.tipo==="costo_fijo")
+  if(filtro==="deudas")return events.filter(e=>e.tipo==="deuda")
+  if(filtro==="cobros")return events.filter(e=>e.tipo==="cuenta_cobrar")
+  if(filtro==="tareas")return events.filter(e=>e.tipo==="tarea")
+  if(filtro==="recordatorios")return events.filter(e=>e.tipo==="recordatorio")
+  return events
+}
+
+function addDias(key:string,n:number){
+  const[y,m,d]=key.split("-").map(Number)
+  const dt=new Date(Date.UTC(y,m-1,d))
+  dt.setUTCDate(dt.getUTCDate()+n)
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,"0")}-${String(dt.getUTCDate()).padStart(2,"0")}`
+}
+function mondayOf(key:string){return addDias(key,-getDOW(key))}
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
 
@@ -136,9 +148,11 @@ function EventPill({ev}:{ev:CalEvent}){
     )
   }
   const cfg=TIPO_CONFIG[ev.tipo]??TIPO_CONFIG.evento
+  const hexProyecto=ev.proyectoColor?COLORES_PROYECTO[ev.proyectoColor]:null
   return(
-    <div className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
-      <span className="flex-shrink-0 text-[9px]">{cfg.icon}</span>
+    <div className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 ${hexProyecto?"":cfg.bg} ${hexProyecto?"":cfg.text} border ${hexProyecto?"":cfg.border}`}
+      style={hexProyecto?{backgroundColor:`${hexProyecto}26`,color:hexProyecto,borderColor:`${hexProyecto}40`}:undefined}>
+      <span className="flex-shrink-0 text-[9px]">{hexProyecto?"●":cfg.icon}</span>
       <span className="truncate min-w-0">{ev.titulo}</span>
       {ev.monto!=null&&ev.monto>0&&<span className="flex-shrink-0 font-bold ml-auto">{formatCLP(ev.monto)}</span>}
     </div>
@@ -151,12 +165,15 @@ function PBadge({p}:{p?:string|null}){
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${c.cls}`}>{c.label}</span>
 }
 
-function FormEvento({defaultDate,editingEv,onClose}:{defaultDate:string;editingEv?:CalEvent|null;onClose:()=>void}){
+function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:string;editingEv?:CalEvent|null;proyectos:{id:string;nombre:string;color:string}[];onClose:()=>void}){
   const[isPending,start]=useTransition()
   const[titulo,setTitulo]=useState(editingEv?.titulo??"")
+  const[descripcion,setDescripcion]=useState(editingEv?.descripcion??"")
   const[fecha,setFecha]=useState(editingEv?.fecha??defaultDate)
   const[hora,setHora]=useState(editingEv?.hora??"")
   const[tipo,setTipo]=useState(editingEv?.tipo??"tarea")
+  const[prioridad,setPrioridad]=useState(editingEv?.prioridad??"media")
+  const[proyectoId,setProyectoId]=useState(editingEv?.proyectoId??"")
   const isEdit=!!editingEv?.isManual
 
   function handleSubmit(e:React.FormEvent<HTMLFormElement>){
@@ -165,8 +182,10 @@ function FormEvento({defaultDate,editingEv,onClose}:{defaultDate:string;editingE
       try{
         const fd=new FormData()
         fd.set("titulo",titulo);fd.set("fecha",fecha)
+        fd.set("descripcion",descripcion)
         fd.set("tipo",tipo);fd.set("horaLimite",hora)
-        fd.set("estado","pendiente");fd.set("prioridad","media")
+        fd.set("estado",editingEv?.estado??"pendiente");fd.set("prioridad",prioridad)
+        fd.set("proyectoId",proyectoId)
         if(isEdit&&editingEv?.id){await actualizarEventoCalendario(editingEv.id,fd);toast.success("✅ Evento actualizado")}
         else{await crearEventoCalendario(fd);toast.success("✅ Evento creado")}
         onClose()
@@ -184,7 +203,7 @@ function FormEvento({defaultDate,editingEv,onClose}:{defaultDate:string;editingE
         <p className="text-sm font-bold text-[var(--c-text)]">{isEdit?"Editar evento":"+ Nuevo evento"}</p>
         <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-xs text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
       </div>
-      <div className="flex-1 px-5 py-4 space-y-3">
+      <div className="flex-1 px-5 py-4 space-y-3 overflow-y-auto">
         <div>
           <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Tipo</label>
           <select value={tipo} onChange={e=>setTipo(e.target.value)} className={sel2}>
@@ -199,6 +218,12 @@ function FormEvento({defaultDate,editingEv,onClose}:{defaultDate:string;editingE
             placeholder={tipo==="tarea"?"Ej: Comprar mercadería":tipo==="recordatorio"?"Ej: Llamar proveedor":"Ej: Reunión cliente"}
             className={inp2}/>
         </div>
+        <div>
+          <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Descripción</label>
+          <textarea value={descripcion} onChange={e=>setDescripcion(e.target.value)} rows={2}
+            placeholder="Opcional — detalles adicionales"
+            className="w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 py-2 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors resize-none"/>
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Fecha *</label>
@@ -209,6 +234,27 @@ function FormEvento({defaultDate,editingEv,onClose}:{defaultDate:string;editingE
             <input type="time" value={hora} onChange={e=>setHora(e.target.value)} className={inp2}/>
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Prioridad</label>
+            <select value={prioridad} onChange={e=>setPrioridad(e.target.value)} className={sel2}>
+              <option value="baja">Baja</option>
+              <option value="media">Media</option>
+              <option value="alta">Alta</option>
+              <option value="critica">Crítica</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Categoría</label>
+            <select value={proyectoId} onChange={e=>setProyectoId(e.target.value)} className={sel2}>
+              <option value="">Sin categoría</option>
+              {proyectos.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        {proyectos.length===0&&(
+          <p className="text-[10px] text-[var(--c-text4)]">Crea categorías desde Configuración → Tareas para organizar tus tareas por proyecto.</p>
+        )}
       </div>
       <div className="px-5 py-4 border-t border-[var(--c-border)] flex gap-2">
         {isEdit&&<button type="button" onClick={handleDel} disabled={isPending}
@@ -234,26 +280,41 @@ export function CalendarioClient({data}:{data:CalData}){
   const[showForm,setShowForm]=useState(false)
   const[filtro,setFiltro]=useState<Filtro>("todas")
   const[vista,setVista]=useState<Vista>("mes")
+  const[weekStart,setWeekStart]=useState(()=>mondayOf(hoyKey))
   const[isPending,start]=useTransition()
 
   const events=useMemo(()=>buildEvents(data,viewAnio,viewMes),[data,viewAnio,viewMes])
-
-  const filtered=useMemo(()=>{
-    if(filtro==="todas")return events
-    if(filtro==="ingresos")return events.filter(e=>e.tipo==="venta")
-    if(filtro==="costos")return events.filter(e=>e.tipo==="costo_fijo"||e.tipo==="gasto")
-    if(filtro==="deudas")return events.filter(e=>e.tipo==="deuda")
-    if(filtro==="cobros")return events.filter(e=>e.tipo==="cuenta_cobrar")
-    if(filtro==="tareas")return events.filter(e=>e.tipo==="tarea")
-    if(filtro==="recordatorios")return events.filter(e=>e.tipo==="recordatorio")
-    return events
-  },[events,filtro])
+  const filtered=useMemo(()=>aplicarFiltro(events,filtro),[events,filtro])
 
   const byDay=useMemo(()=>{
     const m:Record<string,CalEvent[]>={}
     for(const ev of filtered){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
     return m
   },[filtered])
+
+  // Vista semana: la semana puede cruzar dos meses distintos al de
+  // viewAnio/viewMes, así que se construyen los eventos de ambos meses
+  // involucrados en vez de depender del mes "actual" del grid mensual.
+  const weekDays=useMemo(()=>Array.from({length:7},(_,i)=>addDias(weekStart,i)),[weekStart])
+  const weekEnd=weekDays[6]
+  const weekEvents=useMemo(()=>{
+    const[y1,m1]=weekStart.split("-").map(Number)
+    const[y2,m2]=weekEnd.split("-").map(Number)
+    const evsA=buildEvents(data,y1,m1)
+    const evsB=(y1===y2&&m1===m2)?[]:buildEvents(data,y2,m2)
+    return aplicarFiltro([...evsA,...evsB],filtro)
+  },[data,weekStart,weekEnd,filtro])
+  const weekByDay=useMemo(()=>{
+    const m:Record<string,CalEvent[]>={}
+    for(const ev of weekEvents){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
+    return m
+  },[weekEvents])
+
+  function goSemana(delta:number){setWeekStart(prev=>addDias(prev,delta*7))}
+  function cambiarVista(v:Vista){
+    if(v==="semana")setWeekStart(mondayOf(selectedDay??hoyKey))
+    setVista(v)
+  }
 
   // Calendar grid
   const firstDOW=(new Date(Date.UTC(viewAnio,viewMes-1,1)).getUTCDay()+6)%7
@@ -278,9 +339,9 @@ export function CalendarioClient({data}:{data:CalData}){
   }
 
   // Day panel data
-  const dayEvs=selectedDay?(byDay[selectedDay]??[]):[]
-  const dayEntradas=dayEvs.filter(e=>e.tipo==="venta"||e.tipo==="cuenta_cobrar")
-  const daySalidas=dayEvs.filter(e=>e.tipo==="costo_fijo"||e.tipo==="gasto"||e.tipo==="deuda")
+  const dayEvs=selectedDay?((vista==="semana"?weekByDay:byDay)[selectedDay]??[]):[]
+  const dayEntradas=dayEvs.filter(e=>e.tipo==="cuenta_cobrar")
+  const daySalidas=dayEvs.filter(e=>e.tipo==="costo_fijo"||e.tipo==="deuda")
   const dayTareas=dayEvs.filter(e=>e.tipo==="tarea"||e.tipo==="recordatorio")
   const totalE=dayEntradas.reduce((a,e)=>a+(e.monto??0),0)
   const totalS=daySalidas.reduce((a,e)=>a+(e.monto??0),0)
@@ -308,6 +369,12 @@ export function CalendarioClient({data}:{data:CalData}){
   const diffColor=(diff:number)=>diff<0?"text-red-400":diff===0?"text-[var(--c-warning)]":diff<=2?"text-[var(--c-warning)]":"text-[var(--c-text3)]"
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
   const mesLabel=`${MESES[viewMes-1]} ${viewAnio}`
+  const semanaLabel=(()=>{
+    const[ay,am,ad]=weekStart.split("-").map(Number)
+    const[by,bm,bd]=weekEnd.split("-").map(Number)
+    if(am===bm)return `${ad}-${bd} ${MESES[am-1].slice(0,3)}`
+    return `${ad} ${MESES[am-1].slice(0,3)} - ${bd} ${MESES[bm-1].slice(0,3)}`
+  })()
 
   const isPanelOpen=selectedDay&&!showForm&&!editingEv
   const isFormOpen=showForm||!!editingEv
@@ -330,20 +397,30 @@ export function CalendarioClient({data}:{data:CalData}){
       {/* Navigation */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl p-1 gap-0.5">
-          {(["mes","agenda"] as Vista[]).map(v=>(
-            <button key={v} onClick={()=>setVista(v)}
+          {(["mes","semana","agenda"] as Vista[]).map(v=>(
+            <button key={v} onClick={()=>cambiarVista(v)}
               className={`px-4 h-8 rounded-lg text-xs font-semibold capitalize transition-all ${vista===v?"bg-sky-500 text-white":"text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
-              {v==="mes"?"Mes":"Agenda"}
+              {v==="mes"?"Mes":v==="semana"?"Semana":"Agenda"}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <button onClick={()=>goMes(-1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">‹</button>
-          <span className="text-sm font-semibold text-[var(--c-text)] min-w-[130px] text-center">{mesLabel}</span>
-          <button onClick={()=>goMes(1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">›</button>
-          <button onClick={()=>{setViewMes(hoyDate.getUTCMonth()+1);setViewAnio(hoyDate.getUTCFullYear());setSelectedDay(hoyKey)}}
-            className="h-8 px-3 text-xs border border-[var(--c-border)] bg-[var(--c-card)] rounded-xl hover:bg-[var(--c-hover)] transition-all">Hoy</button>
-        </div>
+        {vista==="semana"?(
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button onClick={()=>goSemana(-1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">‹</button>
+            <span className="text-sm font-semibold text-[var(--c-text)] min-w-[130px] text-center">{semanaLabel}</span>
+            <button onClick={()=>goSemana(1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">›</button>
+            <button onClick={()=>{setWeekStart(mondayOf(hoyKey));setSelectedDay(hoyKey)}}
+              className="h-8 px-3 text-xs border border-[var(--c-border)] bg-[var(--c-card)] rounded-xl hover:bg-[var(--c-hover)] transition-all">Hoy</button>
+          </div>
+        ):(
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button onClick={()=>goMes(-1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">‹</button>
+            <span className="text-sm font-semibold text-[var(--c-text)] min-w-[130px] text-center">{mesLabel}</span>
+            <button onClick={()=>goMes(1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">›</button>
+            <button onClick={()=>{setViewMes(hoyDate.getUTCMonth()+1);setViewAnio(hoyDate.getUTCFullYear());setSelectedDay(hoyKey)}}
+              className="h-8 px-3 text-xs border border-[var(--c-border)] bg-[var(--c-card)] rounded-xl hover:bg-[var(--c-hover)] transition-all">Hoy</button>
+          </div>
+        )}
       </div>
 
       {/* Main: calendar + panel */}
@@ -377,7 +454,12 @@ export function CalendarioClient({data}:{data:CalData}){
                       {/* Desktop: event pills */}
                       <div className="hidden sm:flex flex-col gap-0.5">
                         {cellEvs.slice(0,3).map(ev=><EventPill key={ev.id} ev={ev}/>)}
-                        {cellEvs.length>3&&<p className="text-[9px] text-[var(--c-text4)] pl-1">+{cellEvs.length-3}</p>}
+                        {cellEvs.length>3&&(
+                          <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
+                            className="text-[9px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
+                            +{cellEvs.length-3} más
+                          </button>
+                        )}
                       </div>
                       {/* Mobile: grouped dots with count */}
                       {cell.curr&&cellEvs.length>0&&(
@@ -400,6 +482,30 @@ export function CalendarioClient({data}:{data:CalData}){
                 })}
               </div>
             </>
+          ):vista==="semana"?(
+            /* Week view */
+            <div className="grid grid-cols-7">
+              {weekDays.map(key=>{
+                const isHoy=key===hoyKey
+                const isSel=key===selectedDay
+                const dayE=weekByDay[key]??[]
+                const[y,m,d]=key.split("-").map(Number)
+                return(
+                  <div key={key} onClick={()=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
+                    className={`relative min-h-[280px] p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)]
+                      ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""}`}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(key)]}</span>
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+                        ${isHoy?"bg-sky-500 text-white":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>{d}</div>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {dayE.map(ev=><EventPill key={ev.id} ev={ev}/>)}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           ):(
             /* Agenda view */
             <div className="divide-y divide-[var(--c-border2)]">
@@ -431,8 +537,7 @@ export function CalendarioClient({data}:{data:CalData}){
           <div className="px-4 py-3 border-t border-[var(--c-border)] flex flex-wrap gap-2 items-center">
             {([
               {k:"todas",   label:"Todas",         dot:""},
-              {k:"ingresos",label:"Ingresos",       dot:"bg-emerald-400"},
-              {k:"costos",  label:"Gastos/Costos",  dot:"bg-orange-400"},
+              {k:"costos",  label:"Costos fijos",  dot:"bg-orange-400"},
               {k:"deudas",  label:"Deudas",         dot:"bg-violet-400"},
               {k:"cobros",  label:"Cobros/CxC",     dot:"bg-sky-400"},
               {k:"tareas",  label:"Tareas",         dot:"bg-blue-400"},
@@ -502,8 +607,8 @@ export function CalendarioClient({data}:{data:CalData}){
                             {ev.hora&&<p className="text-[10px] text-[var(--c-text4)]">{ev.hora}</p>}
                           </div>
                           {ev.monto!=null&&ev.monto>0&&(
-                            <span className={`text-xs font-bold flex-shrink-0 ${ev.tipo==="venta"||ev.tipo==="cuenta_cobrar"?"text-emerald-400":"text-red-400"}`}>
-                              {ev.tipo==="venta"||ev.tipo==="cuenta_cobrar"?"+":"-"}{formatCLP(ev.monto)}
+                            <span className={`text-xs font-bold flex-shrink-0 ${ev.tipo==="cuenta_cobrar"?"text-emerald-400":"text-red-400"}`}>
+                              {ev.tipo==="cuenta_cobrar"?"+":"-"}{formatCLP(ev.monto)}
                             </span>
                           )}
                         </div>
@@ -551,6 +656,7 @@ export function CalendarioClient({data}:{data:CalData}){
             <FormEvento
               defaultDate={selectedDay??localToday()}
               editingEv={editingEv}
+              proyectos={data.proyectosTarea}
               onClose={()=>{setShowForm(false);setEditingEv(null)}}
             />
           </div>

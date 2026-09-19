@@ -41,6 +41,7 @@ model User {
   proveedores           Proveedor[]
   cuentasPorCobrar      CuentaPorCobrar[]
   eventosCalendario     EventoCalendario[]
+  proyectosTareas       ProyectoTarea[]
   suscripcionNelyx      SuscripcionNelyx?
   pushSubscriptions     PushSubscription[]
   notificaciones        Notificacion[]
@@ -319,20 +320,39 @@ model PagoCuenta {
 }
 
 model EventoCalendario {
-  id          String   @id @default(cuid())
+  id          String         @id @default(cuid())
   titulo      String
   descripcion String?
   fecha       DateTime
-  tipo        String   @default("evento")
-  color       String   @default("azul")
-  estado      String   @default("pendiente")
-  prioridad   String   @default("media")
+  tipo        String         @default("evento")
+  color       String         @default("azul")
+  estado      String         @default("pendiente")
+  prioridad   String         @default("media")
   horaLimite  String?
+  proyectoId  String?
+  proyecto    ProyectoTarea? @relation(fields: [proyectoId], references: [id], onDelete: SetNull)
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   @@index([userId, fecha])
+  @@index([proyectoId])
+}
+
+// Categorías/proyectos para organizar tareas del Calendario (estilo Asana):
+// el dueño los crea desde Configuración y luego los asigna al crear una tarea.
+model ProyectoTarea {
+  id          String             @id @default(cuid())
+  nombre      String
+  descripcion String?
+  color       String             @default("azul")
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventos     EventoCalendario[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  @@unique([nombre, userId])
+  @@index([userId])
 }
 
 model SuscripcionNelyx {
