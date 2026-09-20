@@ -1,11 +1,11 @@
 "use client"
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
 import { useState, useTransition, useMemo, useRef } from "react"
+import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario, moverEventoCalendario } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
 import { COLORES_PROYECTO } from "@/components/configuracion/proyectos-tarea-client"
-import Link from "next/link"
 
 const inp2 = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
 const sel2 = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
@@ -62,7 +62,6 @@ type CalData = {
   cuentasPorCobrar: {id:string;numero:number;clienteNombre:string;monto:number;saldoPendiente:number;fechaVence:string|null;estado:string}[]
   eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string;horaLimite:string|null;proyectoId:string|null;serieId:string|null}[]
   proyectosTarea: {id:string;nombre:string;color:string}[]
-  actividadReciente: {id:string;icono:string;titulo:string;detalle:string;monto:number|null;fecha:string}[]
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -70,22 +69,7 @@ type CalData = {
 function diasEnMes(y:number,m:number){return new Date(y,m,0).getDate()}
 function dateKey(y:number,m:number,d:number){return `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`}
 function isoToKey(iso:string){const d=new Date(iso);return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`}
-function diffDias(key:string,hoyKey:string){
-  const p=(k:string)=>{const[y,m,d]=k.split("-").map(Number);return new Date(Date.UTC(y,m-1,d)).getTime()}
-  return Math.round((p(key)-p(hoyKey))/86400000)
-}
 function getDOW(key:string){const[y,m,d]=key.split("-").map(Number);return(new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7}
-function tiempoRelativo(iso:string){
-  const diffMs=Date.now()-new Date(iso).getTime()
-  const min=Math.round(diffMs/60000)
-  if(min<1)return"Ahora"
-  if(min<60)return`Hace ${min} min`
-  const h=Math.round(min/60)
-  if(h<24)return`Hace ${h}h`
-  const d=Math.round(h/24)
-  if(d<30)return`Hace ${d}d`
-  return new Date(iso).toLocaleDateString("es-CL",{day:"2-digit",month:"short"})
-}
 
 function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
   const evs:CalEvent[]=[]
@@ -179,8 +163,11 @@ function EventPill({ev,onToggle,drag}:{ev:CalEvent;onToggle?:(id:string,estado:s
       {toggleable&&(
         <button type="button" onPointerDown={e=>e.stopPropagation()}
           onClick={e=>{e.stopPropagation();onToggle!(ev.id,ev.estado??"")}}
-          className={`flex-shrink-0 w-3 h-3 rounded-full border flex items-center justify-center transition-all ${completada?"bg-emerald-500 border-emerald-500":"border-current opacity-70 hover:opacity-100"}`}>
-          {completada&&<span className="text-white text-[7px] leading-none">✓</span>}
+          title={completada?"Marcar como pendiente":"Marcar como completada"}
+          className={`flex-shrink-0 -m-0.5 p-0.5 rounded-full transition-all`}>
+          <span className={`block w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-all ${completada?"bg-emerald-500 border-emerald-500":"border-current"}`}>
+            {completada&&<span className="text-white text-[8px] leading-none">✓</span>}
+          </span>
         </button>
       )}
       <span className="flex-shrink-0 text-[9px]">{hexProyecto?"●":cfg.icon}</span>
@@ -433,11 +420,6 @@ export function CalendarioClient({data}:{data:CalData}){
     const r=new Date(e.fecha);return r.getUTCFullYear()===viewAnio&&r.getUTCMonth()+1===viewMes
   }).length
 
-  // Tareas pendientes
-  const todasTareas=data.eventosCalendario.filter(e=>e.tipo==="tarea").sort((a,b)=>new Date(a.fecha).getTime()-new Date(b.fecha).getTime())
-  const tareasCompletadas=todasTareas.filter(e=>e.estado==="completada").length
-  const pctTareas=todasTareas.length>0?Math.round((tareasCompletadas/todasTareas.length)*100):0
-
   function handleToggleTarea(id:string,estado:string){
     const nuevoEstado=estado==="completada"?"pendiente":"completada"
     start(async()=>{try{await actualizarEstadoEventoCalendario(id,nuevoEstado)}catch{toast.error("Error")}})
@@ -485,7 +467,6 @@ export function CalendarioClient({data}:{data:CalData}){
   }
   const dragHandlers={onDown:dragPointerDown,onMove:dragPointerMove,onUp:dragPointerUp}
 
-  const diffColor=(diff:number)=>diff<0?"text-red-400":diff===0?"text-[var(--c-warning)]":diff<=2?"text-[var(--c-warning)]":"text-[var(--c-text3)]"
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
   const mesLabel=`${MESES[viewMes-1]} ${viewAnio}`
   const semanaLabel=(()=>{
@@ -789,8 +770,13 @@ export function CalendarioClient({data}:{data:CalData}){
 
       </div>
 
-      {/* Modal de tarea/evento */}
-      {isFormOpen&&(
+      {/* Modal de tarea/evento — en portal a document.body: el wrapper de la
+          página tiene animate-fade-up, que deja un transform:translateY(0)
+          aplicado tras la animación (fill-mode "forwards"); cualquier
+          transform ≠ none crea un containing block nuevo para los hijos
+          position:fixed, así que sin portal el modal queda centrado
+          respecto a ese div y no respecto a la pantalla. */}
+      {isFormOpen&&createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
           onClick={()=>{setShowForm(false);setEditingEv(null)}}>
           <div onClick={e=>e.stopPropagation()}
@@ -802,86 +788,9 @@ export function CalendarioClient({data}:{data:CalData}){
               onClose={()=>{setShowForm(false);setEditingEv(null)}}
             />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-
-      {/* Tareas pendientes + Actividad reciente */}
-      <div className="grid md:grid-cols-2 gap-4">
-
-        {/* Tareas pendientes */}
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[var(--c-border)] flex items-center justify-between">
-            <p className="text-sm font-semibold text-[var(--c-text)]">Tareas pendientes</p>
-            <p className="text-xs text-[var(--c-text3)]">{tareasCompletadas} de {todasTareas.length} completadas</p>
-          </div>
-          {todasTareas.length>0&&(
-            <div className="px-5 pt-3">
-              <div className="h-2 bg-[var(--c-card2)] rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{width:`${pctTareas}%`}}/>
-              </div>
-              <p className="text-[10px] text-[var(--c-text3)] mt-1">{pctTareas}% completado</p>
-            </div>
-          )}
-          <div className="divide-y divide-[var(--c-border2)] mt-2">
-            {todasTareas.length===0?(
-              <p className="px-5 py-6 text-xs text-[var(--c-text3)] text-center">Sin tareas registradas</p>
-            ):todasTareas.slice(0,5).map(ev=>{
-              const diff=diffDias(isoToKey(ev.fecha),hoyKey)
-              return(
-                <div key={ev.id} className={`flex items-center gap-3 px-5 py-3 transition-all duration-300 ${ev.estado==="completada"?"opacity-50":""}`}>
-                  <button onClick={()=>handleToggleTarea(ev.id,ev.estado)} disabled={isPending}
-                    className={`w-5 h-5 rounded-sm border-2 flex-shrink-0 flex items-center justify-center transition-all duration-300 text-xs
-                      ${ev.estado==="completada"?"bg-emerald-500 border-emerald-500 text-white":"border-[var(--c-border)] hover:border-sky-400"}`}>
-                    {ev.estado==="completada"&&"✓"}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold truncate transition-all duration-300 ${ev.estado==="completada"?"line-through text-[var(--c-text4)]":"text-[var(--c-text)]"}`}>{ev.titulo}</p>
-                    <p className={`text-[10px] ${diffColor(diff)}`}>
-                      {Number(ev.fecha.split("T")[0].split("-")[2])} {MESES[Number(ev.fecha.split("T")[0].split("-")[1])-1].slice(0,3)}{ev.horaLimite?` · ${ev.horaLimite}`:""}
-                    </p>
-                  </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0 ${
-                    ev.estado==="completada"?"bg-emerald-500/10 text-emerald-400":
-                    diff<0?"bg-red-500/10 text-red-400":
-                    diff<=1?"bg-amber-500/10 text-[var(--c-warning)]":"bg-slate-500/10 text-slate-400"
-                  }`}>{ev.estado==="completada"?"✓ Hecha":diff<0?"Vencida":diff===0?"Hoy":diff===1?"Mañana":"Pendiente"}</span>
-                </div>
-              )
-            })}
-          </div>
-          {todasTareas.length>5&&(
-            <div className="px-5 py-3 border-t border-[var(--c-border2)]">
-              <button onClick={()=>setFiltro("tareas")} className="text-xs text-sky-400 hover:text-sky-300">Ver todas las tareas →</button>
-            </div>
-          )}
-        </div>
-
-        {/* Actividad reciente */}
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[var(--c-border)] flex items-center justify-between">
-            <p className="text-sm font-semibold text-[var(--c-text)]">Actividad reciente</p>
-            <Link href="/dashboard/alertas" className="text-xs text-sky-400 hover:text-sky-300">Ver alertas →</Link>
-          </div>
-          <div className="divide-y divide-[var(--c-border2)] max-h-[360px] overflow-y-auto">
-            {data.actividadReciente.length===0?(
-              <p className="px-5 py-6 text-xs text-[var(--c-text3)] text-center">Sin actividad reciente</p>
-            ):data.actividadReciente.map(a=>(
-              <div key={a.id} className="flex items-center gap-3 px-5 py-3">
-                <div className="w-8 h-8 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] flex items-center justify-center text-sm flex-shrink-0">{a.icono}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-[var(--c-text)] truncate">{a.titulo}</p>
-                  <p className="text-[10px] text-[var(--c-text3)] truncate">{a.detalle} · {tiempoRelativo(a.fecha)}</p>
-                </div>
-                {a.monto!=null&&a.monto!==0&&(
-                  <span className={`text-[11px] font-bold flex-shrink-0 ${a.monto>0?"text-emerald-400":"text-red-400"}`}>
-                    {a.monto>0?"+":""}{formatCLP(a.monto)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
 
       {/* Tip NELYX */}
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 flex items-start gap-3">
@@ -892,12 +801,13 @@ export function CalendarioClient({data}:{data:CalData}){
         </div>
       </div>
 
-      {/* Ghost que sigue al puntero/dedo mientras se arrastra una tarea */}
-      {dragVisual&&(
+      {/* Ghost que sigue al puntero/dedo mientras se arrastra una tarea (portal, mismo motivo que el modal) */}
+      {dragVisual&&createPortal(
         <div className="fixed z-[60] pointer-events-none px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500 text-white shadow-xl shadow-sky-500/30 max-w-[200px] truncate"
           style={{left:dragVisual.x,top:dragVisual.y,transform:"translate(-50%,-140%)"}}>
           {dragVisual.titulo}
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
