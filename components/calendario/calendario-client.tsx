@@ -231,7 +231,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
   }
 
   return(
-    <form onSubmit={handleSubmit} className="flex flex-col h-full">
+    <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
         <p className="text-sm font-bold text-[var(--c-text)]">{isEdit?"Editar evento":"+ Nueva tarea"}</p>
         <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-xs text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
