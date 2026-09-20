@@ -504,10 +504,17 @@ export function CalendarioClient({data}:{data:CalData}){
     calDays.push({key:dateKey(y,m,d),day:d,curr:false})
   }
 
+  // Con updater functions (no lee viewMes/viewAnio del closure) para poder
+  // llamarla también desde el listener nativo de scroll más abajo, que se
+  // engancha una sola vez y si dependiera del closure quedaría con el mes
+  // desactualizado después del primer cambio.
   function goMes(delta:number){
-    let m=viewMes+delta,y=viewAnio
-    if(m>12){m=1;y++}if(m<1){m=12;y--}
-    setViewMes(m);setViewAnio(y)
+    setViewMes(prevMes=>{
+      let m=prevMes+delta
+      if(m>12){m=1;setViewAnio(y=>y+1)}
+      if(m<1){m=12;setViewAnio(y=>y-1)}
+      return m
+    })
   }
 
   // Day panel data
@@ -574,6 +581,63 @@ export function CalendarioClient({data}:{data:CalData}){
     setHoverDayKey(null)
   }
   const dragHandlers={onDown:dragPointerDown,onMove:dragPointerMove,onUp:dragPointerUp}
+
+  // Cambiar de mes con scroll (estilo Asana), solo en vista Mes. Requiere un
+  // gesto "decidido" (no cualquier scroll leve) y una pausa entre cambios,
+  // para no dispararse por accidente mientras el usuario navega la página
+  // con el mouse sobre el calendario. Se engancha con addEventListener
+  // nativo (no onWheel de React) porque hace falta preventDefault real, y
+  // React trata wheel/touchmove como passive por defecto.
+  const calendarioRef=useRef<HTMLDivElement>(null)
+  const vistaRef=useRef(vista)
+  useEffect(()=>{vistaRef.current=vista},[vista])
+
+  useEffect(()=>{
+    const el=calendarioRef.current
+    if(!el)return
+    let ultimoCambio=0
+    let touchStartY:number|null=null
+
+    function intentarCambiarMes(delta:number){
+      const ahora=Date.now()
+      if(ahora-ultimoCambio<900)return
+      ultimoCambio=ahora
+      goMes(delta>0?1:-1)
+    }
+    function onWheel(e:WheelEvent){
+      if(vistaRef.current!=="mes")return
+      e.preventDefault()
+      if(Math.abs(e.deltaY)<45)return
+      intentarCambiarMes(e.deltaY)
+    }
+    function onTouchStart(e:TouchEvent){
+      if(vistaRef.current!=="mes")return
+      touchStartY=e.touches[0]?.clientY??null
+    }
+    function onTouchMove(e:TouchEvent){
+      if(vistaRef.current!=="mes"||touchStartY==null)return
+      e.preventDefault()
+    }
+    function onTouchEnd(e:TouchEvent){
+      if(vistaRef.current!=="mes"||touchStartY==null)return
+      const endY=e.changedTouches[0]?.clientY??touchStartY
+      const delta=touchStartY-endY
+      touchStartY=null
+      if(Math.abs(delta)<70)return
+      intentarCambiarMes(delta)
+    }
+
+    el.addEventListener("wheel",onWheel,{passive:false})
+    el.addEventListener("touchstart",onTouchStart,{passive:true})
+    el.addEventListener("touchmove",onTouchMove,{passive:false})
+    el.addEventListener("touchend",onTouchEnd,{passive:true})
+    return()=>{
+      el.removeEventListener("wheel",onWheel)
+      el.removeEventListener("touchstart",onTouchStart)
+      el.removeEventListener("touchmove",onTouchMove)
+      el.removeEventListener("touchend",onTouchEnd)
+    }
+  },[])
 
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
   const mesLabel=`${MESES[viewMes-1]} ${viewAnio}`
@@ -646,7 +710,7 @@ export function CalendarioClient({data}:{data:CalData}){
       <div className={`grid gap-4 ${isPanelOpen?"lg:grid-cols-[1fr_320px]":"grid-cols-1"}`}>
 
         {/* Calendar */}
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
+        <div ref={calendarioRef} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
           {vista==="mes"?(
             <>
               {/* Days header */}
