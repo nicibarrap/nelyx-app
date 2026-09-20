@@ -236,7 +236,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         <p className="text-sm font-bold text-[var(--c-text)]">{isEdit?"Editar evento":"+ Nueva tarea"}</p>
         <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-xs text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
       </div>
-      <div className="flex-1 px-5 py-4 space-y-3 overflow-y-auto">
+      <div className="flex-1 min-h-0 px-5 py-4 space-y-3 overflow-y-auto">
         {eraRecurrente&&(
           <p className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Guardar cambios solo actualizará esta ocurrencia — las demás no se ven afectadas.</p>
         )}
@@ -698,7 +698,7 @@ export function CalendarioClient({data}:{data:CalData}){
                 </div>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
               {/* Resumen del día */}
               <div className="space-y-1.5">
                 <p className="text-xs font-bold text-[var(--c-text2)]">Resumen del día</p>
