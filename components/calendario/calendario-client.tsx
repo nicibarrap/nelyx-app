@@ -1,6 +1,6 @@
 "use client"
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
-import { useState, useTransition, useMemo, useRef } from "react"
+import { useState, useTransition, useMemo, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario, moverEventoCalendario } from "@/app/actions/acciones"
@@ -236,7 +236,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         <p className="text-sm font-bold text-[var(--c-text)]">{isEdit?"Editar evento":"+ Nueva tarea"}</p>
         <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-xs text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
       </div>
-      <div className="flex-1 min-h-0 px-5 py-4 space-y-3 overflow-y-auto">
+      <div className="flex-1 min-h-0 px-5 py-4 space-y-3 overflow-y-auto overscroll-contain">
         {eraRecurrente&&(
           <p className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Guardar cambios solo actualizará esta ocurrencia — las demás no se ven afectadas.</p>
         )}
@@ -478,6 +478,16 @@ export function CalendarioClient({data}:{data:CalData}){
 
   const isPanelOpen=selectedDay&&!showForm&&!editingEv
   const isFormOpen=showForm||!!editingEv
+
+  // Con el modal abierto, el fondo (calendario detrás) no debe scrollear —
+  // como el overlay es semitransparente, sin esto se ve (y se siente) que
+  // "se mueve" el calendario cuando en realidad es la página detrás.
+  useEffect(()=>{
+    if(!isFormOpen)return
+    const prev=document.body.style.overflow
+    document.body.style.overflow="hidden"
+    return ()=>{document.body.style.overflow=prev}
+  },[isFormOpen])
 
   return(
     <div className="space-y-4 animate-fade-up">
