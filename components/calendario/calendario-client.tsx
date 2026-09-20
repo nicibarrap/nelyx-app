@@ -21,6 +21,13 @@ const TIPO_CONFIG: Record<string,{icon:string;bg:string;text:string;border:strin
   recordatorio:  {icon:"🔔",bg:"bg-amber-500/15", text:"text-amber-300",border:"border-amber-500/20", label:"Recordatorio",dot:"bg-amber-400"},
   evento:        {icon:"📅",bg:"bg-slate-500/15", text:"text-slate-300",border:"border-slate-500/20", label:"Evento",      dot:"bg-slate-400"},
 }
+// Mismos colores que TIPO_CONFIG.dot pero en hex — para la barra lateral de
+// la vista semana en mobile, que usa inline style (no puede tomar una clase
+// de Tailwind directamente para borderLeftColor).
+const TIPO_HEX: Record<string,string> = {
+  costo_fijo:"#fb923c", deuda:"#a78bfa", cuenta_cobrar:"#38bdf8",
+  tarea:"#60a5fa", recordatorio:"#fbbf24", evento:"#94a3b8",
+}
 
 const FRECUENCIA_OPTS: {value:string;label:string}[] = [
   {value:"ninguna",  label:"Sin repetición"},
@@ -159,22 +166,122 @@ function EventPill({ev,onToggle,drag}:{ev:CalEvent;onToggle?:(id:string,estado:s
       onPointerUp={arrastrable?drag!.onUp:undefined}
       onPointerCancel={arrastrable?drag!.onUp:undefined}
       style={pillStyle}
-      className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all duration-300 border ${baseClasses} ${arrastrable?"cursor-grab active:cursor-grabbing select-none":""}`}>
+      className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium truncate transition-all duration-300 border ${baseClasses} ${arrastrable?"cursor-grab active:cursor-grabbing select-none":""}`}>
       {toggleable&&(
         <button type="button" onPointerDown={e=>e.stopPropagation()}
           onClick={e=>{e.stopPropagation();onToggle!(ev.id,ev.estado??"")}}
           title={completada?"Marcar como pendiente":"Marcar como completada"}
           className={`flex-shrink-0 -m-0.5 p-0.5 rounded-full transition-all`}>
-          <span className={`block w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-all ${completada?"bg-emerald-500 border-emerald-500":"border-current"}`}>
-            {completada&&<span className="text-white text-[8px] leading-none">✓</span>}
+          <span className={`block w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${completada?"bg-emerald-500 border-emerald-500":"border-current"}`}>
+            {completada&&<span className="text-white text-[9px] leading-none">✓</span>}
           </span>
         </button>
       )}
-      <span className="flex-shrink-0 text-[9px]">{hexProyecto?"●":cfg.icon}</span>
-      {ev.serieId&&<span className="flex-shrink-0 text-[8px] opacity-70" title="Tarea recurrente">🔁</span>}
+      <span className="flex-shrink-0 text-[10px]">{hexProyecto?"●":cfg.icon}</span>
+      {ev.serieId&&<span className="flex-shrink-0 text-[9px] opacity-70" title="Tarea recurrente">🔁</span>}
       <span className={`truncate min-w-0 ${completada?"line-through":""}`}>{ev.titulo}</span>
       {ev.monto!=null&&ev.monto>0&&<span className="flex-shrink-0 font-bold ml-auto">{formatCLP(ev.monto)}</span>}
     </div>
+  )
+}
+
+// ─── Vista Semana en mobile: lista vertical de días con tareas en filas
+// horizontales (circulo para completar, hora, categoría, menú ⋮ con el
+// detalle) — la grilla de 7 columnas se mantiene desde sm: hacia arriba. ──
+
+function FilaTareaMobile({ev,onToggle,onDetalle}:{ev:CalEvent;onToggle:(id:string,estado:string)=>void;onDetalle:(ev:CalEvent)=>void}){
+  const toggleable=ev.tipo==="tarea"||ev.tipo==="recordatorio"
+  const completada=toggleable&&ev.estado==="completada"
+  const cfg=TIPO_CONFIG[ev.tipo]??TIPO_CONFIG.evento
+  const hex=ev.proyectoColor?COLORES_PROYECTO[ev.proyectoColor]:(TIPO_HEX[ev.tipo]??TIPO_HEX.evento)
+  return(
+    <div className="flex items-center gap-2.5 pl-3 pr-2 py-2.5 border-l-4 border-b border-[var(--c-border2)]" style={{borderLeftColor:hex}}>
+      {toggleable?(
+        <button onClick={()=>onToggle(ev.id,ev.estado??"")}
+          className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${completada?"bg-emerald-500 border-emerald-500":"border-[var(--c-border)]"}`}>
+          {completada&&<span className="text-white text-[10px] leading-none">✓</span>}
+        </button>
+      ):(
+        <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-sm">{cfg.icon}</span>
+      )}
+      {ev.hora&&<span className="flex-shrink-0 text-xs font-semibold text-sky-500 w-11">{ev.hora}</span>}
+      <span className={`flex-1 min-w-0 truncate text-sm ${completada?"line-through text-[var(--c-text4)]":"text-[var(--c-text)]"}`}>{ev.titulo}</span>
+      {ev.monto!=null&&ev.monto>0&&<span className="flex-shrink-0 text-xs font-bold text-[var(--c-text2)]">{formatCLP(ev.monto)}</span>}
+      {ev.proyectoNombre&&(
+        <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full max-w-[90px] truncate" style={{backgroundColor:`${hex}22`,color:hex}}>{ev.proyectoNombre}</span>
+      )}
+      <button onClick={()=>onDetalle(ev)} className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[var(--c-text3)] text-lg leading-none">⋮</button>
+    </div>
+  )
+}
+
+function DiaSemanaMobile({dayKey,dayE,isHoy,onToggle,onDetalle,onAdd}:{dayKey:string;dayE:CalEvent[];isHoy:boolean;onToggle:(id:string,estado:string)=>void;onDetalle:(ev:CalEvent)=>void;onAdd:()=>void}){
+  const d=Number(dayKey.split("-")[2])
+  return(
+    <div>
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--c-card2)]">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(dayKey)]}</span>
+          <span className={`text-base font-bold ${isHoy?"text-sky-400":"text-[var(--c-text)]"}`}>{d}</span>
+        </div>
+        <button onClick={onAdd}
+          className="w-7 h-7 rounded-full border border-[var(--c-border)] text-[var(--c-text3)] flex items-center justify-center text-sm hover:bg-[var(--c-hover)] transition-all"
+          title="Agregar tarea">+</button>
+      </div>
+      {dayE.length===0?(
+        <p className="px-4 py-3 text-xs text-[var(--c-text4)] border-b border-[var(--c-border2)]">Sin eventos</p>
+      ):dayE.map(ev=><FilaTareaMobile key={ev.id} ev={ev} onToggle={onToggle} onDetalle={onDetalle}/>)}
+    </div>
+  )
+}
+
+function DetalleSheet({ev,onClose,onEdit,onDelete,onToggle}:{ev:CalEvent;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;onToggle:()=>void}){
+  const completada=ev.estado==="completada"
+  const toggleable=ev.tipo==="tarea"||ev.tipo==="recordatorio"
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center sm:justify-center" onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        className="w-full sm:max-w-md max-h-[85vh] bg-[var(--c-card)] border border-[var(--c-border)] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col animate-scale-in">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[var(--c-text)] truncate">{ev.titulo}</p>
+            {ev.hora&&<p className="text-xs text-[var(--c-text3)]">{ev.hora}</p>}
+          </div>
+          <button onClick={onClose} className="w-6 h-6 rounded-full bg-[var(--c-card2)] text-xs text-[var(--c-text3)] flex items-center justify-center hover:bg-[var(--c-hover)] flex-shrink-0">✕</button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 space-y-3">
+          <p className="text-sm text-[var(--c-text2)]">{ev.descripcion||"Sin descripción."}</p>
+          {toggleable&&(
+            <div>
+              <p className="text-[10px] font-bold text-[var(--c-text4)] uppercase mb-1.5">Estado</p>
+              <button onClick={onToggle}
+                className={`flex items-center gap-2 h-9 px-3 rounded-lg text-xs font-semibold border transition-all ${completada?"bg-emerald-500/15 border-emerald-500/30 text-emerald-400":"border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-hover)]"}`}>
+                <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${completada?"bg-emerald-500 border-emerald-500":"border-current"}`}>
+                  {completada&&<span className="text-white text-[9px]">✓</span>}
+                </span>
+                {completada?"Completada":"Marcar como completada"}
+              </button>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            {ev.proyectoNombre&&(
+              <div><p className="text-[10px] text-[var(--c-text4)] uppercase font-bold mb-0.5">Categoría</p><p className="text-[var(--c-text)] font-semibold">{ev.proyectoNombre}</p></div>
+            )}
+            <div><p className="text-[10px] text-[var(--c-text4)] uppercase font-bold mb-0.5">Fecha</p><p className="text-[var(--c-text)] font-semibold">{Number(ev.fecha.split("-")[2])} {MESES[Number(ev.fecha.split("-")[1])-1].slice(0,3)}{ev.hora?` · ${ev.hora}`:""}</p></div>
+            {ev.prioridad&&<div><p className="text-[10px] text-[var(--c-text4)] uppercase font-bold mb-0.5">Prioridad</p><PBadge p={ev.prioridad}/></div>}
+            {ev.serieId&&<div><p className="text-[10px] text-[var(--c-text4)] uppercase font-bold mb-0.5">Repetición</p><p className="text-[var(--c-text)] font-semibold">🔁 Recurrente</p></div>}
+          </div>
+        </div>
+        {ev.isManual&&(
+          <div className="px-5 py-4 border-t border-[var(--c-border)] flex gap-2">
+            <button onClick={onDelete} className="h-9 px-4 text-xs font-semibold text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/10 transition-all">Eliminar</button>
+            <button onClick={onEdit} className="flex-1 h-9 text-xs font-bold bg-sky-500 hover:bg-sky-400 text-white rounded-lg transition-all">Editar</button>
+            <button onClick={onClose} className="flex-1 h-9 text-xs font-semibold border border-[var(--c-border)] text-[var(--c-text2)] rounded-lg hover:bg-[var(--c-card2)] transition-all">Cerrar</button>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -345,6 +452,7 @@ export function CalendarioClient({data}:{data:CalData}){
   const[filtro,setFiltro]=useState<Filtro>("todas")
   const[vista,setVista]=useState<Vista>("mes")
   const[weekStart,setWeekStart]=useState(()=>mondayOf(hoyKey))
+  const[detalleEv,setDetalleEv]=useState<CalEvent|null>(null)
   const[isPending,start]=useTransition()
 
   const events=useMemo(()=>buildEvents(data,viewAnio,viewMes),[data,viewAnio,viewMes])
@@ -483,11 +591,11 @@ export function CalendarioClient({data}:{data:CalData}){
   // como el overlay es semitransparente, sin esto se ve (y se siente) que
   // "se mueve" el calendario cuando en realidad es la página detrás.
   useEffect(()=>{
-    if(!isFormOpen)return
+    if(!isFormOpen&&!detalleEv)return
     const prev=document.body.style.overflow
     document.body.style.overflow="hidden"
     return ()=>{document.body.style.overflow=prev}
-  },[isFormOpen])
+  },[isFormOpen,detalleEv])
 
   return(
     <div className="space-y-4 animate-fade-up">
@@ -505,8 +613,8 @@ export function CalendarioClient({data}:{data:CalData}){
       </div>
 
       {/* Navigation */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl p-1 gap-0.5">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className="flex items-center bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl p-1 gap-0.5 w-fit">
           {(["mes","semana","agenda"] as Vista[]).map(v=>(
             <button key={v} onClick={()=>cambiarVista(v)}
               className={`px-4 h-8 rounded-lg text-xs font-semibold capitalize transition-all ${vista===v?"bg-sky-500 text-white":"text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
@@ -515,7 +623,7 @@ export function CalendarioClient({data}:{data:CalData}){
           ))}
         </div>
         {vista==="semana"?(
-          <div className="flex items-center gap-1.5 ml-auto">
+          <div className="flex items-center gap-1.5 justify-center">
             <button onClick={()=>goSemana(-1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">‹</button>
             <span className="text-sm font-semibold text-[var(--c-text)] min-w-[130px] text-center">{semanaLabel}</span>
             <button onClick={()=>goSemana(1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">›</button>
@@ -523,7 +631,7 @@ export function CalendarioClient({data}:{data:CalData}){
               className="h-8 px-3 text-xs border border-[var(--c-border)] bg-[var(--c-card)] rounded-xl hover:bg-[var(--c-hover)] transition-all">Hoy</button>
           </div>
         ):(
-          <div className="flex items-center gap-1.5 ml-auto">
+          <div className="flex items-center gap-1.5 justify-center">
             <button onClick={()=>goMes(-1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">‹</button>
             <span className="text-sm font-semibold text-[var(--c-text)] min-w-[130px] text-center">{mesLabel}</span>
             <button onClick={()=>goMes(1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">›</button>
@@ -531,6 +639,7 @@ export function CalendarioClient({data}:{data:CalData}){
               className="h-8 px-3 text-xs border border-[var(--c-border)] bg-[var(--c-card)] rounded-xl hover:bg-[var(--c-hover)] transition-all">Hoy</button>
           </div>
         )}
+        <div className="hidden sm:block"/>
       </div>
 
       {/* Main: calendar + panel */}
@@ -556,24 +665,24 @@ export function CalendarioClient({data}:{data:CalData}){
                   return(
                     <div key={idx} data-day-key={cell.key}
                       onClick={()=>{setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
-                      className={`group relative min-h-[80px] sm:min-h-[100px] p-1 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
+                      className={`group relative min-h-[80px] sm:min-h-[130px] lg:min-h-[150px] p-1 sm:p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
                         ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold
+                      <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+                        <div className={`w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold
                           ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
                           {cell.day}
                         </div>
                         <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(true);setEditingEv(null)}}
-                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
                           title="Agregar tarea">+</button>
                       </div>
                       {/* Desktop: event pills */}
-                      <div className="hidden sm:flex flex-col gap-0.5">
-                        {cellEvs.slice(0,3).map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
-                        {cellEvs.length>3&&(
+                      <div className="hidden sm:flex flex-col gap-1">
+                        {cellEvs.slice(0,4).map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
+                        {cellEvs.length>4&&(
                           <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
-                            className="text-[9px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
-                            +{cellEvs.length-3} más
+                            className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
+                            +{cellEvs.length-4} más
                           </button>
                         )}
                       </div>
@@ -600,35 +709,46 @@ export function CalendarioClient({data}:{data:CalData}){
             </>
           ):vista==="semana"?(
             /* Week view */
-            <div className="grid grid-cols-7">
-              {weekDays.map(key=>{
-                const isHoy=key===hoyKey
-                const isSel=key===selectedDay
-                const dayE=weekByDay[key]??[]
-                const[y,m,d]=key.split("-").map(Number)
-                const esDestinoDrag=!!dragVisual&&hoverDayKey===key
-                return(
-                  <div key={key} data-day-key={key}
-                    onClick={()=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
-                    className={`group relative min-h-[280px] p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)]
-                      ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(key)]}</span>
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
-                          ${isHoy?"bg-sky-500 text-white":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>{d}</div>
+            <>
+              {/* Mobile: lista vertical de días, tareas en filas horizontales */}
+              <div className="sm:hidden divide-y divide-[var(--c-border2)]">
+                {weekDays.map(key=>(
+                  <DiaSemanaMobile key={key} dayKey={key} dayE={weekByDay[key]??[]} isHoy={key===hoyKey}
+                    onToggle={handleToggleTarea} onDetalle={setDetalleEv}
+                    onAdd={()=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}/>
+                ))}
+              </div>
+              {/* Desktop/tablet: grilla de 7 columnas */}
+              <div className="hidden sm:grid grid-cols-7">
+                {weekDays.map(key=>{
+                  const isHoy=key===hoyKey
+                  const isSel=key===selectedDay
+                  const dayE=weekByDay[key]??[]
+                  const[y,m,d]=key.split("-").map(Number)
+                  const esDestinoDrag=!!dragVisual&&hoverDayKey===key
+                  return(
+                    <div key={key} data-day-key={key}
+                      onClick={()=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
+                      className={`group relative min-h-[300px] p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)]
+                        ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-[var(--c-text3)] uppercase">{DIAS[getDOW(key)]}</span>
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
+                            ${isHoy?"bg-sky-500 text-white":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>{d}</div>
+                        </div>
+                        <button onClick={e=>{e.stopPropagation();setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-6 h-6 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                          title="Agregar tarea">+</button>
                       </div>
-                      <button onClick={e=>{e.stopPropagation();setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
-                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
-                        title="Agregar tarea">+</button>
+                      <div className="flex flex-col gap-1">
+                        {dayE.map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      {dayE.map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            </>
           ):(
             /* Agenda view */
             <div className="divide-y divide-[var(--c-border2)]">
@@ -818,6 +938,21 @@ export function CalendarioClient({data}:{data:CalData}){
           {dragVisual.titulo}
         </div>,
         document.body
+      )}
+
+      {/* Ficha de detalle (⋮ de una tarea en la vista Semana mobile) */}
+      {detalleEv&&(
+        <DetalleSheet
+          ev={detalleEv}
+          onClose={()=>setDetalleEv(null)}
+          onToggle={()=>{handleToggleTarea(detalleEv.id,detalleEv.estado??"");setDetalleEv(null)}}
+          onEdit={()=>{setEditingEv(detalleEv);setDetalleEv(null)}}
+          onDelete={()=>{
+            if(!confirm("¿Eliminar este evento?"))return
+            start(async()=>{try{await eliminarEventoCalendario(detalleEv.id);toast.success("Eliminado")}catch{toast.error("Error")}})
+            setDetalleEv(null)
+          }}
+        />
       )}
 
     </div>
