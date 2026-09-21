@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
 import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO } from "@/lib/suscripciones"
 import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
@@ -84,6 +85,26 @@ export async function crearClienteNelyx(formData: FormData) {
   revalidatePath("/admin/clientes")
 }
 
+/**
+ * Reintenta ante conflicto de concurrencia (P2034) en una transacción
+ * Serializable — mismo patrón que `conTransaccionSerializable` en
+ * acciones.ts, duplicado acá porque es un helper interno de implementación,
+ * no algo que valga la pena acoplar entre módulos.
+ */
+async function conTransaccionSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  const INTENTOS_MAX = 5
+  for (let intento = 1; intento <= INTENTOS_MAX; intento++) {
+    try {
+      return await db.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    } catch (err: any) {
+      const esConflictoConcurrencia = err?.code === "P2034"
+      if (!esConflictoConcurrencia || intento === INTENTOS_MAX) throw err
+      await new Promise(r => setTimeout(r, 30 + Math.random() * 70))
+    }
+  }
+  throw new Error("No se pudo completar la operación por alta concurrencia, intenta de nuevo")
+}
+
 // ── Registrar pago de un cobro pendiente ───────────────────────────────
 export async function registrarPagoCobro(formData: FormData) {
   await getAdminSession()
@@ -91,31 +112,40 @@ export async function registrarPagoCobro(formData: FormData) {
   const metodoPago = (formData.get("metodoPago") as string) || "transferencia"
   const observacion = (formData.get("observacion") as string | null) || null
 
-  const cobro = await db.cobroNelyx.findUnique({ where: { id: cobroId }, include: { suscripcion: true } })
-  if (!cobro || cobro.estado === "pagado") return
+  const cobroBase = await db.cobroNelyx.findUnique({ where: { id: cobroId }, include: { suscripcion: true } })
+  if (!cobroBase) return
 
-  const pago = await db.pagoNelyx.create({
-    data: {
-      suscripcionId: cobro.suscripcionId,
-      monto: cobro.monto,
-      metodoPago,
-      observacion,
-      estado: "pagado",
-    },
-  })
+  const resultado = await conTransaccionSerializable(async (tx) => {
+    // Se relee "estado" DENTRO de la transacción: dos clics casi
+    // simultáneos en "Registrar pago" no deben poder crear dos PagoNelyx
+    // para el mismo cobro.
+    const cobro = await tx.cobroNelyx.findUnique({ where: { id: cobroId } })
+    if (!cobro || cobro.estado === "pagado") return null
 
-  const plan: PlanKey = esPlanValido(cobro.plan) ? cobro.plan : "mensual"
-  const fechaProximoCobro = sumarMeses(new Date(), PLANES[plan].meses)
+    const pago = await tx.pagoNelyx.create({
+      data: {
+        suscripcionId: cobro.suscripcionId,
+        monto: cobro.monto,
+        metodoPago,
+        observacion,
+        estado: "pagado",
+      },
+    })
 
-  await db.$transaction([
-    db.cobroNelyx.update({ where: { id: cobroId }, data: { estado: "pagado", pagoId: pago.id } }),
-    db.suscripcionNelyx.update({
+    const plan: PlanKey = esPlanValido(cobro.plan) ? cobro.plan : "mensual"
+    const fechaProximoCobro = sumarMeses(new Date(), PLANES[plan].meses)
+
+    await tx.cobroNelyx.update({ where: { id: cobroId }, data: { estado: "pagado", pagoId: pago.id } })
+    await tx.suscripcionNelyx.update({
       where: { id: cobro.suscripcionId },
       data: { estado: "al_dia", fechaProximoCobro },
-    }),
-    db.user.update({ where: { id: cobro.suscripcion.userId }, data: { activo: true } }),
-  ])
-  await cancelarNotificacionesPorPrefijo(`nelyx:${cobro.suscripcionId}:pagopendiente`)
+    })
+    await tx.user.update({ where: { id: cobroBase.suscripcion.userId }, data: { activo: true } })
+    return cobro.suscripcionId
+  })
+
+  if (!resultado) return
+  await cancelarNotificacionesPorPrefijo(`nelyx:${resultado}:pagopendiente`)
 
   revalidatePath("/admin/clientes")
 }
