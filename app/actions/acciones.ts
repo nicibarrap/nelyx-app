@@ -1463,19 +1463,37 @@ export async function generarOcurrenciasPendientes(userId: string) {
     const ultima = serie.eventos[0]
     if (!ultima || ultima.fecha >= colchon) continue
 
-    const desde = new Date(ultima.fecha); desde.setUTCDate(desde.getUTCDate() + 1)
-    const hasta = new Date(hoy); hasta.setUTCMonth(hasta.getUTCMonth() + HORIZONTE_SERIE_MESES)
-    if (desde > hasta) continue
-    const ocurrencias = calcularOcurrencias(serie, ultima.fecha, desde, hasta, TOPE_OCURRENCIAS_POR_TANDA)
-    if (ocurrencias.length === 0) continue
+    try {
+      await conTransaccionSerializable(async (tx) => {
+        // Se relee la última ocurrencia DENTRO de la transacción: si dos
+        // pestañas abren el Calendario casi al mismo tiempo, sin esto
+        // ambas podían calcular el mismo rango de fechas a partir del
+        // mismo "ultima" ya obsoleto y generar ocurrencias duplicadas
+        // para la misma serie.
+        const ultimaFresca = await tx.eventoCalendario.findFirst({
+          where: { serieId: serie.id }, orderBy: { fecha: "desc" }, select: { fecha: true },
+        })
+        if (!ultimaFresca || ultimaFresca.fecha >= colchon) return
 
-    await db.eventoCalendario.createMany({
-      data: ocurrencias.map(f => ({
-        titulo: ultima.titulo, descripcion: ultima.descripcion, tipo: ultima.tipo,
-        prioridad: ultima.prioridad, horaLimite: ultima.horaLimite, proyectoId: ultima.proyectoId,
-        estado: "pendiente", color: "azul", fecha: f, serieId: serie.id, userId,
-      })),
-    })
+        const desde = new Date(ultimaFresca.fecha); desde.setUTCDate(desde.getUTCDate() + 1)
+        const hasta = new Date(hoy); hasta.setUTCMonth(hasta.getUTCMonth() + HORIZONTE_SERIE_MESES)
+        if (desde > hasta) return
+        const ocurrencias = calcularOcurrencias(serie, ultimaFresca.fecha, desde, hasta, TOPE_OCURRENCIAS_POR_TANDA)
+        if (ocurrencias.length === 0) return
+
+        await tx.eventoCalendario.createMany({
+          data: ocurrencias.map(f => ({
+            titulo: ultima.titulo, descripcion: ultima.descripcion, tipo: ultima.tipo,
+            prioridad: ultima.prioridad, horaLimite: ultima.horaLimite, proyectoId: ultima.proyectoId,
+            estado: "pendiente", color: "azul", fecha: f, serieId: serie.id, userId,
+          })),
+        })
+      })
+    } catch (err) {
+      // No debe tumbar la carga del Calendario completo por una sola
+      // serie con problemas — se loguea y se sigue con el resto.
+      console.error("Error al generar ocurrencias de la serie recurrente:", serie.id, err)
+    }
   }
 }
 
