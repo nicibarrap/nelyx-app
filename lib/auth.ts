@@ -5,7 +5,13 @@ import bcrypt from "bcryptjs"
 import { db } from "./db"
 
 const VENTANA_IP_MINUTOS = 15
-const MAX_INTENTOS_POR_IP = 20 // a través de cualquier cantidad de emails distintos
+// A través de cualquier cantidad de emails distintos desde esa IP. Más
+// bajo que esto arriesga bloquear IPs compartidas legítimas (una tienda
+// con varios empleados en el mismo wifi, o varios clientes detrás de la
+// misma IP de un carrier móvil) por errores reales de contraseña, no un
+// ataque. El bloqueo por cuenta (5 intentos, más abajo) sigue siendo la
+// primera línea de defensa para una cuenta puntual.
+const MAX_INTENTOS_POR_IP = 10
 
 function ipDeRequest(request: Request | undefined): string {
   const xff = request?.headers.get("x-forwarded-for")
