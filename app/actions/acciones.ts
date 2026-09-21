@@ -16,6 +16,32 @@ async function getSession() {
 }
 
 /**
+ * Ejecuta `fn` dentro de una transacción Serializable, reintentando unas
+ * pocas veces si Postgres detecta un conflicto de concurrencia (error 40001
+ * / P2034 de Prisma) en vez de dejar pasar un resultado inconsistente.
+ *
+ * Se usa en cualquier "leer, calcular y escribir" sobre datos financieros
+ * que dos requests casi simultáneas podrían pisarse (ej. dos cajeros o dos
+ * pestañas registrando un pago sobre la misma cuenta/deuda a la vez): sin
+ * esto, ambas leen el mismo saldo/estado, cada una calcula su propio
+ * resultado a partir de ese valor ya obsoleto, y la segunda escritura
+ * termina pisando (perdiendo) el efecto de la primera.
+ */
+async function conTransaccionSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  const INTENTOS_MAX = 5
+  for (let intento = 1; intento <= INTENTOS_MAX; intento++) {
+    try {
+      return await db.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    } catch (err: any) {
+      const esConflictoConcurrencia = err?.code === "P2034"
+      if (!esConflictoConcurrencia || intento === INTENTOS_MAX) throw err
+      await new Promise(r => setTimeout(r, 30 + Math.random() * 70))
+    }
+  }
+  throw new Error("No se pudo completar la operación por alta concurrencia, intenta de nuevo")
+}
+
+/**
  * Crea una CuentaPorCobrar con numeración correlativa por usuario, a prueba
  * de condición de carrera. Antes, cada punto que creaba una cuenta calculaba
  * el siguiente número con `aggregate({_max: numero}) + 1` y luego `create`
@@ -23,30 +49,15 @@ async function getSession() {
  * dos ventas a crédito casi al mismo tiempo (ej. dos cajeros, o dos
  * pestañas), ambas podían leer el mismo máximo y terminar con el mismo
  * número, sin que nada lo impidiera.
- *
- * Con isolationLevel Serializable, Postgres aborta una de las dos
- * transacciones en conflicto (error 40001 / P2034 de Prisma) en vez de
- * dejar pasar el resultado inconsistente — acá se reintenta unas pocas
- * veces con una espera corta y aleatoria antes de rendirse.
  */
 async function crearCuentaPorCobrarConNumero(
   userId: string,
   data: Omit<Prisma.CuentaPorCobrarUncheckedCreateInput, "userId" | "numero">
 ) {
-  const INTENTOS_MAX = 5
-  for (let intento = 1; intento <= INTENTOS_MAX; intento++) {
-    try {
-      return await db.$transaction(async (tx) => {
-        const max = await tx.cuentaPorCobrar.aggregate({ where: { userId }, _max: { numero: true } })
-        return tx.cuentaPorCobrar.create({ data: { ...data, userId, numero: (max._max.numero ?? 0) + 1 } })
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
-    } catch (err: any) {
-      const esConflictoConcurrencia = err?.code === "P2034"
-      if (!esConflictoConcurrencia || intento === INTENTOS_MAX) throw err
-      await new Promise(r => setTimeout(r, 30 + Math.random() * 70))
-    }
-  }
-  throw new Error("No se pudo generar el número de cuenta por cobrar, intenta de nuevo")
+  return conTransaccionSerializable(async (tx) => {
+    const max = await tx.cuentaPorCobrar.aggregate({ where: { userId }, _max: { numero: true } })
+    return tx.cuentaPorCobrar.create({ data: { ...data, userId, numero: (max._max.numero ?? 0) + 1 } })
+  })
 }
 
 /** Validaciones de integridad para los campos numéricos de un producto.
@@ -735,32 +746,49 @@ function calcularValorCuota(monto: number, interesMensual: number, cuotas: numbe
 
 export async function registrarPago(deudaId: string, formData: FormData) {
   const session = await getSession()
-  const deuda = await db.deuda.findFirst({ where: { id: deudaId, userId: session.user.id } })
-  if (!deuda) throw new Error("Deuda no encontrada")
   const montoPago = parseFloat(formData.get("monto") as string)
   const fecha = new Date(formData.get("fecha") as string)
   const descripcion = (formData.get("descripcion") as string) || null
   if (isNaN(montoPago) || montoPago <= 0) throw new Error("Monto inválido")
-  const nuevoMontoPagado = Number(deuda.montoPagado) + montoPago
-  // El total real a cubrir es el que el usuario cargó desde su banco
-  // (montoTotal) si existe — comparar solo contra el capital original
-  // marcaría la deuda "pagada" antes de tiempo, mientras todavía se debe
-  // el interés/seguros reales.
-  const totalReal = Number(deuda.montoTotal ?? deuda.monto)
-  const pagadaCompleta = totalReal - nuevoMontoPagado <= 0
-  await db.pagoDeuda.create({ data: { deudaId, monto: montoPago, fecha, descripcion } })
-  await db.deuda.update({ where: { id: deudaId }, data: { montoPagado: nuevoMontoPagado, pagada: pagadaCompleta, cuotasPagadas: { increment: 1 } } })
-  await db.movimiento.create({
-    data: {
-      tipo: "GASTO",
-      monto: montoPago,
-      fecha,
-      descripcion: `Pago deuda: ${deuda.acreedor}${descripcion ? ` - ${descripcion}` : ""}`,
-      categoria: "Otros",
-      userId: session.user.id,
-      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
-    }
-  })
+
+  let pagadaCompleta = false
+  try {
+    pagadaCompleta = await conTransaccionSerializable(async (tx) => {
+      // Se relee DENTRO de la transacción — si dos pagos a la misma deuda
+      // llegan casi al mismo tiempo (ej. dos pestañas), Serializable hace
+      // que uno de los dos se reintente sobre el saldo ya actualizado, en
+      // vez de que ambos calculen montoPagado a partir del mismo valor
+      // viejo y uno termine pisando (perdiendo) el pago del otro.
+      const deuda = await tx.deuda.findFirst({ where: { id: deudaId, userId: session.user.id } })
+      if (!deuda) throw new Error("Deuda no encontrada")
+      const nuevoMontoPagado = Number(deuda.montoPagado) + montoPago
+      // El total real a cubrir es el que el usuario cargó desde su banco
+      // (montoTotal) si existe — comparar solo contra el capital original
+      // marcaría la deuda "pagada" antes de tiempo, mientras todavía se debe
+      // el interés/seguros reales.
+      const totalReal = Number(deuda.montoTotal ?? deuda.monto)
+      const completa = totalReal - nuevoMontoPagado <= 0
+      await tx.pagoDeuda.create({ data: { deudaId, monto: montoPago, fecha, descripcion } })
+      await tx.deuda.update({ where: { id: deudaId }, data: { montoPagado: nuevoMontoPagado, pagada: completa, cuotasPagadas: { increment: 1 } } })
+      await tx.movimiento.create({
+        data: {
+          tipo: "GASTO",
+          monto: montoPago,
+          fecha,
+          descripcion: `Pago deuda: ${deuda.acreedor}${descripcion ? ` - ${descripcion}` : ""}`,
+          categoria: "Otros",
+          userId: session.user.id,
+          realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        }
+      })
+      return completa
+    })
+  } catch (err: any) {
+    if (!err?.code) throw err
+    console.error("Error en registrarPago:", err)
+    throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
+  }
+
   revalidatePath("/dashboard/deudas")
   revalidatePath("/dashboard/resumen")
   if (pagadaCompleta) await cancelarNotificacionesPorPrefijo(`deuda:${deudaId}:`)
@@ -944,21 +972,37 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
   const fechaStr = formData.get("fecha") as string
   const fecha = fechaStr ? new Date(fechaStr) : new Date()
 
-  const movimiento = await db.movimiento.create({
-    data: {
-      tipo: "COSTO_FIJO",
-      monto,
-      fecha,
-      descripcion: generacion.costoFijo.nombre,
-      categoria: generacion.costoFijo.categoria || "Costos fijos",
-      userId: session.user.id,
-      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
-    }
-  })
-  await db.generacionCosto.update({
-    where: { id: generacionId },
-    data: { pagado: true, fechaPagado: new Date(), movimientoId: movimiento.id }
-  })
+  try {
+    await conTransaccionSerializable(async (tx) => {
+      // Se vuelve a comprobar "pagado" DENTRO de la transacción: si dos
+      // clics en "Marcar pagado" llegan casi al mismo tiempo, Serializable
+      // hace que solo uno gane la carrera — el otro reintenta, ve
+      // pagado=true ya escrito, y aborta en vez de crear un segundo
+      // Movimiento duplicado para el mismo costo del mismo mes.
+      const fresca = await tx.generacionCosto.findUnique({ where: { id: generacionId } })
+      if (!fresca || fresca.pagado) throw new Error("Este costo ya fue marcado como pagado")
+
+      const movimiento = await tx.movimiento.create({
+        data: {
+          tipo: "COSTO_FIJO",
+          monto,
+          fecha,
+          descripcion: generacion.costoFijo.nombre,
+          categoria: generacion.costoFijo.categoria || "Costos fijos",
+          userId: session.user.id,
+          realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        }
+      })
+      await tx.generacionCosto.update({
+        where: { id: generacionId },
+        data: { pagado: true, fechaPagado: new Date(), movimientoId: movimiento.id }
+      })
+    })
+  } catch (err: any) {
+    if (!err?.code) throw err
+    console.error("Error en marcarCostoPagado:", err)
+    throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
+  }
 
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
@@ -1186,56 +1230,65 @@ export async function crearCuentaPorCobrar(formData: FormData) {
 
 export async function registrarPagoCuenta(cuentaId: string, formData: FormData) {
   const session = await getSession()
-  const cuenta = await db.cuentaPorCobrar.findFirst({ where: { id: cuentaId, userId: session.user.id } })
-  if (!cuenta) throw new Error("Cuenta no encontrada")
-
   const monto = parseFloat(formData.get("monto") as string)
   if (!monto || monto <= 0) throw new Error("Monto inválido")
-  if (monto > Number(cuenta.saldoPendiente)) throw new Error("Monto mayor al saldo pendiente")
-
   const fecha = new Date(formData.get("fecha") as string)
-  const nuevoSaldo = Math.max(0, Number(cuenta.saldoPendiente) - monto)
-  const nuevoEstado = nuevoSaldo === 0 ? "pagada" : "parcial"
+  const descripcionInput = (formData.get("descripcion") as string)?.trim() || null
+  const metodoPago = (formData.get("metodoPago") as string) || "Efectivo"
 
-  await db.pagoCuenta.create({
-    data: {
-      cuentaId,
-      monto,
-      fecha,
-      descripcion: (formData.get("descripcion") as string)?.trim() || null,
-      metodoPago: (formData.get("metodoPago") as string) || "Efectivo",
-    }
-  })
+  let resultado: { nuevoEstado: string; clienteId: string | null }
+  try {
+    resultado = await conTransaccionSerializable(async (tx) => {
+      // Se relee DENTRO de la transacción por el mismo motivo que en
+      // registrarPago: dos cobros casi simultáneos sobre la misma cuenta
+      // (ej. dos cajeros) no deben poder calcular el nuevo saldo a partir
+      // del mismo saldoPendiente ya obsoleto.
+      const cuenta = await tx.cuentaPorCobrar.findFirst({ where: { id: cuentaId, userId: session.user.id } })
+      if (!cuenta) throw new Error("Cuenta no encontrada")
+      if (monto > Number(cuenta.saldoPendiente)) throw new Error("Monto mayor al saldo pendiente")
 
-  await db.cuentaPorCobrar.update({
-    where: { id: cuentaId },
-    data: { saldoPendiente: nuevoSaldo, estado: nuevoEstado }
-  })
+      const nuevoSaldo = Math.max(0, Number(cuenta.saldoPendiente) - monto)
+      const nuevoEstado = nuevoSaldo === 0 ? "pagada" : "parcial"
 
-  // Register as INGRESO_EXTRA movement
-  await db.movimiento.create({
-    data: {
-      tipo: "INGRESO_EXTRA",
-      monto,
-      fecha,
-      descripcion: `Cobro Venta #${cuenta.numero} - ${(formData.get("descripcion") as string)?.trim() || "Cobro recibido"}`,
-      categoria: "Cobros",
-      clienteId: cuenta.clienteId,
-      userId: session.user.id,
-      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
-    }
-  })
+      await tx.pagoCuenta.create({
+        data: { cuentaId, monto, fecha, descripcion: descripcionInput, metodoPago }
+      })
+      await tx.cuentaPorCobrar.update({
+        where: { id: cuentaId },
+        data: { saldoPendiente: nuevoSaldo, estado: nuevoEstado }
+      })
+      await tx.movimiento.create({
+        data: {
+          tipo: "INGRESO_EXTRA",
+          monto,
+          fecha,
+          descripcion: `Cobro Venta #${cuenta.numero} - ${descripcionInput || "Cobro recibido"}`,
+          categoria: "Cobros",
+          clienteId: cuenta.clienteId,
+          userId: session.user.id,
+          realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        }
+      })
+      return { nuevoEstado, clienteId: cuenta.clienteId }
+    })
+  } catch (err: any) {
+    if (!err?.code) throw err
+    console.error("Error en registrarPagoCuenta:", err)
+    throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
+  }
 
   revalidatePath("/dashboard/cuentas-cobrar")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/clientes")
 
   await cancelarNotificacionesPorPrefijo(`cxc:${cuentaId}:`)
-  const clienteDatos = await db.cliente.findUnique({ where: { id: cuenta.clienteId }, select: { nombre: true } })
+  const clienteDatos = resultado.clienteId
+    ? await db.cliente.findUnique({ where: { id: resultado.clienteId }, select: { nombre: true } })
+    : null
   await notificar({
     userId: session.user.id, categoria: "cuentasCobrar", prioridad: "baja",
     titulo: `Pago recibido de ${clienteDatos?.nombre ?? "cliente"}`,
-    mensaje: `$${monto.toLocaleString("es-CL")} · ${nuevoEstado === "pagada" ? "Cuenta saldada" : "Pago parcial"}`,
+    mensaje: `$${monto.toLocaleString("es-CL")} · ${resultado.nuevoEstado === "pagada" ? "Cuenta saldada" : "Pago parcial"}`,
     accionUrl: "/dashboard/cuentas-cobrar",
     claveUnica: `cxc:${cuentaId}:pago:${Date.now()}`,
   })

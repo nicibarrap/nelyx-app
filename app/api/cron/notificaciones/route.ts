@@ -43,6 +43,19 @@ async function procesarEnLotes<T>(items: T[], tamanoLote: number, fn: (item: T) 
 export async function GET(req: Request) {
   if (!autorizado(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
+  // Todo el cuerpo va envuelto: si una sola consulta falla (ej. corte breve
+  // de conexión a la DB), antes la corrida completa moría sin dejar rastro
+  // más que el 500 genérico de Next — ahora queda logueado y se responde
+  // con una forma predecible, para poder monitorear el cron desde afuera.
+  try {
+    return await ejecutarCron()
+  } catch (err) {
+    console.error("Error en cron de notificaciones:", err)
+    return NextResponse.json({ ok: false, error: "Error interno al procesar notificaciones" }, { status: 500 })
+  }
+}
+
+async function ejecutarCron() {
   const ahora = hoyEnChile()
   const hoyStr = `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,"0")}-${String(ahora.getDate()).padStart(2,"0")}`
   let enviadas = 0
