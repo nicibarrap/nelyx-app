@@ -803,7 +803,7 @@ export function CalendarioClient({data}:{data:CalData}){
               {/* Carrusel con scroll-snap: mes anterior/actual/siguiente */}
               <div className="flex gap-1.5 sm:gap-2 px-1.5 sm:px-2 pb-1.5 sm:pb-2">
                 <div ref={mesScrollRef} onScroll={handleScrollMes}
-                  className="flex-1 min-w-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  className="flex-1 min-w-0 h-[480px] sm:h-[780px] lg:h-[900px] overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                   style={{scrollSnapType:"y mandatory"}}>
                   <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
                     <MesGrid calDays={calDaysPrev} byDay={byDayPrev} hoyKey={hoyKey} selectedDay={selectedDay}
