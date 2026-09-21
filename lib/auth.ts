@@ -18,8 +18,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!credentials?.email || !credentials?.password) return null
         const user = await db.user.findUnique({ where: { email: credentials.email as string } })
         if (!user || !user.activo) return null
+
+        // Mismo bloqueo temporal que ya existía para el PIN de empleados,
+        // reutilizando los mismos campos (nunca se usan para el dueño, que
+        // no tiene PIN) — sin esto, el login principal por contraseña no
+        // tenía ningún freno ante fuerza bruta / credential stuffing, y
+        // cada intento ya cuesta CPU real por el bcrypt.compare.
+        if (user.bloqueadoHastaPin && user.bloqueadoHastaPin > new Date()) {
+          return null
+        }
+
         const valida = await bcrypt.compare(credentials.password as string, user.password)
-        if (!valida) return null
+        if (!valida) {
+          const intentos = user.intentosFallidosPin + 1
+          const seBloquea = intentos >= 5
+          await db.user.update({
+            where: { id: user.id },
+            data: {
+              intentosFallidosPin: seBloquea ? 0 : intentos,
+              bloqueadoHastaPin: seBloquea ? new Date(Date.now() + 15 * 60 * 1000) : null,
+            },
+          }).catch(() => {})
+          return null
+        }
+        if (user.intentosFallidosPin > 0 || user.bloqueadoHastaPin) {
+          await db.user.update({ where: { id: user.id }, data: { intentosFallidosPin: 0, bloqueadoHastaPin: null } }).catch(() => {})
+        }
+
         return { id: user.id, email: user.email, name: user.nombre, role: user.rol, negocio: user.negocio }
       },
     }),

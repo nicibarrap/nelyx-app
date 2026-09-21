@@ -1,6 +1,7 @@
 "use server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { notificar, cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unidades"
@@ -12,6 +13,40 @@ async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
   return session
+}
+
+/**
+ * Crea una CuentaPorCobrar con numeración correlativa por usuario, a prueba
+ * de condición de carrera. Antes, cada punto que creaba una cuenta calculaba
+ * el siguiente número con `aggregate({_max: numero}) + 1` y luego `create`
+ * como dos pasos separados y sin transacción — si el mismo usuario generaba
+ * dos ventas a crédito casi al mismo tiempo (ej. dos cajeros, o dos
+ * pestañas), ambas podían leer el mismo máximo y terminar con el mismo
+ * número, sin que nada lo impidiera.
+ *
+ * Con isolationLevel Serializable, Postgres aborta una de las dos
+ * transacciones en conflicto (error 40001 / P2034 de Prisma) en vez de
+ * dejar pasar el resultado inconsistente — acá se reintenta unas pocas
+ * veces con una espera corta y aleatoria antes de rendirse.
+ */
+async function crearCuentaPorCobrarConNumero(
+  userId: string,
+  data: Omit<Prisma.CuentaPorCobrarUncheckedCreateInput, "userId" | "numero">
+) {
+  const INTENTOS_MAX = 5
+  for (let intento = 1; intento <= INTENTOS_MAX; intento++) {
+    try {
+      return await db.$transaction(async (tx) => {
+        const max = await tx.cuentaPorCobrar.aggregate({ where: { userId }, _max: { numero: true } })
+        return tx.cuentaPorCobrar.create({ data: { ...data, userId, numero: (max._max.numero ?? 0) + 1 } })
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    } catch (err: any) {
+      const esConflictoConcurrencia = err?.code === "P2034"
+      if (!esConflictoConcurrencia || intento === INTENTOS_MAX) throw err
+      await new Promise(r => setTimeout(r, 30 + Math.random() * 70))
+    }
+  }
+  throw new Error("No se pudo generar el número de cuenta por cobrar, intenta de nuevo")
 }
 
 /** Validaciones de integridad para los campos numéricos de un producto.
@@ -105,19 +140,14 @@ export async function ingresarMovimiento(formData: FormData) {
   const clienteIdIngr = formData.get("clienteId") as string
   if (tipo === "VENTA" && tipoPagoIngr === "credito" && clienteIdIngr) {
     const fechaVenceIngr = formData.get("fechaVence") as string
-    const maxNumCta = await db.cuentaPorCobrar.aggregate({ where: { userId: session.user.id }, _max: { numero: true } })
-    await db.cuentaPorCobrar.create({
-      data: {
-        numero: (maxNumCta._max.numero ?? 0) + 1,
-        clienteId: clienteIdIngr,
-        montoOriginal: monto,
-        saldoPendiente: monto,
-        fechaVenta: new Date(fecha),
-        fechaVence: fechaVenceIngr ? new Date(fechaVenceIngr) : null,
-        estado: "pendiente",
-        costoAsociado: costoUnitarioSnap != null ? costoUnitarioSnap * cantidad : null,
-        userId: session.user.id,
-      }
+    await crearCuentaPorCobrarConNumero(session.user.id, {
+      clienteId: clienteIdIngr,
+      montoOriginal: monto,
+      saldoPendiente: monto,
+      fechaVenta: new Date(fecha),
+      fechaVence: fechaVenceIngr ? new Date(fechaVenceIngr) : null,
+      estado: "pendiente",
+      costoAsociado: costoUnitarioSnap != null ? costoUnitarioSnap * cantidad : null,
     })
     revalidatePath("/dashboard/cuentas-cobrar")
   }
@@ -256,19 +286,14 @@ export async function registrarVenta(items: Array<{
     const totalBruto = items.reduce((a, i) => a + i.precio * i.cantidad, 0)
     const descuentoVal = Math.min(descuento ?? 0, totalBruto)
     const totalNeto = totalBruto - descuentoVal
-    const maxNAgg = await db.cuentaPorCobrar.aggregate({ where: { userId: session.user.id }, _max: { numero: true } })
-    await db.cuentaPorCobrar.create({
-      data: {
-        numero: (maxNAgg._max.numero ?? 0) + 1,
-        clienteId,
-        montoOriginal: totalNeto,
-        saldoPendiente: totalNeto,
-        fechaVenta: new Date(fecha),
-        fechaVence: fechaVence ? new Date(fechaVence) : null,
-        estado: "pendiente",
-        costoAsociado: costoTotalCarrito > 0 ? costoTotalCarrito : null,
-        userId: session.user.id,
-      }
+    await crearCuentaPorCobrarConNumero(session.user.id, {
+      clienteId,
+      montoOriginal: totalNeto,
+      saldoPendiente: totalNeto,
+      fechaVenta: new Date(fecha),
+      fechaVence: fechaVence ? new Date(fechaVence) : null,
+      estado: "pendiente",
+      costoAsociado: costoTotalCarrito > 0 ? costoTotalCarrito : null,
     })
     revalidatePath("/dashboard/cuentas-cobrar")
   }
@@ -1106,26 +1131,15 @@ export async function crearCuentaPorCobrar(formData: FormData) {
     }
   }
 
-  // Use max(numero) + 1 for concurrency safety
-  const maxNumero = await db.cuentaPorCobrar.aggregate({
-    where: { userId: session.user.id },
-    _max: { numero: true }
-  })
-  const siguienteNumero = (maxNumero._max.numero ?? 0) + 1
-
-  const nuevaCuenta = await db.cuentaPorCobrar.create({
-    data: {
-      numero: siguienteNumero,
-      clienteId,
-      movimientoId: (formData.get("movimientoId") as string) || null,
-      montoOriginal: monto,
-      saldoPendiente: monto,
-      fechaVenta: new Date(formData.get("fechaVenta") as string),
-      fechaVence: formData.get("fechaVence") ? new Date(formData.get("fechaVence") as string) : null,
-      estado: "pendiente",
-      observaciones: (formData.get("observaciones") as string)?.trim() || null,
-      userId: session.user.id,
-    }
+  const nuevaCuenta = await crearCuentaPorCobrarConNumero(session.user.id, {
+    clienteId,
+    movimientoId: (formData.get("movimientoId") as string) || null,
+    montoOriginal: monto,
+    saldoPendiente: monto,
+    fechaVenta: new Date(formData.get("fechaVenta") as string),
+    fechaVence: formData.get("fechaVence") ? new Date(formData.get("fechaVence") as string) : null,
+    estado: "pendiente",
+    observaciones: (formData.get("observaciones") as string)?.trim() || null,
   })
   await notificar({
     userId: session.user.id, categoria: "cuentasCobrar", prioridad: "baja",
