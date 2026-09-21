@@ -16,6 +16,11 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
     where: { userId: session!.user.id },
     include: { pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] } },
     orderBy: [{ pagada: "asc" }, { fechaVence: "asc" }, { createdAt: "desc" }],
+    // Tope defensivo — mismo motivo que en /dashboard/clientes: incluye
+    // deudas ya pagadas (historial completo), que con los años podría
+    // crecer mucho. Las pendientes (lo relevante del día a día) siempre
+    // ordenan primero, así que nunca quedan afuera del tope.
+    take: 3000,
   })
 
   const hoy = new Date()

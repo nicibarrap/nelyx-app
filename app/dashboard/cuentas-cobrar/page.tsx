@@ -30,7 +30,11 @@ export default async function CuentasCobrarPage() {
         cliente: { select: { id: true, nombre: true, apellido: true, empresa: true, telefono: true, email: true } },
         pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      // Tope defensivo — mismo motivo que en /dashboard/clientes: con años
+      // de historial de ventas a crédito esta lista (con sus pagos
+      // embebidos) podría crecer mucho. Se queda con las más recientes.
+      take: 3000,
     }),
     db.cliente.findMany({
       where: { userId: session!.user.id, activo: true },

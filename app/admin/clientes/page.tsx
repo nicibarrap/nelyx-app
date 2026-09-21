@@ -29,6 +29,10 @@ export default async function ClientesAdminPage() {
       },
       _count: { select: { movimientos: true, productos: true, clientes: true } },
     },
+    // Tope defensivo: a medida que crezca la base de negocios suscritos a
+    // Nelyx, esto evita que este panel se vuelva lento o pesadísimo — se
+    // queda con los más recientes, que son los que más se revisan acá.
+    take: 2000,
   })
 
   const ventasCounts = await db.movimiento.groupBy({

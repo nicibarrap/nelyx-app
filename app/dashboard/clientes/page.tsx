@@ -23,7 +23,13 @@ export default async function ClientesPage() {
           select: { id: true, numero: true, montoOriginal: true, saldoPendiente: true, estado: true, fechaVenta: true, fechaVence: true, observaciones: true }
         }
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: { updatedAt: "desc" },
+      // Tope defensivo: sin esto, un negocio con una cartera muy grande de
+      // clientes (cada uno con hasta 100 movimientos + notas + cuentas por
+      // cobrar embebidas) podría generar una consulta lenta y una página
+      // pesadísima. Al ordenar por actividad más reciente, en la práctica
+      // nunca se nota — solo protege el caso extremo.
+      take: 3000,
     }),
     db.movimiento.findMany({
       where: { userId: session!.user.id, tipo: "VENTA", fecha: { gte: inicioMes }, clienteId: { not: null } },

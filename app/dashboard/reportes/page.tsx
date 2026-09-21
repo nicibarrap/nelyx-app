@@ -59,7 +59,10 @@ export default async function ReportesPage() {
       _sum: { monto: true },
       _count: true,
     }),
-    db.cliente.findMany({ where: { userId }, select: { id: true, nombre: true, apellido: true, createdAt: true } }),
+    // Tope defensivo — ver mismo comentario en /dashboard/clientes: protege
+    // el caso extremo de una cartera de clientes muy grande, sin afectar a
+    // ningún negocio real hoy.
+    db.cliente.findMany({ where: { userId }, select: { id: true, nombre: true, apellido: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 3000 }),
   ])
 
   // ── Base: mes actual ──
