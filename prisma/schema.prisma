@@ -442,6 +442,20 @@ model PushSubscription {
   @@index([userId])
 }
 
+// ── Rate limiting de login por IP ────────────────────────────────────────
+// User.bloqueadoHastaPin ya frena la fuerza bruta contra UNA cuenta
+// conocida — esto frena además un ataque que prueba muchos emails
+// distintos desde la misma IP (credential stuffing / spray), que no
+// dispararía ningún bloqueo de cuenta individual. Solo guarda intentos
+// FALLIDOS, así que en operación normal casi no crece.
+model IntentoLoginFallido {
+  id        String   @id @default(cuid())
+  ip        String
+  createdAt DateTime @default(now())
+  @@index([ip, createdAt])
+  @@index([createdAt])
+}
+
 model NotificacionConfig {
   id             String  @id @default(cuid())
   userId         String  @unique

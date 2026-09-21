@@ -4,6 +4,39 @@ import { PrismaAdapter } from "@auth/prisma-adapter"
 import bcrypt from "bcryptjs"
 import { db } from "./db"
 
+const VENTANA_IP_MINUTOS = 15
+const MAX_INTENTOS_POR_IP = 20 // a través de cualquier cantidad de emails distintos
+
+function ipDeRequest(request: Request | undefined): string {
+  const xff = request?.headers.get("x-forwarded-for")
+  if (xff) return xff.split(",")[0].trim()
+  return request?.headers.get("x-real-ip")?.trim() || "desconocida"
+}
+
+/**
+ * Frena un ataque de credential stuffing / spray: alguien probando muchos
+ * emails distintos desde la misma IP nunca dispararía el bloqueo por
+ * cuenta (User.bloqueadoHastaPin, que es por email). Complementario, no
+ * un reemplazo de ese bloqueo.
+ */
+async function demasiadosIntentosDesdeIp(ip: string): Promise<boolean> {
+  if (ip === "desconocida") return false // sin IP no hay contra qué contar — no bloquear a ciegas
+  const desde = new Date(Date.now() - VENTANA_IP_MINUTOS * 60 * 1000)
+  const intentos = await db.intentoLoginFallido.count({ where: { ip, createdAt: { gte: desde } } }).catch(() => 0)
+  return intentos >= MAX_INTENTOS_POR_IP
+}
+
+async function registrarIntentoFallido(ip: string) {
+  if (ip === "desconocida") return
+  await db.intentoLoginFallido.create({ data: { ip } }).catch(() => {})
+  // Limpieza oportunista y barata (no en cada intento) para que la tabla
+  // no crezca indefinidamente — no hace falta un cron aparte para esto.
+  if (Math.random() < 0.02) {
+    const haceUnDia = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    await db.intentoLoginFallido.deleteMany({ where: { createdAt: { lt: haceUnDia } } }).catch(() => {})
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
@@ -14,10 +47,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Contraseña", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) return null
+        const ip = ipDeRequest(request)
+
+        // Frena un ataque que prueba muchos emails distintos desde la
+        // misma IP, antes de gastar ni una consulta o un bcrypt.compare —
+        // el bloqueo por cuenta (más abajo) no alcanza a cubrir este caso.
+        if (await demasiadosIntentosDesdeIp(ip)) return null
+
         const user = await db.user.findUnique({ where: { email: credentials.email as string } })
-        if (!user || !user.activo) return null
+        if (!user || !user.activo) {
+          await registrarIntentoFallido(ip)
+          return null
+        }
 
         // Mismo bloqueo temporal que ya existía para el PIN de empleados,
         // reutilizando los mismos campos (nunca se usan para el dueño, que
@@ -39,6 +82,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               bloqueadoHastaPin: seBloquea ? new Date(Date.now() + 15 * 60 * 1000) : null,
             },
           }).catch(() => {})
+          await registrarIntentoFallido(ip)
           return null
         }
         if (user.intentosFallidosPin > 0 || user.bloqueadoHastaPin) {
