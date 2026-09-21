@@ -69,8 +69,18 @@ export async function sincronizarSuscripciones() {
     },
   })
 
-  for (const sus of suscripciones as SusRow[]) {
-    await aplicarTransicion(sus, hoy)
+  // Cada suscripción es independiente de las demás — se procesan en
+  // paralelo (tandas acotadas) y se aísla el fallo de una sola en vez de
+  // dejar que una fila con datos raros tumbe la carga de TODO el panel
+  // admin (antes, un error sin capturar en cualquiera de ellas cortaba el
+  // for y ninguna suscripción se terminaba de sincronizar esa vez).
+  const TAMANO_LOTE = 10
+  for (let i = 0; i < suscripciones.length; i += TAMANO_LOTE) {
+    const lote = suscripciones.slice(i, i + TAMANO_LOTE) as SusRow[]
+    const resultados = await Promise.allSettled(lote.map(sus => aplicarTransicion(sus, hoy)))
+    for (const r of resultados) {
+      if (r.status === "rejected") console.error("Error al sincronizar suscripción:", r.reason)
+    }
   }
 }
 
