@@ -110,6 +110,23 @@ export async function verificarBloqueoPin(empleadoId: string) {
 }
 
 /**
+ * Mismo propósito que verificarBloqueoPin, pero para el login principal
+ * (dueño, por email+contraseña) — se consulta después de un intento
+ * fallido para poder mostrar "espera X minutos" en vez del genérico
+ * "email o contraseña incorrectos" cuando en realidad la cuenta está
+ * bloqueada por varios intentos fallidos seguidos.
+ */
+export async function verificarBloqueoLogin(email: string) {
+  const emailNormalizado = email.trim().toLowerCase()
+  const user = await db.user.findUnique({ where: { email: emailNormalizado }, select: { bloqueadoHastaPin: true } })
+  if (!user?.bloqueadoHastaPin || user.bloqueadoHastaPin <= new Date()) {
+    return { bloqueado: false, minutosRestantes: 0 }
+  }
+  const minutosRestantes = Math.ceil((user.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
+  return { bloqueado: true, minutosRestantes }
+}
+
+/**
  * Basado en la sesión activa (no en una cookie de dispositivo) — se usa
  * tanto justo después de que el dueño inicia sesión, como desde "Cambiar
  * de usuario" dentro del dashboard. Requiere sesión válida — a diferencia

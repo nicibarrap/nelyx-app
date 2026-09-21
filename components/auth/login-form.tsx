@@ -3,7 +3,7 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { obtenerEmpleadosDeMiCuenta } from "@/app/actions/empleados-acciones"
+import { obtenerEmpleadosDeMiCuenta, verificarBloqueoLogin } from "@/app/actions/empleados-acciones"
 import { SelectorIdentidad } from "@/components/auth/selector-identidad"
 
 export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = {}) {
@@ -16,12 +16,24 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
     e.preventDefault()
     setLoading(true)
     const form = new FormData(e.currentTarget)
+    const email = form.get("email") as string
     const result = await signIn("credentials", {
-      email: form.get("email"),
+      email,
       password: form.get("password"),
       redirect: false,
     })
-    if (result?.error) { setLoading(false); toast.error("Email o contraseña incorrectos"); return }
+    if (result?.error) {
+      setLoading(false)
+      // NextAuth nunca deja pasar el motivo exacto del rechazo hasta acá,
+      // así que se consulta aparte si la cuenta quedó bloqueada por varios
+      // intentos fallidos seguidos, para no mostrar el mismo mensaje
+      // genérico en ambos casos.
+      const { bloqueado, minutosRestantes } = await verificarBloqueoLogin(email)
+      toast.error(bloqueado
+        ? `Demasiados intentos fallidos. Intenta de nuevo en ${minutosRestantes} minuto${minutosRestantes === 1 ? "" : "s"}.`
+        : "Email o contraseña incorrectos")
+      return
+    }
 
     // Si esta cuenta tiene empleados, se pregunta "¿quién eres ahora?"
     // antes de entrar — siempre, cada vez, nunca se salta la contraseña
