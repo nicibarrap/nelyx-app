@@ -65,6 +65,22 @@ function validarNumerosProducto(campos: { precio: number | null; costo: number |
 
 // ── MOVIMIENTOS ──────────────────────────────────────────────
 export async function ingresarMovimiento(formData: FormData) {
+  try {
+    await ingresarMovimientoInterno(formData)
+  } catch (err: any) {
+    // Los errores propios (validaciones: "Stock insuficiente...", "Datos
+    // inválidos", etc.) son un new Error() plano, sin .code — esos se
+    // muestran tal cual porque ya son claros. Cualquier error con .code
+    // viene de Prisma/la DB (constraint, timeout, conexión) — antes esto
+    // llegaba crudo al usuario; ahora se registra en el servidor para
+    // poder diagnosticarlo y se muestra un mensaje claro en su lugar.
+    if (!err?.code) throw err
+    console.error("Error en ingresarMovimiento:", err)
+    throw new Error("No se pudo registrar el movimiento. Intenta de nuevo — si el problema persiste, contáctanos.")
+  }
+}
+
+async function ingresarMovimientoInterno(formData: FormData) {
   const session = await getSession()
   const tipo = formData.get("tipo") as string
   const monto = parseFloat(formData.get("monto") as string)
@@ -183,6 +199,22 @@ export async function eliminarMovimiento(id: string) {
 }
 
 export async function registrarVenta(items: Array<{
+  productoId?: string | null
+  nombre: string
+  precio: number
+  cantidad: number
+  cantidadInterna?: number | null
+}>, fecha: string, descripcion?: string, clienteId?: string | null, descuento?: number, tipoPago?: string, fechaVence?: string, metodoPago?: string) {
+  try {
+    await registrarVentaInterno(items, fecha, descripcion, clienteId, descuento, tipoPago, fechaVence, metodoPago)
+  } catch (err: any) {
+    if (!err?.code) throw err
+    console.error("Error en registrarVenta:", err)
+    throw new Error("No se pudo registrar la venta. Intenta de nuevo — si el problema persiste, contáctanos.")
+  }
+}
+
+async function registrarVentaInterno(items: Array<{
   productoId?: string | null
   nombre: string
   precio: number
