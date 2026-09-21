@@ -60,7 +60,7 @@ type CalEvent = {
   serieId?:string|null
 }
 type Filtro = "todas"|"costos"|"deudas"|"cobros"|"tareas"|"recordatorios"
-type Vista = "mes"|"semana"|"agenda"
+type Vista = "mes"|"semana"
 
 type CalData = {
   hoy: string
@@ -77,6 +77,24 @@ function diasEnMes(y:number,m:number){return new Date(y,m,0).getDate()}
 function dateKey(y:number,m:number,d:number){return `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`}
 function isoToKey(iso:string){const d=new Date(iso);return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`}
 function getDOW(key:string){const[y,m,d]=key.split("-").map(Number);return(new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7}
+
+function buildCalDays(anio:number,mes:number):{key:string;day:number;curr:boolean}[]{
+  const firstDOW=(new Date(Date.UTC(anio,mes-1,1)).getUTCDay()+6)%7
+  const totalD=diasEnMes(anio,mes)
+  const prevTotalD=diasEnMes(anio,mes===1?12:mes-1)
+  const calDays:{key:string;day:number;curr:boolean}[]=[]
+  for(let i=firstDOW-1;i>=0;i--){
+    const d=prevTotalD-i,m=mes===1?12:mes-1,y=mes===1?anio-1:anio
+    calDays.push({key:dateKey(y,m,d),day:d,curr:false})
+  }
+  for(let d=1;d<=totalD;d++)calDays.push({key:dateKey(anio,mes,d),day:d,curr:true})
+  const rem=42-calDays.length
+  for(let d=1;d<=rem;d++){
+    const m=mes===12?1:mes+1,y=mes===12?anio+1:anio
+    calDays.push({key:dateKey(y,m,d),day:d,curr:false})
+  }
+  return calDays
+}
 
 function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
   const evs:CalEvent[]=[]
@@ -142,6 +160,77 @@ type DragHandlers = {
   onDown:(e:React.PointerEvent<HTMLDivElement>,ev:CalEvent)=>void
   onMove:(e:React.PointerEvent<HTMLDivElement>)=>void
   onUp:(e:React.PointerEvent<HTMLDivElement>)=>void
+}
+
+// Un panel de la vista Mes (grilla de 6x7 días). Se usa 3 veces dentro del
+// carrusel con scroll-snap (mes anterior/actual/siguiente) — ver más abajo
+// en CalendarioClient. Altura fija (h-full de su contenedor, ya viene dado
+// por el panel) y grid-rows-6 en vez de min-h por celda: así las 3 copias
+// miden siempre lo mismo, que es lo que necesita el snap para alinear bien.
+function MesGrid({calDays,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelectDay,onAddDay,onToggle,dragHandlers}:{
+  calDays:{key:string;day:number;curr:boolean}[]
+  byDay:Record<string,CalEvent[]>
+  hoyKey:string
+  selectedDay:string|null
+  dragVisual:{titulo:string;x:number;y:number}|null
+  hoverDayKey:string|null
+  onSelectDay:(key:string)=>void
+  onAddDay:(key:string)=>void
+  onToggle:(id:string,estado:string)=>void
+  dragHandlers:DragHandlers
+}){
+  return(
+    <div className="grid grid-cols-7 grid-rows-6 h-full">
+      {calDays.map((cell,idx)=>{
+        const isHoy=cell.key===hoyKey
+        const isSel=cell.key===selectedDay
+        const cellEvs=byDay[cell.key]??[]
+        const esDestinoDrag=!!dragVisual&&hoverDayKey===cell.key
+        return(
+          <div key={idx} data-day-key={cell.key}
+            onClick={()=>onSelectDay(cell.key)}
+            className={`group relative p-1 sm:p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer overflow-hidden transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
+              ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
+            <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+              <div className={`w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold
+                ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
+                {cell.day}
+              </div>
+              <button onClick={e=>{e.stopPropagation();onAddDay(cell.key)}}
+                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                title="Agregar tarea">+</button>
+            </div>
+            {/* Desktop: event pills */}
+            <div className="hidden sm:flex flex-col gap-1">
+              {cellEvs.slice(0,4).map(ev=><EventPill key={ev.id} ev={ev} onToggle={onToggle} drag={dragHandlers}/>)}
+              {cellEvs.length>4&&(
+                <button onClick={e=>{e.stopPropagation();onSelectDay(cell.key)}}
+                  className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
+                  +{cellEvs.length-4} más
+                </button>
+              )}
+            </div>
+            {/* Mobile: grouped dots with count */}
+            {cell.curr&&cellEvs.length>0&&(
+              <div className="flex sm:hidden gap-0.5 flex-wrap mt-0.5">
+                {Object.entries(
+                  cellEvs.reduce((acc,ev)=>{acc[ev.tipo]=(acc[ev.tipo]??0)+1;return acc},{} as Record<string,number>)
+                ).slice(0,3).map(([tipo,cnt])=>{
+                  const cfg=TIPO_CONFIG[tipo]??TIPO_CONFIG.evento
+                  return(
+                    <span key={tipo} className={`inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded font-bold ${cfg.bg} ${cfg.text}`}>
+                      <span>{cfg.icon}</span>
+                      {cnt>1&&<span>{cnt}</span>}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function EventPill({ev,onToggle,drag}:{ev:CalEvent;onToggle?:(id:string,estado:string)=>void;drag?:DragHandlers}){
@@ -488,21 +577,27 @@ export function CalendarioClient({data}:{data:CalData}){
     setVista(v)
   }
 
-  // Calendar grid
-  const firstDOW=(new Date(Date.UTC(viewAnio,viewMes-1,1)).getUTCDay()+6)%7
-  const totalD=diasEnMes(viewAnio,viewMes)
-  const prevTotalD=diasEnMes(viewAnio,viewMes===1?12:viewMes-1)
-  const calDays:{key:string;day:number;curr:boolean}[]=[]
-  for(let i=firstDOW-1;i>=0;i--){
-    const d=prevTotalD-i,m=viewMes===1?12:viewMes-1,y=viewMes===1?viewAnio-1:viewAnio
-    calDays.push({key:dateKey(y,m,d),day:d,curr:false})
-  }
-  for(let d=1;d<=totalD;d++)calDays.push({key:dateKey(viewAnio,viewMes,d),day:d,curr:true})
-  const rem=42-calDays.length
-  for(let d=1;d<=rem;d++){
-    const m=viewMes===12?1:viewMes+1,y=viewMes===12?viewAnio+1:viewAnio
-    calDays.push({key:dateKey(y,m,d),day:d,curr:false})
-  }
+  // Calendar grid — mes actual y los dos vecinos (anterior/siguiente), para
+  // el carrusel con scroll-snap de abajo. calDays/byDay del mes actual se
+  // mantienen como estaban (el panel del día los sigue usando tal cual).
+  const calDays=useMemo(()=>buildCalDays(viewAnio,viewMes),[viewAnio,viewMes])
+
+  const mesAnterior=useMemo(()=>{let m=viewMes-1,y=viewAnio;if(m<1){m=12;y--}return{anio:y,mes:m}},[viewAnio,viewMes])
+  const mesSiguiente=useMemo(()=>{let m=viewMes+1,y=viewAnio;if(m>12){m=1;y++}return{anio:y,mes:m}},[viewAnio,viewMes])
+  const calDaysPrev=useMemo(()=>buildCalDays(mesAnterior.anio,mesAnterior.mes),[mesAnterior])
+  const calDaysNext=useMemo(()=>buildCalDays(mesSiguiente.anio,mesSiguiente.mes),[mesSiguiente])
+  const byDayPrev=useMemo(()=>{
+    const evs=aplicarFiltro(buildEvents(data,mesAnterior.anio,mesAnterior.mes),filtro)
+    const m:Record<string,CalEvent[]>={}
+    for(const ev of evs){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
+    return m
+  },[data,mesAnterior,filtro])
+  const byDayNext=useMemo(()=>{
+    const evs=aplicarFiltro(buildEvents(data,mesSiguiente.anio,mesSiguiente.mes),filtro)
+    const m:Record<string,CalEvent[]>={}
+    for(const ev of evs){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
+    return m
+  },[data,mesSiguiente,filtro])
 
   // Con updater functions (no lee viewMes/viewAnio del closure) para poder
   // llamarla también desde el listener nativo de scroll más abajo, que se
@@ -582,62 +677,43 @@ export function CalendarioClient({data}:{data:CalData}){
   }
   const dragHandlers={onDown:dragPointerDown,onMove:dragPointerMove,onUp:dragPointerUp}
 
-  // Cambiar de mes con scroll (estilo Asana), solo en vista Mes. Requiere un
-  // gesto "decidido" (no cualquier scroll leve) y una pausa entre cambios,
-  // para no dispararse por accidente mientras el usuario navega la página
-  // con el mouse sobre el calendario. Se engancha con addEventListener
-  // nativo (no onWheel de React) porque hace falta preventDefault real, y
-  // React trata wheel/touchmove como passive por defecto.
-  const calendarioRef=useRef<HTMLDivElement>(null)
-  const vistaRef=useRef(vista)
-  useEffect(()=>{vistaRef.current=vista},[vista])
+  // Cambiar de mes con scroll, estilo feed (Instagram/TikTok): scroll-snap
+  // nativo del navegador sobre 3 paneles apilados (mes anterior/actual/
+  // siguiente), en vez de interceptar wheel/touch a mano — así se hereda el
+  // momentum/inercia real del navegador en vez de un salto seco. El truco
+  // "infinito": siempre se parte centrado en el panel del medio; cuando el
+  // usuario termina de scrollear y queda asentado en el panel de arriba o
+  // abajo, se cambia viewMes/viewAnio a ese mes y se vuelve a centrar el
+  // scroll al instante (sin animación), lista para el próximo gesto.
+  const mesScrollRef=useRef<HTMLDivElement>(null)
+  const resettingScrollRef=useRef(false)
+  const idleTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null)
+  const[scrollProgress,setScrollProgress]=useState(0.5)
 
   useEffect(()=>{
-    const el=calendarioRef.current
+    const el=mesScrollRef.current
     if(!el)return
-    let ultimoCambio=0
-    let touchStartY:number|null=null
+    resettingScrollRef.current=true
+    el.scrollTop=el.clientHeight
+    setScrollProgress(0.5)
+    const t=setTimeout(()=>{resettingScrollRef.current=false},50)
+    return()=>clearTimeout(t)
+  },[viewAnio,viewMes,vista])
 
-    function intentarCambiarMes(delta:number){
-      const ahora=Date.now()
-      if(ahora-ultimoCambio<900)return
-      ultimoCambio=ahora
-      goMes(delta>0?1:-1)
-    }
-    function onWheel(e:WheelEvent){
-      if(vistaRef.current!=="mes")return
-      e.preventDefault()
-      if(Math.abs(e.deltaY)<45)return
-      intentarCambiarMes(e.deltaY)
-    }
-    function onTouchStart(e:TouchEvent){
-      if(vistaRef.current!=="mes")return
-      touchStartY=e.touches[0]?.clientY??null
-    }
-    function onTouchMove(e:TouchEvent){
-      if(vistaRef.current!=="mes"||touchStartY==null)return
-      e.preventDefault()
-    }
-    function onTouchEnd(e:TouchEvent){
-      if(vistaRef.current!=="mes"||touchStartY==null)return
-      const endY=e.changedTouches[0]?.clientY??touchStartY
-      const delta=touchStartY-endY
-      touchStartY=null
-      if(Math.abs(delta)<70)return
-      intentarCambiarMes(delta)
-    }
-
-    el.addEventListener("wheel",onWheel,{passive:false})
-    el.addEventListener("touchstart",onTouchStart,{passive:true})
-    el.addEventListener("touchmove",onTouchMove,{passive:false})
-    el.addEventListener("touchend",onTouchEnd,{passive:true})
-    return()=>{
-      el.removeEventListener("wheel",onWheel)
-      el.removeEventListener("touchstart",onTouchStart)
-      el.removeEventListener("touchmove",onTouchMove)
-      el.removeEventListener("touchend",onTouchEnd)
-    }
-  },[])
+  function handleScrollMes(){
+    const el=mesScrollRef.current
+    if(!el||resettingScrollRef.current)return
+    const progreso=el.scrollTop/(2*el.clientHeight)
+    setScrollProgress(Math.max(0,Math.min(1,progreso)))
+    if(idleTimerRef.current)clearTimeout(idleTimerRef.current)
+    idleTimerRef.current=setTimeout(()=>{
+      const elNow=mesScrollRef.current
+      if(!elNow||elNow.clientHeight===0)return
+      const idx=Math.round(elNow.scrollTop/elNow.clientHeight)
+      if(idx===1)return
+      goMes(idx<1?-1:1)
+    },130)
+  }
 
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
   const mesLabel=`${MESES[viewMes-1]} ${viewAnio}`
@@ -679,10 +755,10 @@ export function CalendarioClient({data}:{data:CalData}){
       {/* Navigation */}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-2">
         <div className="flex items-center bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl p-1 gap-0.5 w-fit">
-          {(["mes","semana","agenda"] as Vista[]).map(v=>(
+          {(["mes","semana"] as Vista[]).map(v=>(
             <button key={v} onClick={()=>cambiarVista(v)}
               className={`px-4 h-8 rounded-lg text-xs font-semibold capitalize transition-all ${vista===v?"bg-sky-500 text-white":"text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
-              {v==="mes"?"Mes":v==="semana"?"Semana":"Agenda"}
+              {v==="mes"?"Mes":"Semana"}
             </button>
           ))}
         </div>
@@ -710,68 +786,55 @@ export function CalendarioClient({data}:{data:CalData}){
       <div className={`grid gap-4 ${isPanelOpen?"lg:grid-cols-[1fr_320px]":"grid-cols-1"}`}>
 
         {/* Calendar */}
-        <div ref={calendarioRef} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
           {vista==="mes"?(
             <>
-              {/* Days header */}
-              <div className="grid grid-cols-7 border-b border-[var(--c-border)]">
-                {DIAS.map(d=>(
-                  <div key={d} className="py-2.5 text-center text-[10px] font-bold text-[var(--c-text3)] uppercase tracking-wider">{d}</div>
-                ))}
+              {/* Days header (fijo — no forma parte del carrusel). Mismo ancho
+                  que la grilla de abajo: un espaciador oculto reserva el
+                  espacio del indicador para que las 7 columnas calcen. */}
+              <div className="flex gap-1.5 sm:gap-2 px-1.5 sm:px-2 pt-1.5 sm:pt-2">
+                <div className="grid grid-cols-7 border-b border-[var(--c-border)] flex-1 min-w-0">
+                  {DIAS.map(d=>(
+                    <div key={d} className="py-2.5 text-center text-[10px] font-bold text-[var(--c-text3)] uppercase tracking-wider">{d}</div>
+                  ))}
+                </div>
+                <div className="hidden sm:block w-1.5 shrink-0"/>
               </div>
-              {/* Grid */}
-              <div className="grid grid-cols-7">
-                {calDays.map((cell,idx)=>{
-                  const isHoy=cell.key===hoyKey
-                  const isSel=cell.key===selectedDay
-                  const cellEvs=byDay[cell.key]??[]
-                  const esDestinoDrag=!!dragVisual&&hoverDayKey===cell.key
-                  return(
-                    <div key={idx} data-day-key={cell.key}
-                      onClick={()=>{setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
-                      className={`group relative min-h-[80px] sm:min-h-[130px] lg:min-h-[150px] p-1 sm:p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
-                        ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
-                      <div className="flex items-center justify-between mb-1 sm:mb-1.5">
-                        <div className={`w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold
-                          ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
-                          {cell.day}
-                        </div>
-                        <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(true);setEditingEv(null)}}
-                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
-                          title="Agregar tarea">+</button>
-                      </div>
-                      {/* Desktop: event pills */}
-                      <div className="hidden sm:flex flex-col gap-1">
-                        {cellEvs.slice(0,4).map(ev=><EventPill key={ev.id} ev={ev} onToggle={handleToggleTarea} drag={dragHandlers}/>)}
-                        {cellEvs.length>4&&(
-                          <button onClick={e=>{e.stopPropagation();setSelectedDay(cell.key);setShowForm(false);setEditingEv(null)}}
-                            className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
-                            +{cellEvs.length-4} más
-                          </button>
-                        )}
-                      </div>
-                      {/* Mobile: grouped dots with count */}
-                      {cell.curr&&cellEvs.length>0&&(
-                        <div className="flex sm:hidden gap-0.5 flex-wrap mt-0.5">
-                          {Object.entries(
-                            cellEvs.reduce((acc,ev)=>{acc[ev.tipo]=(acc[ev.tipo]??0)+1;return acc},{} as Record<string,number>)
-                          ).slice(0,3).map(([tipo,cnt])=>{
-                            const cfg=TIPO_CONFIG[tipo]??TIPO_CONFIG.evento
-                            return(
-                              <span key={tipo} className={`inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded font-bold ${cfg.bg} ${cfg.text}`}>
-                                <span>{cfg.icon}</span>
-                                {cnt>1&&<span>{cnt}</span>}
-                              </span>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+              {/* Carrusel con scroll-snap: mes anterior/actual/siguiente */}
+              <div className="flex gap-1.5 sm:gap-2 px-1.5 sm:px-2 pb-1.5 sm:pb-2">
+                <div ref={mesScrollRef} onScroll={handleScrollMes}
+                  className="flex-1 min-w-0 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  style={{scrollSnapType:"y mandatory"}}>
+                  <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
+                    <MesGrid calDays={calDaysPrev} byDay={byDayPrev} hoyKey={hoyKey} selectedDay={selectedDay}
+                      dragVisual={dragVisual} hoverDayKey={hoverDayKey}
+                      onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
+                      onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
+                      onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
+                  </div>
+                  <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
+                    <MesGrid calDays={calDays} byDay={byDay} hoyKey={hoyKey} selectedDay={selectedDay}
+                      dragVisual={dragVisual} hoverDayKey={hoverDayKey}
+                      onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
+                      onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
+                      onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
+                  </div>
+                  <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
+                    <MesGrid calDays={calDaysNext} byDay={byDayNext} hoyKey={hoyKey} selectedDay={selectedDay}
+                      dragVisual={dragVisual} hoverDayKey={hoverDayKey}
+                      onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
+                      onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
+                      onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
+                  </div>
+                </div>
+                {/* Indicador de scroll: línea vertical a la derecha del calendario */}
+                <div className="hidden sm:block w-1.5 shrink-0 rounded-full bg-[var(--c-border)] relative h-[780px] lg:h-[900px]">
+                  <div className="absolute left-0 w-full rounded-full bg-sky-500 transition-[top] duration-100 ease-out"
+                    style={{height:"33.33%",top:`${scrollProgress*66.666}%`}}/>
+                </div>
               </div>
             </>
-          ):vista==="semana"?(
+          ):(
             /* Week view */
             <>
               {/* Mobile: lista vertical de días, tareas en filas horizontales */}
@@ -813,31 +876,6 @@ export function CalendarioClient({data}:{data:CalData}){
                 })}
               </div>
             </>
-          ):(
-            /* Agenda view */
-            <div className="divide-y divide-[var(--c-border2)]">
-              {Array.from({length:totalD},(_,i)=>{
-                const key=dateKey(viewAnio,viewMes,i+1)
-                const dayE=byDay[key]??[]
-                if(dayE.length===0)return null
-                const[,m,d]=key.split("-")
-                return(
-                  <div key={key} className="p-4">
-                    <p className="text-xs font-bold text-sky-400 mb-2">{DIAS[getDOW(key)]} {Number(d)} de {MESES[Number(m)-1]}</p>
-                    <div className="space-y-1.5">
-                      {dayE.map(ev=>(
-                        <div key={ev.id} className="flex items-center gap-3">
-                          <span className="text-sm">{TIPO_CONFIG[ev.tipo]?.icon??""}</span>
-                          <span className="text-sm text-[var(--c-text)] flex-1 truncate">{ev.titulo}</span>
-                          {ev.monto!=null&&ev.monto>0&&<span className="text-xs font-bold text-[var(--c-text2)]">{formatCLP(ev.monto)}</span>}
-                          {ev.hora&&<span className="text-xs text-[var(--c-text3)]">{ev.hora}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
           )}
 
           {/* Legend/filters */}
