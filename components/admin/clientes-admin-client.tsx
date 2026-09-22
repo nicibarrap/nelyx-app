@@ -174,13 +174,41 @@ function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void
 function FormNuevoCliente({ onClose }: { onClose: () => void }) {
   const [pending, start] = useTransition()
   const [plan, setPlan] = useState("prueba_gratuita")
+  const [passwordGenerada, setPasswordGenerada] = useState<string | null>(null)
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    start(async () => { await crearClienteNelyx(fd); toast.success("✅ Cliente creado"); onClose() })
+    start(async () => {
+      const resultado = await crearClienteNelyx(fd)
+      toast.success("✅ Cliente creado")
+      // Si no se escribió una contraseña, se generó una al azar — hay que
+      // mostrarla ahora porque es la única vez que se puede ver (queda
+      // guardada solo como hash). Si se cierra el modal sin copiarla, se
+      // pierde y hay que restablecerla a mano después.
+      if (resultado?.passwordGenerada) setPasswordGenerada(resultado.passwordGenerada)
+      else onClose()
+    })
   }
   const inp = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
   const sel = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
+
+  if (passwordGenerada) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(0,0,0,0.7)"}}>
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6 w-full max-w-md space-y-3">
+          <p className="text-sm font-bold text-[var(--c-text)]">✅ Cliente creado — copia su contraseña</p>
+          <p className="text-xs text-[var(--c-text3)]">No escribiste una contraseña, así que se generó una al azar. Cópiala y pásasela al cliente ahora — no se puede volver a ver después.</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 h-10 flex items-center px-3 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl text-sm text-[var(--c-text)] select-all">{passwordGenerada}</code>
+            <button type="button" onClick={() => { navigator.clipboard.writeText(passwordGenerada).catch(() => {}); toast.success("Copiada") }}
+              className="h-10 px-3 text-xs bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl">Copiar</button>
+          </div>
+          <button type="button" onClick={onClose} className="w-full h-10 text-sm border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Listo</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(0,0,0,0.7)"}}>
       <form onSubmit={submit} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
@@ -191,7 +219,7 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
         <input name="nombre" required placeholder="Nombre completo *" className={inp} />
         <input name="email" type="email" required placeholder="Email *" className={inp} />
         <input name="negocio" placeholder="Nombre del negocio" className={inp} />
-        <input name="password" type="password" placeholder="Contraseña (def: nelyx2024)" className={inp} />
+        <input name="password" type="password" placeholder="Contraseña (vacío = generar una al azar)" className={inp} />
         <div>
           <label className="text-[10px] text-[var(--c-text4)]">Plan</label>
           <select name="plan" value={plan} onChange={e => setPlan(e.target.value)} className={sel}>

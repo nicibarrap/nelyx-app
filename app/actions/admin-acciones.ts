@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
+import { randomBytes } from "crypto"
 import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO } from "@/lib/suscripciones"
 import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 
@@ -13,16 +14,27 @@ async function getAdminSession() {
   return session
 }
 
+/** 12 caracteres al azar — suficiente para una clave temporal de un solo uso. */
+function generarPasswordAleatoria(): string {
+  return randomBytes(9).toString("base64url").slice(0, 12)
+}
+
 // ── Crear cliente ──────────────────────────────────────────────────────
 export async function crearClienteNelyx(formData: FormData) {
   await getAdminSession()
   const nombre = formData.get("nombre") as string
   const email = formData.get("email") as string
-  const password = formData.get("password") as string
+  const passwordIngresada = (formData.get("password") as string)?.trim()
   const negocio = formData.get("negocio") as string | null
   const planSeleccionado = (formData.get("plan") as string) || "prueba_gratuita"
 
-  const hashed = await bcrypt.hash(password || "nelyx2024", 10)
+  // Antes, dejar la contraseña en blanco le ponía la MISMA clave fija
+  // ("nelyx2024") a cualquier cuenta creada así — cualquiera que conociera
+  // ese valor podía entrar a cualquier cliente que no la hubiera cambiado
+  // todavía. Ahora se genera una aleatoria distinta por cuenta, y se
+  // devuelve una sola vez para que el dueño se la pase al cliente.
+  const passwordGenerada = passwordIngresada ? null : generarPasswordAleatoria()
+  const hashed = await bcrypt.hash(passwordIngresada || passwordGenerada!, 10)
   const fechaInicio = new Date()
 
   const user = await db.user.create({
@@ -83,6 +95,7 @@ export async function crearClienteNelyx(formData: FormData) {
   }
 
   revalidatePath("/admin/clientes")
+  return { passwordGenerada }
 }
 
 /**
