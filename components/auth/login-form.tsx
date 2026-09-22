@@ -25,13 +25,17 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
     if (result?.error) {
       setLoading(false)
       // NextAuth nunca deja pasar el motivo exacto del rechazo hasta acá,
-      // así que se consulta aparte si la cuenta quedó bloqueada por varios
-      // intentos fallidos seguidos, para no mostrar el mismo mensaje
-      // genérico en ambos casos.
-      const { bloqueado, minutosRestantes } = await verificarBloqueoLogin(email)
-      toast.error(bloqueado
-        ? `Demasiados intentos fallidos. Intenta de nuevo en ${minutosRestantes} minuto${minutosRestantes === 1 ? "" : "s"}.`
-        : "Email o contraseña incorrectos")
+      // así que se consulta aparte para distinguir los tres casos que
+      // hoy dan el mismo rechazo genérico: cuenta bloqueada, correo que
+      // no existe, o contraseña incorrecta.
+      const { registrado, bloqueado, minutosRestantes } = await verificarBloqueoLogin(email)
+      if (bloqueado) {
+        toast.error(`Demasiados intentos fallidos. Intenta de nuevo en ${minutosRestantes} minuto${minutosRestantes === 1 ? "" : "s"}.`)
+      } else if (!registrado) {
+        toast.error("No existe ninguna cuenta con ese correo")
+      } else {
+        toast.error("Contraseña incorrecta")
+      }
       return
     }
 

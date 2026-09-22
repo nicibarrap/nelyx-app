@@ -112,18 +112,23 @@ export async function verificarBloqueoPin(empleadoId: string) {
 /**
  * Mismo propósito que verificarBloqueoPin, pero para el login principal
  * (dueño, por email+contraseña) — se consulta después de un intento
- * fallido para poder mostrar "espera X minutos" en vez del genérico
- * "email o contraseña incorrectos" cuando en realidad la cuenta está
- * bloqueada por varios intentos fallidos seguidos.
+ * fallido para distinguir entre tres casos que hoy dan el mismo mensaje
+ * genérico "email o contraseña incorrectos": la cuenta está bloqueada por
+ * varios intentos fallidos, el correo no existe, o simplemente la
+ * contraseña está mal.
  */
 export async function verificarBloqueoLogin(email: string) {
-  const emailNormalizado = email.trim().toLowerCase()
-  const user = await db.user.findUnique({ where: { email: emailNormalizado }, select: { bloqueadoHastaPin: true } })
-  if (!user?.bloqueadoHastaPin || user.bloqueadoHastaPin <= new Date()) {
-    return { bloqueado: false, minutosRestantes: 0 }
+  const emailEscrito = email.trim()
+  // Mismo criterio "insensitive" que usa el login real (lib/auth.ts) —
+  // si acá se buscara distinto, este chequeo podría decir "no existe"
+  // para una cuenta que el login sí reconoce, o viceversa.
+  const user = await db.user.findFirst({ where: { email: { equals: emailEscrito, mode: "insensitive" } }, select: { bloqueadoHastaPin: true } })
+  if (!user) return { registrado: false, bloqueado: false, minutosRestantes: 0 }
+  if (!user.bloqueadoHastaPin || user.bloqueadoHastaPin <= new Date()) {
+    return { registrado: true, bloqueado: false, minutosRestantes: 0 }
   }
   const minutosRestantes = Math.ceil((user.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
-  return { bloqueado: true, minutosRestantes }
+  return { registrado: true, bloqueado: true, minutosRestantes }
 }
 
 /**

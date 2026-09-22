@@ -62,15 +62,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // el bloqueo por cuenta (más abajo) no alcanza a cubrir este caso.
         if (await demasiadosIntentosDesdeIp(ip)) return null
 
-        // El email se guarda siempre en minúsculas al crear la cuenta
-        // (admin-acciones.ts) — sin normalizar acá también, alguien que
-        // escribe su correo con una sola mayúscula (autocapitalize del
-        // celular, por ejemplo) nunca encuentra su cuenta: cae siempre en
-        // "usuario no encontrado" y el bloqueo por cuenta de abajo (5
-        // intentos) nunca llega a activarse, porque nunca hay una cuenta
-        // sobre la cual contar intentos.
-        const emailNormalizado = (credentials.email as string).trim().toLowerCase()
-        const user = await db.user.findUnique({ where: { email: emailNormalizado } })
+        // Comparación sin distinguir mayúsculas/minúsculas: no todas las
+        // cuentas quedaron guardadas con el mismo criterio de mayúsculas,
+        // así que forzar el valor escrito a minúsculas (como se hacía
+        // antes) podía dejar de encontrar una cuenta real. Con
+        // mode:"insensitive" da igual cómo haya quedado guardado el email
+        // o cómo lo escriba la persona — encuentra la cuenta igual.
+        const emailEscrito = (credentials.email as string).trim()
+        const user = await db.user.findFirst({ where: { email: { equals: emailEscrito, mode: "insensitive" } } })
         if (!user || !user.activo) {
           await registrarIntentoFallido(ip)
           return null
