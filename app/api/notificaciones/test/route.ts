@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { enviarPushAUsuario } from "@/lib/push"
+import * as Sentry from "@sentry/nextjs"
 
 export async function POST() {
   const session = await auth()
@@ -22,6 +23,7 @@ export async function POST() {
     return NextResponse.json({ ok: true, dispositivos: subs })
   } catch (err) {
     console.error("Error al enviar notificación de prueba:", err)
+    Sentry.captureException(err)
     return NextResponse.json({ ok: false, error: "No se pudo enviar la notificación de prueba" }, { status: 500 })
   }
 }

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
+import * as Sentry from "@sentry/nextjs"
 import { notificar, cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unidades"
 import { registrarMovimientoStock, type TipoMovimientoStock } from "@/lib/stock"
@@ -87,6 +88,7 @@ export async function ingresarMovimiento(formData: FormData) {
     // poder diagnosticarlo y se muestra un mensaje claro en su lugar.
     if (!err?.code) throw err
     console.error("Error en ingresarMovimiento:", err)
+    Sentry.captureException(err)
     throw new Error("No se pudo registrar el movimiento. Intenta de nuevo — si el problema persiste, contáctanos.")
   }
 }
@@ -221,6 +223,7 @@ export async function registrarVenta(items: Array<{
   } catch (err: any) {
     if (!err?.code) throw err
     console.error("Error en registrarVenta:", err)
+    Sentry.captureException(err)
     throw new Error("No se pudo registrar la venta. Intenta de nuevo — si el problema persiste, contáctanos.")
   }
 }
@@ -786,6 +789,7 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   } catch (err: any) {
     if (!err?.code) throw err
     console.error("Error en registrarPago:", err)
+    Sentry.captureException(err)
     throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
   }
 
@@ -1001,6 +1005,7 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
   } catch (err: any) {
     if (!err?.code) throw err
     console.error("Error en marcarCostoPagado:", err)
+    Sentry.captureException(err)
     throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
   }
 
@@ -1274,6 +1279,7 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
   } catch (err: any) {
     if (!err?.code) throw err
     console.error("Error en registrarPagoCuenta:", err)
+    Sentry.captureException(err)
     throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
   }
 
@@ -1493,6 +1499,7 @@ export async function generarOcurrenciasPendientes(userId: string) {
       // No debe tumbar la carga del Calendario completo por una sola
       // serie con problemas — se loguea y se sigue con el resto.
       console.error("Error al generar ocurrencias de la serie recurrente:", serie.id, err)
+      Sentry.captureException(err, { extra: { serieId: serie.id } })
     }
   }
 }

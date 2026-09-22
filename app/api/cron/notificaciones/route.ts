@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
+import * as Sentry from "@sentry/nextjs"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -34,7 +35,7 @@ async function procesarEnLotes<T>(items: T[], tamanoLote: number, fn: (item: T) 
     const resultados = await Promise.allSettled(lote.map(fn))
     for (const r of resultados) {
       if (r.status === "fulfilled" && r.value) enviadas++
-      else if (r.status === "rejected") console.error("Error en notificación del cron:", r.reason)
+      else if (r.status === "rejected") { console.error("Error en notificación del cron:", r.reason); Sentry.captureException(r.reason) }
     }
   }
   return enviadas
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
     return await ejecutarCron()
   } catch (err) {
     console.error("Error en cron de notificaciones:", err)
+    Sentry.captureException(err)
     return NextResponse.json({ ok: false, error: "Error interno al procesar notificaciones" }, { status: 500 })
   }
 }

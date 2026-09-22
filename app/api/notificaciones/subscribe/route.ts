@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import * as Sentry from "@sentry/nextjs"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     console.error("Error al guardar suscripción push:", err)
+    Sentry.captureException(err)
     return NextResponse.json({ error: "No se pudo guardar la suscripción" }, { status: 500 })
   }
 
@@ -52,6 +54,7 @@ export async function DELETE(req: Request) {
     if (endpoint) await db.pushSubscription.deleteMany({ where: { endpoint, userId: session.user.id } })
   } catch (err) {
     console.error("Error al eliminar suscripción push:", err)
+    Sentry.captureException(err)
     return NextResponse.json({ error: "No se pudo eliminar la suscripción" }, { status: 500 })
   }
   return NextResponse.json({ ok: true })

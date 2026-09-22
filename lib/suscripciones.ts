@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import * as Sentry from "@sentry/nextjs"
 
 // ── Definición de planes ─────────────────────────────────────────────
 export type PlanKey = "mensual" | "trimestral" | "semestral" | "anual"
@@ -79,7 +80,7 @@ export async function sincronizarSuscripciones() {
     const lote = suscripciones.slice(i, i + TAMANO_LOTE) as SusRow[]
     const resultados = await Promise.allSettled(lote.map(sus => aplicarTransicion(sus, hoy)))
     for (const r of resultados) {
-      if (r.status === "rejected") console.error("Error al sincronizar suscripción:", r.reason)
+      if (r.status === "rejected") { console.error("Error al sincronizar suscripción:", r.reason); Sentry.captureException(r.reason) }
     }
   }
 }
