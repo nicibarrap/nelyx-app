@@ -363,16 +363,20 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
   return (
     <div className="max-w-7xl mx-auto animate-fade-up pb-10">
       {/* Encabezado — a lo ancho completo, arriba de las 2 columnas */}
-      <div className="flex items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-2 sm:gap-3 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center text-xl flex-shrink-0">🛒</div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl font-bold text-[var(--c-text)] tracking-tight">Venta</h1>
             {/* Fecha y hora, compacta — es el dato menos usado de toda la
                 pantalla (casi siempre es "ahora mismo"), así que no
                 necesita el protagonismo de una tarjeta propia. Se puede
-                editar igual, tocando la fecha, para quien sí lo necesite. */}
-            <p className="text-xs text-[var(--c-text3)] flex items-center gap-1.5">
+                editar igual, tocando la fecha, para quien sí lo necesite.
+                whitespace-nowrap: sin esto, en celular la fecha y la hora
+                podían partirse en dos líneas cada una (ej. "22-09-" /
+                "2026"), dependiendo de qué tan angosto quedara el espacio
+                disponible junto al botón de Venta rápida. */}
+            <p className="text-xs text-[var(--c-text3)] flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
               <span className="relative inline-flex items-center gap-1 hover:text-[var(--c-text2)] transition-colors cursor-pointer">
                 📅
                 <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
@@ -385,10 +389,11 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
           </div>
         </div>
         {/* Solo celular — en PC/tablet no tiene sentido, ya que el layout
-            de 2 columnas ya deja todo a la vista sin scroll. */}
+            de 2 columnas ya deja todo a la vista sin scroll. Etiqueta más
+            corta en celular para dejarle espacio a la fecha/hora. */}
         <button onClick={() => setModoRapido(true)}
-          className="lg:hidden flex-shrink-0 h-9 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-1.5">
-          ⚡ Venta rápida
+          className="lg:hidden flex-shrink-0 h-9 px-2.5 sm:px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+          <span>⚡</span><span className="sm:hidden">Rápida</span><span className="hidden sm:inline">Venta rápida</span>
         </button>
       </div>
 

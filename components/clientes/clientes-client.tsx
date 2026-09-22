@@ -191,23 +191,23 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
     <div className="flex flex-col h-full bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-[var(--c-border)]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <Avatar nombre={cliente.nombre} apellido={cliente.apellido} size="lg" />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-bold text-[var(--c-text)]">{cliente.nombre} {cliente.apellido ?? ""}</h2>
+                <h2 className="text-lg font-bold text-[var(--c-text)] truncate max-w-[260px] sm:max-w-none">{cliente.nombre} {cliente.apellido ?? ""}</h2>
                 {cliente.esFrecuente && <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">Frecuente</span>}
                 {cliente.esVip && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-[var(--c-warning)] border border-amber-500/20 font-semibold">⭐ VIP</span>}
                 {cliente.deudaPendiente > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold">Con deuda</span>}
                 {(!cliente.activo || cliente.inactivo) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-500/10 text-[var(--c-text4)] border border-[var(--c-border)] font-semibold">{"Inactivo"}</span>}
               </div>
-              {cliente.empresa && <p className="text-xs text-[var(--c-text3)] mt-0.5">🏪 {cliente.empresa}</p>}
-              {cliente.telefono && <p className="text-xs text-[var(--c-text3)]">📱 {cliente.telefono}</p>}
-              {cliente.email && <p className="text-xs text-[var(--c-text3)]">✉️ {cliente.email}</p>}
+              {cliente.empresa && <p className="text-xs text-[var(--c-text3)] mt-0.5 truncate">🏪 {cliente.empresa}</p>}
+              {cliente.telefono && <p className="text-xs text-[var(--c-text3)] truncate">📱 {cliente.telefono}</p>}
+              {cliente.email && <p className="text-xs text-[var(--c-text3)] truncate">✉️ {cliente.email}</p>}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 flex-shrink-0">
             <button onClick={handleToggleActivo}
               className={`text-xs px-3 py-1.5 rounded-xl border transition-all ${
                 cliente.activo
@@ -223,16 +223,16 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
         </div>
 
         {/* Stats rápidas */}
-        <div className="grid grid-cols-4 gap-3 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
           {[
             { label: "Total comprado", valor: formatCLP(cliente.totalComprado), color: "text-emerald-400" },
             { label: "Deuda pendiente", valor: formatCLP(cliente.deudaPendiente), color: cliente.deudaPendiente > 0 ? "text-red-400" : "text-[var(--c-text3)]" },
             { label: "Ticket promedio", valor: formatCLP(Math.round(cliente.ticketPromedio)), color: "text-sky-400" },
             { label: "Última compra", valor: formatRelative(cliente.ultimaActividad), color: "text-[var(--c-text2)]" },
           ].map(s => (
-            <div key={s.label} className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-3 text-center">
-              <p className={`text-sm font-bold ${s.color}`}>{s.valor}</p>
-              <p className="text-[10px] text-[var(--c-text3)] mt-0.5">{s.label}</p>
+            <div key={s.label} className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-3 text-center min-w-0">
+              <p className={`text-sm font-bold ${s.color} truncate`}>{s.valor}</p>
+              <p className="text-[10px] text-[var(--c-text3)] mt-0.5 truncate">{s.label}</p>
             </div>
           ))}
         </div>

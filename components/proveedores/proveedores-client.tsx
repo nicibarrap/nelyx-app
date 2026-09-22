@@ -133,39 +133,39 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
     <div className="flex flex-col h-full bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-[var(--c-border)]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <Avatar nombre={prov.nombre} size="lg" />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-bold text-[var(--c-text)]">{prov.nombre}</h2>
+                <h2 className="text-base font-bold text-[var(--c-text)] truncate max-w-[220px] sm:max-w-none">{prov.nombre}</h2>
                 {prov.esFavorito && <span className="text-[var(--c-warning)] text-sm">⭐</span>}
                 {prov.activo ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">Activo</span>
                   : <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-500/10 text-[var(--c-text4)] border border-[var(--c-border)] font-semibold">Inactivo</span>}
               </div>
-              {prov.categoria && <p className="text-xs text-[var(--c-text3)] mt-0.5">📦 {prov.categoria}</p>}
-              {prov.telefono && <p className="text-xs text-[var(--c-text3)]">📱 {prov.telefono}</p>}
-              {prov.email && <p className="text-xs text-[var(--c-text3)]">✉️ {prov.email}</p>}
+              {prov.categoria && <p className="text-xs text-[var(--c-text3)] mt-0.5 truncate">📦 {prov.categoria}</p>}
+              {prov.telefono && <p className="text-xs text-[var(--c-text3)] truncate">📱 {prov.telefono}</p>}
+              {prov.email && <p className="text-xs text-[var(--c-text3)] truncate">✉️ {prov.email}</p>}
             </div>
           </div>
-          <div className="flex gap-1.5 flex-shrink-0">
+          <div className="flex flex-wrap gap-1.5 flex-shrink-0">
             <button onClick={handleToggleFav} className="text-xs px-2 py-1.5 rounded-lg border border-[var(--c-border)] text-[var(--c-text3)] hover:text-[var(--c-warning)] transition-all">{prov.esFavorito ? "★" : "☆"}</button>
-            <button onClick={handleToggleActivo} className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all ${prov.activo ? "border-[var(--c-border)] text-[var(--c-text3)] hover:text-[var(--c-warning)]" : "border-emerald-500/20 text-emerald-400"}`}>{prov.activo ? "Desactivar" : "Activar"}</button>
+            <button onClick={handleToggleActivo} className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all whitespace-nowrap ${prov.activo ? "border-[var(--c-border)] text-[var(--c-text3)] hover:text-[var(--c-warning)]" : "border-emerald-500/20 text-emerald-400"}`}>{prov.activo ? "Desactivar" : "Activar"}</button>
             <button onClick={onEdit} className="text-xs px-2.5 py-1.5 rounded-lg border border-[var(--c-border)] text-[var(--c-text2)] hover:text-sky-400 transition-all">✏️</button>
             <button onClick={onClose} className="text-[var(--c-text3)] w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-lg">×</button>
           </div>
         </div>
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-2 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
           {[
             { label: "Total comprado", val: formatCLP(prov.totalComprado), color: "text-red-400" },
             { label: "Nº compras", val: String(prov.compras), color: "text-sky-400" },
             { label: "Promedio compra", val: formatCLP(Math.round(prov.promedioCompra)), color: "text-violet-400" },
             { label: "Última compra", val: formatRel(prov.ultimaCompra), color: "text-[var(--c-text2)]" },
           ].map(s => (
-            <div key={s.label} className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-2.5 text-center">
-              <p className={`text-sm font-bold ${s.color}`}>{s.val}</p>
-              <p className="text-[10px] text-[var(--c-text3)] mt-0.5 leading-tight">{s.label}</p>
+            <div key={s.label} className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-2.5 text-center min-w-0">
+              <p className={`text-sm font-bold ${s.color} truncate`}>{s.val}</p>
+              <p className="text-[10px] text-[var(--c-text3)] mt-0.5 leading-tight truncate">{s.label}</p>
             </div>
           ))}
         </div>

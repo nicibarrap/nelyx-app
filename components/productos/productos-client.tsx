@@ -777,16 +777,16 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
         </div>
         <div className="grid grid-cols-2 sm:flex sm:items-center sm:flex-wrap gap-2">
           <Link href="/dashboard/productos/escanear-nuevos"
-            className="flex items-center justify-center gap-2 h-10 px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-card2)] text-sm font-semibold rounded-xl transition-all whitespace-nowrap">
-            📷 Escanear productos nuevos
+            className="flex items-center justify-center gap-1.5 sm:gap-2 h-10 px-2 sm:px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-card2)] text-xs sm:text-sm font-semibold rounded-xl transition-all whitespace-nowrap overflow-hidden">
+            <span>📷</span><span className="truncate">Escanear <span className="hidden sm:inline">productos </span>nuevos</span>
           </Link>
           <Link href="/dashboard/productos/importar"
-            className="flex items-center justify-center gap-2 h-10 px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-card2)] text-sm font-semibold rounded-xl transition-all whitespace-nowrap">
-            📥 Importación masiva
+            className="flex items-center justify-center gap-1.5 sm:gap-2 h-10 px-2 sm:px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-card2)] text-xs sm:text-sm font-semibold rounded-xl transition-all whitespace-nowrap overflow-hidden">
+            <span>📥</span><span className="truncate">Importa<span className="hidden sm:inline">ción masiva</span><span className="sm:hidden">r</span></span>
           </Link>
           <Link href="/dashboard/productos/reponer"
-            className="flex items-center justify-center gap-2 h-10 px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-card2)] text-sm font-semibold rounded-xl transition-all whitespace-nowrap">
-            📦 Actualizar inventario
+            className="flex items-center justify-center gap-1.5 sm:gap-2 h-10 px-2 sm:px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-card2)] text-xs sm:text-sm font-semibold rounded-xl transition-all whitespace-nowrap overflow-hidden">
+            <span>📦</span><span className="truncate">Actualizar inventario</span>
           </Link>
           <button onClick={() => { setShowForm(true); setEditingProducto(null) }}
             className="flex items-center justify-center gap-2 h-10 px-5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-sky-500/20 whitespace-nowrap">

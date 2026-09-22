@@ -6,6 +6,12 @@ import { eliminarMovimiento } from "@/app/actions/acciones"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
 
+// Mismos íconos que el selector de método de pago en Venta — así el
+// mismo método se reconoce de un vistazo en ambas pantallas.
+const ICONO_METODO_PAGO: Record<string, string> = {
+  "Efectivo": "💵", "Débito": "💳", "Crédito": "🏦", "Transferencia": "🏛️", "Pendiente": "📄",
+}
+
 export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
   const [isPending, startTransition] = useTransition()
 
@@ -48,6 +54,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                   )}
                   {m.producto && <span className="text-[10px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {m.producto.nombre}</span>}
                   {m.cliente && <span className="text-[10px] text-sky-400/80 truncate">👤 {m.cliente.nombre} {m.cliente.apellido ?? ""}</span>}
+                  {m.metodoPago && <span className="text-[10px] text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
                 </div>
                 {m.descripcion && <p className="text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
                 <p className="text-[10px] text-[var(--c-text4)] mt-0.5">

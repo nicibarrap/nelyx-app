@@ -433,17 +433,17 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
             <span className="text-lg">{cubierto ? "✅" : "⚠️"}</span>
           </div>
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="bg-[var(--c-card2)] rounded-xl p-3">
-              <p className="text-[10px] text-[var(--c-text3)]">Ingresos</p>
-              <p className="text-sm font-bold text-emerald-400">{formatCLP(ingresosActuales)}</p>
+            <div className="bg-[var(--c-card2)] rounded-xl p-2 sm:p-3 min-w-0">
+              <p className="text-[10px] text-[var(--c-text3)] truncate">Ingresos</p>
+              <p className="text-xs sm:text-sm font-bold text-emerald-400 whitespace-nowrap">{formatCLP(ingresosActuales)}</p>
             </div>
-            <div className="bg-[var(--c-card2)] rounded-xl p-3">
-              <p className="text-[10px] text-[var(--c-text3)]">Gastos variables</p>
-              <p className="text-sm font-bold text-red-400">−{formatCLP(gastosVariables)}</p>
+            <div className="bg-[var(--c-card2)] rounded-xl p-2 sm:p-3 min-w-0">
+              <p className="text-[10px] text-[var(--c-text3)] truncate">Gastos variables</p>
+              <p className="text-xs sm:text-sm font-bold text-red-400 whitespace-nowrap">{`−${formatCLP(gastosVariables)}`}</p>
             </div>
-            <div className="bg-[var(--c-card2)] rounded-xl p-3">
-              <p className="text-[10px] text-[var(--c-text3)]">Costos fijos</p>
-              <p className="text-sm font-bold text-orange-400">−{formatCLP(totalMes)}</p>
+            <div className="bg-[var(--c-card2)] rounded-xl p-2 sm:p-3 min-w-0">
+              <p className="text-[10px] text-[var(--c-text3)] truncate">Costos fijos</p>
+              <p className="text-xs sm:text-sm font-bold text-orange-400 whitespace-nowrap">{`−${formatCLP(totalMes)}`}</p>
             </div>
           </div>
           <div className="h-3 bg-[var(--c-card2)] rounded-full overflow-hidden">
