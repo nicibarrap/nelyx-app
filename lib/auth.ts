@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import bcrypt from "bcryptjs"
 import { db } from "./db"
+import { estaBloqueado, calcularNuevoEstadoTrasFallo, ESTADO_LIMPIO, necesitaLimpiarEstado, ipDeRequest } from "./auth-logica"
 
 const VENTANA_IP_MINUTOS = 15
 // A través de cualquier cantidad de emails distintos desde esa IP. Más
@@ -12,12 +13,6 @@ const VENTANA_IP_MINUTOS = 15
 // ataque. El bloqueo por cuenta (5 intentos, más abajo) sigue siendo la
 // primera línea de defensa para una cuenta puntual.
 const MAX_INTENTOS_POR_IP = 10
-
-function ipDeRequest(request: Request | undefined): string {
-  const xff = request?.headers.get("x-forwarded-for")
-  if (xff) return xff.split(",")[0].trim()
-  return request?.headers.get("x-real-ip")?.trim() || "desconocida"
-}
 
 /**
  * Frena un ataque de credential stuffing / spray: alguien probando muchos
@@ -80,26 +75,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // no tiene PIN) — sin esto, el login principal por contraseña no
         // tenía ningún freno ante fuerza bruta / credential stuffing, y
         // cada intento ya cuesta CPU real por el bcrypt.compare.
-        if (user.bloqueadoHastaPin && user.bloqueadoHastaPin > new Date()) {
+        if (estaBloqueado(user)) {
           return null
         }
 
         const valida = await bcrypt.compare(credentials.password as string, user.password)
         if (!valida) {
-          const intentos = user.intentosFallidosPin + 1
-          const seBloquea = intentos >= 5
           await db.user.update({
             where: { id: user.id },
-            data: {
-              intentosFallidosPin: seBloquea ? 0 : intentos,
-              bloqueadoHastaPin: seBloquea ? new Date(Date.now() + 15 * 60 * 1000) : null,
-            },
+            data: calcularNuevoEstadoTrasFallo(user.intentosFallidosPin),
           }).catch(() => {})
           await registrarIntentoFallido(ip)
           return null
         }
-        if (user.intentosFallidosPin > 0 || user.bloqueadoHastaPin) {
-          await db.user.update({ where: { id: user.id }, data: { intentosFallidosPin: 0, bloqueadoHastaPin: null } }).catch(() => {})
+        if (necesitaLimpiarEstado(user)) {
+          await db.user.update({ where: { id: user.id }, data: ESTADO_LIMPIO }).catch(() => {})
         }
 
         return { id: user.id, email: user.email, name: user.nombre, role: user.rol, negocio: user.negocio }
@@ -130,26 +120,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // (no se lanza un error con el mensaje) porque NextAuth nunca
         // propaga el texto exacto de una excepción al cliente, por
         // seguridad — el frontend distingue este caso de otra forma.
-        if (empleado.bloqueadoHastaPin && empleado.bloqueadoHastaPin > new Date()) {
+        if (estaBloqueado(empleado)) {
           return null
         }
 
         const pinValido = await bcrypt.compare(pin, empleado.pin)
         if (!pinValido) {
-          const intentos = empleado.intentosFallidosPin + 1
-          const seBloquea = intentos >= 5
           await db.user.update({
             where: { id: empleado.id },
-            data: {
-              intentosFallidosPin: seBloquea ? 0 : intentos,
-              bloqueadoHastaPin: seBloquea ? new Date(Date.now() + 15 * 60 * 1000) : null,
-            },
+            data: calcularNuevoEstadoTrasFallo(empleado.intentosFallidosPin),
           })
           return null
         }
         // PIN correcto — se limpia cualquier intento fallido anterior.
-        if (empleado.intentosFallidosPin > 0 || empleado.bloqueadoHastaPin) {
-          await db.user.update({ where: { id: empleado.id }, data: { intentosFallidosPin: 0, bloqueadoHastaPin: null } })
+        if (necesitaLimpiarEstado(empleado)) {
+          await db.user.update({ where: { id: empleado.id }, data: ESTADO_LIMPIO })
         }
 
         const cuenta = await db.user.findUnique({ where: { id: cuentaId } })
