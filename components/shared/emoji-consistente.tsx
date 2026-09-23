@@ -8,7 +8,16 @@ import twemoji from "twemoji"
 // cualquier tamaño de pantalla, incluidas las de alta densidad (Retina).
 const TWEMOJI_BASE = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/"
 
+// Si el CDN no responde varias veces seguidas (red que lo bloquea, sin
+// internet), se deja de intentar por el resto de la sesión — sin esto,
+// cada navegación o cambio en la pantalla dispara una nueva tanda de
+// peticiones que también van a fallar, indefinidamente.
+const MAX_FALLOS_SEGUIDOS = 15
+let fallosSeguidos = 0
+let deshabilitado = false
+
 function aplicarEmojisConsistentes() {
+  if (deshabilitado) return
   try {
     twemoji.parse(document.body, {
       folder: "svg",
@@ -35,26 +44,54 @@ function aplicarEmojisConsistentes() {
 export function EmojiConsistente() {
   const pathname = usePathname()
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const observerRef = useRef<MutationObserver | null>(null)
 
-  // Cada vez que cambia de página (navegación del lado del cliente, sin
-  // recarga), hay contenido nuevo que revisar.
-  useEffect(() => {
+  // Cada <img> que se inserta es en sí misma una mutación del DOM — sin
+  // desconectar el observador mientras se aplica, se dispara a sí mismo
+  // en bucle: aplica → inserta imágenes → el observador lo detecta como
+  // cambio → vuelve a aplicar → ... Si esas imágenes encima fallan en
+  // cargar (CDN bloqueado), el bucle nunca se frena solo y termina
+  // disparando cientos de peticiones por segundo sin parar.
+  function aplicarYReconectar() {
+    observerRef.current?.disconnect()
     aplicarEmojisConsistentes()
+    observerRef.current?.observe(document.body, { childList: true, subtree: true, characterData: true })
+  }
+
+  useEffect(() => {
+    aplicarYReconectar()
   }, [pathname])
 
-  // Contenido que aparece SIN cambiar de página (abrir un modal, un toast,
-  // datos que llegan después de una carga) también necesita revisarse —
-  // un observador que mira cualquier cambio en la página, con una pequeña
-  // espera para no repetir el trabajo decenas de veces por segundo.
   useEffect(() => {
     const observer = new MutationObserver(() => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      timeoutRef.current = setTimeout(aplicarEmojisConsistentes, 150)
+      timeoutRef.current = setTimeout(aplicarYReconectar, 150)
     })
+    observerRef.current = observer
     observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+
+    // Cuenta fallos de carga de las imágenes de emoji (fase de captura:
+    // el evento "error" de <img> no burbujea) para activar el freno de
+    // MAX_FALLOS_SEGUIDOS. Un emoji que sí carga bien reinicia el conteo.
+    function onError(e: Event) {
+      const target = e.target as HTMLElement
+      if (target?.tagName !== "IMG" || !target.classList.contains("emoji-nelyx")) return
+      fallosSeguidos++
+      if (fallosSeguidos >= MAX_FALLOS_SEGUIDOS) deshabilitado = true
+    }
+    function onLoad(e: Event) {
+      const target = e.target as HTMLElement
+      if (target?.tagName !== "IMG" || !target.classList.contains("emoji-nelyx")) return
+      fallosSeguidos = 0
+    }
+    document.body.addEventListener("error", onError, true)
+    document.body.addEventListener("load", onLoad, true)
+
     return () => {
       observer.disconnect()
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      document.body.removeEventListener("error", onError, true)
+      document.body.removeEventListener("load", onLoad, true)
     }
   }, [])
 
