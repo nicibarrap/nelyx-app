@@ -55,8 +55,11 @@ export function Header({ session }: { session: any }) {
 
   return (
     <header className="h-14 bg-[var(--c-card)] border-b border-[var(--c-border)] px-4 sm:px-6 flex items-center justify-between flex-shrink-0">
-      {/* Saludo */}
-      <div className="hidden sm:block">
+      {/* Saludo — recién a partir de lg: por debajo de eso el sidebar cae al
+          botón ☰ con position:fixed en la esquina superior izquierda, y
+          como no ocupa espacio en el flujo normal, tapaba el inicio de este
+          saludo en todo el rango sm-lg (justo donde cae una tablet). */}
+      <div className="hidden lg:block">
         <p className="text-sm font-semibold text-[var(--c-text)]">
           {saludo}, {session?.user?.name?.split(" ")[0]} 👋
         </p>

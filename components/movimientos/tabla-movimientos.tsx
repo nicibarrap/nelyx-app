@@ -1,10 +1,11 @@
 "use client"
-import { useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { toast } from "sonner"
 import { formatCLP, formatFecha, ETIQUETAS } from "@/lib/utils"
 import { eliminarMovimiento } from "@/app/actions/acciones"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
+import { TZ_CHILE } from "@/lib/timezone"
 
 // Mismos íconos que el selector de método de pago en Venta — así el
 // mismo método se reconoce de un vistazo en ambas pantallas.
@@ -14,6 +15,13 @@ const ICONO_METODO_PAGO: Record<string, string> = {
 
 export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
   const [isPending, startTransition] = useTransition()
+  // La hora (a diferencia de la fecha) se muestra recién después de montar:
+  // Node (servidor) y el navegador pueden traer datos de Intl ligeramente
+  // distintos para el mismo locale/huso horario (p. ej. el espacio antes de
+  // "a. m." difiere) — eso basta para que React marque un mismatch de
+  // hidratación y descarte TODO el HTML del servidor, no solo esta hora.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   function handleEliminar(id: string) {
     if (!confirm("¿Eliminar este movimiento?")) return
@@ -60,7 +68,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
                   {formatFecha(m.fecha)}
                   {m.realizadoPorNombre && <span className="opacity-60"> · {m.realizadoPorNombre}</span>}
-                  {m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`}
+                  {mounted && m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE })}`}
                 </p>
               </div>
             </div>
