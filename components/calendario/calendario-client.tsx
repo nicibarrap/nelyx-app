@@ -78,22 +78,23 @@ function dateKey(y:number,m:number,d:number){return `${y}-${String(m).padStart(2
 function isoToKey(iso:string){const d=new Date(iso);return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`}
 function getDOW(key:string){const[y,m,d]=key.split("-").map(Number);return(new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7}
 
-function buildCalDays(anio:number,mes:number):{key:string;day:number;curr:boolean}[]{
+// Semanas (filas de 7) de un mes — celdas fuera del mes quedan en null en
+// vez de mostrar el día real del mes vecino: cada bloque de mes muestra
+// SOLO sus propios días, con hueco en blanco antes del día 1 y después
+// del último. A diferencia de la vieja grilla fija de 6 filas (42 celdas
+// siempre), acá cada mes mide lo que necesita — 4, 5 o 6 filas — que es
+// justamente lo que permite que varios meses se apilen uno tras otro en
+// un scroll continuo sin dejar espacio muerto de sobra.
+function buildMonthWeeks(anio:number,mes:number):({key:string;day:number}|null)[][]{
   const firstDOW=(new Date(Date.UTC(anio,mes-1,1)).getUTCDay()+6)%7
   const totalD=diasEnMes(anio,mes)
-  const prevTotalD=diasEnMes(anio,mes===1?12:mes-1)
-  const calDays:{key:string;day:number;curr:boolean}[]=[]
-  for(let i=firstDOW-1;i>=0;i--){
-    const d=prevTotalD-i,m=mes===1?12:mes-1,y=mes===1?anio-1:anio
-    calDays.push({key:dateKey(y,m,d),day:d,curr:false})
-  }
-  for(let d=1;d<=totalD;d++)calDays.push({key:dateKey(anio,mes,d),day:d,curr:true})
-  const rem=42-calDays.length
-  for(let d=1;d<=rem;d++){
-    const m=mes===12?1:mes+1,y=mes===12?anio+1:anio
-    calDays.push({key:dateKey(y,m,d),day:d,curr:false})
-  }
-  return calDays
+  const cells:({key:string;day:number}|null)[]=[]
+  for(let i=0;i<firstDOW;i++)cells.push(null)
+  for(let d=1;d<=totalD;d++)cells.push({key:dateKey(anio,mes,d),day:d})
+  while(cells.length%7!==0)cells.push(null)
+  const weeks:({key:string;day:number}|null)[][]=[]
+  for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7))
+  return weeks
 }
 
 function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
@@ -162,13 +163,14 @@ type DragHandlers = {
   onUp:(e:React.PointerEvent<HTMLDivElement>)=>void
 }
 
-// Un panel de la vista Mes (grilla de 6x7 días). Se usa 3 veces dentro del
-// carrusel con scroll-snap (mes anterior/actual/siguiente) — ver más abajo
-// en CalendarioClient. Altura fija (h-full de su contenedor, ya viene dado
-// por el panel) y grid-rows-6 en vez de min-h por celda: así las 3 copias
-// miden siempre lo mismo, que es lo que necesita el snap para alinear bien.
-function MesGrid({calDays,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelectDay,onAddDay,onToggle,dragHandlers}:{
-  calDays:{key:string;day:number;curr:boolean}[]
+// Un bloque de la vista Mes: sus semanas reales (4, 5 o 6 según el mes),
+// una debajo de otra, dentro del scroll continuo de CalendarioClient — ya
+// no hay panel de altura fija ni grid-rows-6: cada fila mide lo que
+// necesita (min-h por celda) y el bloque completo mide lo que sus propias
+// semanas ocupen. Las celdas null (antes del día 1, después del último)
+// quedan en blanco — nunca se muestra el día real de otro mes.
+function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelectDay,onAddDay,onToggle,dragHandlers}:{
+  weeks:({key:string;day:number}|null)[][]
   byDay:Record<string,CalEvent[]>
   hoyKey:string
   selectedDay:string|null
@@ -180,55 +182,61 @@ function MesGrid({calDays,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSele
   dragHandlers:DragHandlers
 }){
   return(
-    <div className="grid grid-cols-7 grid-rows-6 h-full">
-      {calDays.map((cell,idx)=>{
-        const isHoy=cell.key===hoyKey
-        const isSel=cell.key===selectedDay
-        const cellEvs=byDay[cell.key]??[]
-        const esDestinoDrag=!!dragVisual&&hoverDayKey===cell.key
-        return(
-          <div key={idx} data-day-key={cell.key}
-            onClick={()=>onSelectDay(cell.key)}
-            className={`group relative p-1 sm:p-1.5 border-b border-r border-[var(--c-border2)] cursor-pointer overflow-hidden transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
-              ${!cell.curr?"opacity-30":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
-            <div className="flex items-center justify-between mb-1 sm:mb-1.5">
-              <div className={`w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold
-                ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
-                {cell.day}
+    <div>
+      {weeks.map((week,wi)=>(
+        <div key={wi} className="grid grid-cols-7">
+          {week.map((cell,ci)=>{
+            if(!cell)return <div key={`b${wi}-${ci}`} className="border-b border-r border-[var(--c-border2)] min-h-[92px] sm:min-h-[128px] lg:min-h-[148px]"/>
+            const isHoy=cell.key===hoyKey
+            const isSel=cell.key===selectedDay
+            const cellEvs=byDay[cell.key]??[]
+            const esDestinoDrag=!!dragVisual&&hoverDayKey===cell.key
+            return(
+              <div key={cell.key} data-day-key={cell.key}
+                onClick={()=>onSelectDay(cell.key)}
+                className={`group relative p-1.5 sm:p-1.5 min-h-[92px] sm:min-h-[128px] lg:min-h-[148px] border-b border-r border-[var(--c-border2)] cursor-pointer overflow-hidden transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
+                  ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
+                <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+                  <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold
+                    ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
+                    {cell.day}
+                  </div>
+                  <button onClick={e=>{e.stopPropagation();onAddDay(cell.key)}}
+                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
+                    title="Agregar tarea">+</button>
+                </div>
+                {/* Desktop: event pills */}
+                <div className="hidden sm:flex flex-col gap-1">
+                  {cellEvs.slice(0,4).map(ev=><EventPill key={ev.id} ev={ev} onToggle={onToggle} drag={dragHandlers}/>)}
+                  {cellEvs.length>4&&(
+                    <button onClick={e=>{e.stopPropagation();onSelectDay(cell.key)}}
+                      className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
+                      +{cellEvs.length-4} más
+                    </button>
+                  )}
+                </div>
+                {/* Mobile: grouped dots with count — celda más grande que antes,
+                    así que caben hasta 4 grupos en vez de 3. */}
+                {cellEvs.length>0&&(
+                  <div className="flex sm:hidden gap-1 flex-wrap mt-1">
+                    {Object.entries(
+                      cellEvs.reduce((acc,ev)=>{acc[ev.tipo]=(acc[ev.tipo]??0)+1;return acc},{} as Record<string,number>)
+                    ).slice(0,4).map(([tipo,cnt])=>{
+                      const cfg=TIPO_CONFIG[tipo]??TIPO_CONFIG.evento
+                      return(
+                        <span key={tipo} className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-bold ${cfg.bg} ${cfg.text}`}>
+                          <span>{cfg.icon}</span>
+                          {cnt>1&&<span>{cnt}</span>}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              <button onClick={e=>{e.stopPropagation();onAddDay(cell.key)}}
-                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity"
-                title="Agregar tarea">+</button>
-            </div>
-            {/* Desktop: event pills */}
-            <div className="hidden sm:flex flex-col gap-1">
-              {cellEvs.slice(0,4).map(ev=><EventPill key={ev.id} ev={ev} onToggle={onToggle} drag={dragHandlers}/>)}
-              {cellEvs.length>4&&(
-                <button onClick={e=>{e.stopPropagation();onSelectDay(cell.key)}}
-                  className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 pl-1 text-left transition-colors">
-                  +{cellEvs.length-4} más
-                </button>
-              )}
-            </div>
-            {/* Mobile: grouped dots with count */}
-            {cell.curr&&cellEvs.length>0&&(
-              <div className="flex sm:hidden gap-0.5 flex-wrap mt-0.5">
-                {Object.entries(
-                  cellEvs.reduce((acc,ev)=>{acc[ev.tipo]=(acc[ev.tipo]??0)+1;return acc},{} as Record<string,number>)
-                ).slice(0,3).map(([tipo,cnt])=>{
-                  const cfg=TIPO_CONFIG[tipo]??TIPO_CONFIG.evento
-                  return(
-                    <span key={tipo} className={`inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded font-bold ${cfg.bg} ${cfg.text}`}>
-                      <span>{cfg.icon}</span>
-                      {cnt>1&&<span>{cnt}</span>}
-                    </span>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )
-      })}
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }
@@ -535,6 +543,15 @@ export function CalendarioClient({data}:{data:CalData}){
   const hoyKey=localToday()  // local browser date, NOT UTC from server
   const[viewAnio,setViewAnio]=useState(hoyDate.getUTCFullYear())
   const[viewMes,setViewMes]=useState(hoyDate.getUTCMonth()+1)
+  // Espejo de viewAnio/viewMes en un ref: goMes() lo necesita para calcular
+  // el próximo mes de forma correcta ante clics rápidos en ‹ › — leer
+  // viewAnio/viewMes directo (closure de render) daba el mismo bug que ya
+  // se evitó antes en este archivo con "updater functions": si el usuario
+  // clickeaba de nuevo antes de que el scroll suave + el IntersectionObserver
+  // terminaran de asentar el estado, el segundo clic calculaba sobre un mes
+  // desactualizado. El ref siempre tiene el último valor, sin esperar a que
+  // React re-renderice.
+  const viewRef=useRef({anio:hoyDate.getUTCFullYear(),mes:hoyDate.getUTCMonth()+1})
   const[selectedDay,setSelectedDay]=useState<string|null>(hoyKey)
   const[editingEv,setEditingEv]=useState<CalEvent|null>(null)
   const[showForm,setShowForm]=useState(false)
@@ -577,39 +594,43 @@ export function CalendarioClient({data}:{data:CalData}){
     setVista(v)
   }
 
-  // Calendar grid — mes actual y los dos vecinos (anterior/siguiente), para
-  // el carrusel con scroll-snap de abajo. calDays/byDay del mes actual se
-  // mantienen como estaban (el panel del día los sigue usando tal cual).
-  const calDays=useMemo(()=>buildCalDays(viewAnio,viewMes),[viewAnio,viewMes])
+  // Ventana de meses que se renderizan en el scroll continuo de la vista
+  // Mes: de enero del año en curso a febrero del año siguiente — el mismo
+  // rango que ya trae cargado eventosCalendario desde el servidor (ver
+  // page.tsx), así que no hace falta pedir más datos para que el scroll
+  // se sienta "infinito" en la práctica. anioBase se saca una sola vez de
+  // data.hoy (primitivo, no un Date nuevo en cada render) para que este
+  // useMemo no se recalcule solo.
+  const anioBase=hoyDate.getUTCFullYear()
+  const mesesWindow=useMemo(()=>{
+    const arr:{anio:number;mes:number}[]=[]
+    let m=1,y=anioBase
+    for(let i=0;i<14;i++){arr.push({anio:y,mes:m});m++;if(m>12){m=1;y++}}
+    return arr
+  },[anioBase])
 
-  const mesAnterior=useMemo(()=>{let m=viewMes-1,y=viewAnio;if(m<1){m=12;y--}return{anio:y,mes:m}},[viewAnio,viewMes])
-  const mesSiguiente=useMemo(()=>{let m=viewMes+1,y=viewAnio;if(m>12){m=1;y++}return{anio:y,mes:m}},[viewAnio,viewMes])
-  const calDaysPrev=useMemo(()=>buildCalDays(mesAnterior.anio,mesAnterior.mes),[mesAnterior])
-  const calDaysNext=useMemo(()=>buildCalDays(mesSiguiente.anio,mesSiguiente.mes),[mesSiguiente])
-  const byDayPrev=useMemo(()=>{
-    const evs=aplicarFiltro(buildEvents(data,mesAnterior.anio,mesAnterior.mes),filtro)
-    const m:Record<string,CalEvent[]>={}
-    for(const ev of evs){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
-    return m
-  },[data,mesAnterior,filtro])
-  const byDayNext=useMemo(()=>{
-    const evs=aplicarFiltro(buildEvents(data,mesSiguiente.anio,mesSiguiente.mes),filtro)
-    const m:Record<string,CalEvent[]>={}
-    for(const ev of evs){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
-    return m
-  },[data,mesSiguiente,filtro])
+  const mesesData=useMemo(()=>mesesWindow.map(({anio,mes})=>{
+    const weeks=buildMonthWeeks(anio,mes)
+    const evs=aplicarFiltro(buildEvents(data,anio,mes),filtro)
+    const byDayMes:Record<string,CalEvent[]>={}
+    for(const ev of evs){if(!byDayMes[ev.fecha])byDayMes[ev.fecha]=[];byDayMes[ev.fecha].push(ev)}
+    return{anio,mes,weeks,byDay:byDayMes}
+  }),[mesesWindow,data,filtro])
 
-  // Con updater functions (no lee viewMes/viewAnio del closure) para poder
-  // llamarla también desde el listener nativo de scroll más abajo, que se
-  // engancha una sola vez y si dependiera del closure quedaría con el mes
-  // desactualizado después del primer cambio.
+  const primerMesWindow=mesesWindow[0]
+  const ultimoMesWindow=mesesWindow[mesesWindow.length-1]
+  const enPrimerMes=viewAnio===primerMesWindow.anio&&viewMes===primerMesWindow.mes
+  const enUltimoMes=viewAnio===ultimoMesWindow.anio&&viewMes===ultimoMesWindow.mes
+
   function goMes(delta:number){
-    setViewMes(prevMes=>{
-      let m=prevMes+delta
-      if(m>12){m=1;setViewAnio(y=>y+1)}
-      if(m<1){m=12;setViewAnio(y=>y-1)}
-      return m
-    })
+    let{anio:y,mes:m}=viewRef.current
+    m+=delta
+    if(m>12){m=1;y++}
+    if(m<1){m=12;y--}
+    if(!mesesWindow.some(w=>w.anio===y&&w.mes===m))return
+    viewRef.current={anio:y,mes:m}
+    setViewAnio(y);setViewMes(m)
+    scrollToMes(y,m)
   }
 
   // Day panel data
@@ -677,43 +698,103 @@ export function CalendarioClient({data}:{data:CalData}){
   }
   const dragHandlers={onDown:dragPointerDown,onMove:dragPointerMove,onUp:dragPointerUp}
 
-  // Cambiar de mes con scroll, estilo feed (Instagram/TikTok): scroll-snap
-  // nativo del navegador sobre 3 paneles apilados (mes anterior/actual/
-  // siguiente), en vez de interceptar wheel/touch a mano — así se hereda el
-  // momentum/inercia real del navegador en vez de un salto seco. El truco
-  // "infinito": siempre se parte centrado en el panel del medio; cuando el
-  // usuario termina de scrollear y queda asentado en el panel de arriba o
-  // abajo, se cambia viewMes/viewAnio a ese mes y se vuelve a centrar el
-  // scroll al instante (sin animación), lista para el próximo gesto.
-  const mesScrollRef=useRef<HTMLDivElement>(null)
-  const resettingScrollRef=useRef(false)
-  const idleTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null)
-  const[scrollProgress,setScrollProgress]=useState(0.5)
+  // Scroll continuo de la vista Mes, estilo feed (Asana/Instagram): todos
+  // los meses de la ventana están apilados en UN solo contenedor con
+  // scroll nativo — sin scroll-snap. Antes cada mes era un panel del
+  // tamaño exacto del contenedor y con scroll-snap "mandatory" sobre solo
+  // 3 paneles, cualquier scroll por chico que fuera terminaba en el panel
+  // vecino: ese era el salto raro al mes siguiente/anterior con solo
+  // bajar un poco. Acá el navegador maneja el momentum/inercia como en
+  // cualquier lista larga, y qué mes está "activo" (para el label de
+  // arriba y los botones ‹ ›) se detecta con un IntersectionObserver
+  // mirando el separador de cada mes — nunca se fuerza la posición del
+  // scroll, que es justo lo que causaba los saltos.
+  const scrollContainerRef=useRef<HTMLDivElement>(null)
+  const dividerRefs=useRef<Record<string,HTMLDivElement|null>>({})
+  const visiblesRef=useRef<Map<string,number>>(new Map())
+  const[scrollProgress,setScrollProgress]=useState(0)
+  const[thumbPct,setThumbPct]=useState(1)
+  // Mientras hay un scroll disparado a mano (botones ‹ › u Hoy), el
+  // observer de abajo se ignora — si no, el mes que va "pasando" durante
+  // la animación suave alcanza a pisar el mes de destino que goMes() ya
+  // fijó al toque, y con clics seguidos el label queda saltando.
+  const programaticoRef=useRef(false)
+  const programaticoTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null)
 
   useEffect(()=>{
-    const el=mesScrollRef.current
-    if(!el)return
-    resettingScrollRef.current=true
-    el.scrollTop=el.clientHeight
-    setScrollProgress(0.5)
-    const t=setTimeout(()=>{resettingScrollRef.current=false},50)
-    return()=>clearTimeout(t)
-  },[viewAnio,viewMes,vista])
+    const root=scrollContainerRef.current
+    if(!root||vista!=="mes")return
+    visiblesRef.current.clear()
+    const observer=new IntersectionObserver(entries=>{
+      if(programaticoRef.current)return
+      for(const entry of entries){
+        const key=(entry.target as HTMLElement).dataset.mesKey
+        if(!key)continue
+        if(entry.isIntersecting)visiblesRef.current.set(key,entry.boundingClientRect.top)
+        else visiblesRef.current.delete(key)
+      }
+      let bestKey:string|null=null,bestTop=-Infinity
+      visiblesRef.current.forEach((top,key)=>{if(top>bestTop){bestTop=top;bestKey=key}})
+      if(bestKey){
+        const[a,m]=(bestKey as string).split("-").map(Number)
+        viewRef.current={anio:a,mes:m}
+        setViewAnio(a);setViewMes(m)
+      }
+    },{root,rootMargin:"0px 0px -70% 0px",threshold:0})
+    Object.values(dividerRefs.current).forEach(el=>{if(el)observer.observe(el)})
+    handleScrollMes()
+    return()=>observer.disconnect()
+  },[vista,mesesData])
 
   function handleScrollMes(){
-    const el=mesScrollRef.current
-    if(!el||resettingScrollRef.current)return
-    const progreso=el.scrollTop/(2*el.clientHeight)
-    setScrollProgress(Math.max(0,Math.min(1,progreso)))
-    if(idleTimerRef.current)clearTimeout(idleTimerRef.current)
-    idleTimerRef.current=setTimeout(()=>{
-      const elNow=mesScrollRef.current
-      if(!elNow||elNow.clientHeight===0)return
-      const idx=Math.round(elNow.scrollTop/elNow.clientHeight)
-      if(idx===1)return
-      goMes(idx<1?-1:1)
-    },130)
+    const el=scrollContainerRef.current
+    if(!el)return
+    const max=el.scrollHeight-el.clientHeight
+    setScrollProgress(max>0?Math.max(0,Math.min(1,el.scrollTop/max)):0)
+    setThumbPct(el.scrollHeight>0?Math.min(1,el.clientHeight/el.scrollHeight):1)
   }
+
+  function marcarScrollProgramatico(){
+    programaticoRef.current=true
+    if(programaticoTimerRef.current)clearTimeout(programaticoTimerRef.current)
+    const liberar=()=>{programaticoRef.current=false}
+    // "scrollend" es lo ideal (se dispara justo cuando el navegador termina
+    // la animación suave), pero por si el navegador no lo soporta o no
+    // llega a dispararse, un timeout de sobra libera igual.
+    scrollContainerRef.current?.addEventListener("scrollend",liberar,{once:true})
+    programaticoTimerRef.current=setTimeout(liberar,900)
+  }
+
+  function scrollToMes(anio:number,mes:number,smooth=true){
+    const el=dividerRefs.current[`${anio}-${mes}`]
+    if(!el)return
+    if(smooth)marcarScrollProgramatico()
+    el.scrollIntoView({behavior:smooth?"smooth":"auto",block:"start"})
+  }
+  function scrollToHoy(){
+    setSelectedDay(hoyKey)
+    viewRef.current={anio:hoyDate.getUTCFullYear(),mes:hoyDate.getUTCMonth()+1}
+    setViewAnio(hoyDate.getUTCFullYear());setViewMes(hoyDate.getUTCMonth()+1)
+    marcarScrollProgramatico()
+    const root=scrollContainerRef.current
+    const cell=root?.querySelector<HTMLElement>(`[data-day-key="${hoyKey}"]`)
+    if(cell)cell.scrollIntoView({behavior:"smooth",block:"center"})
+    else dividerRefs.current[`${hoyDate.getUTCFullYear()}-${hoyDate.getUTCMonth()+1}`]?.scrollIntoView({behavior:"smooth",block:"start"})
+  }
+
+  // Al entrar a la vista Mes (primera carga, o volver desde Semana — el
+  // contenedor se desmonta y remonta con scrollTop en 0) se ubica sin
+  // animación en el mes que estaba activo. Depende solo de [vista] a
+  // propósito: si dependiera de viewAnio/viewMes se volvería a ejecutar
+  // cada vez que el propio scroll del usuario los actualiza (el
+  // IntersectionObserver de arriba), peleándole el scroll a mano — la
+  // misma clase de salto raro que se vino a corregir.
+  useEffect(()=>{
+    if(vista!=="mes")return
+    const raf=requestAnimationFrame(()=>scrollToMes(viewAnio,viewMes,false))
+    return()=>cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[vista])
 
   const selectedDayLabel=selectedDay?`${DIAS[getDOW(selectedDay)]}, ${Number(selectedDay.split("-")[2])} de ${MESES[Number(selectedDay.split("-")[1])-1]}`:"—"
   const mesLabel=`${MESES[viewMes-1]} ${viewAnio}`
@@ -772,10 +853,12 @@ export function CalendarioClient({data}:{data:CalData}){
           </div>
         ):(
           <div className="flex items-center gap-1.5 justify-center">
-            <button onClick={()=>goMes(-1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">‹</button>
+            <button onClick={()=>goMes(-1)} disabled={enPrimerMes}
+              className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] disabled:opacity-30 disabled:hover:bg-[var(--c-card)] disabled:cursor-not-allowed transition-all flex items-center justify-center">‹</button>
             <span className="text-sm font-semibold text-[var(--c-text)] min-w-[130px] text-center">{mesLabel}</span>
-            <button onClick={()=>goMes(1)} className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] transition-all flex items-center justify-center">›</button>
-            <button onClick={()=>{setViewMes(hoyDate.getUTCMonth()+1);setViewAnio(hoyDate.getUTCFullYear());setSelectedDay(hoyKey)}}
+            <button onClick={()=>goMes(1)} disabled={enUltimoMes}
+              className="w-8 h-8 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm hover:bg-[var(--c-hover)] disabled:opacity-30 disabled:hover:bg-[var(--c-card)] disabled:cursor-not-allowed transition-all flex items-center justify-center">›</button>
+            <button onClick={scrollToHoy}
               className="h-8 px-3 text-xs border border-[var(--c-border)] bg-[var(--c-card)] rounded-xl hover:bg-[var(--c-hover)] transition-all">Hoy</button>
           </div>
         )}
@@ -800,37 +883,29 @@ export function CalendarioClient({data}:{data:CalData}){
                 </div>
                 <div className="hidden sm:block w-1.5 shrink-0"/>
               </div>
-              {/* Carrusel con scroll-snap: mes anterior/actual/siguiente */}
+              {/* Scroll continuo: todos los meses de la ventana, uno tras otro,
+                  con scroll nativo del navegador (sin snap). */}
               <div className="flex gap-1.5 sm:gap-2 px-1.5 sm:px-2 pb-1.5 sm:pb-2">
-                <div ref={mesScrollRef} onScroll={handleScrollMes}
-                  className="flex-1 min-w-0 h-[480px] sm:h-[780px] lg:h-[900px] overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                  style={{scrollSnapType:"y mandatory"}}>
-                  <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
-                    <MesGrid calDays={calDaysPrev} byDay={byDayPrev} hoyKey={hoyKey} selectedDay={selectedDay}
-                      dragVisual={dragVisual} hoverDayKey={hoverDayKey}
-                      onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
-                      onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
-                      onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
-                  </div>
-                  <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
-                    <MesGrid calDays={calDays} byDay={byDay} hoyKey={hoyKey} selectedDay={selectedDay}
-                      dragVisual={dragVisual} hoverDayKey={hoverDayKey}
-                      onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
-                      onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
-                      onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
-                  </div>
-                  <div className="h-[480px] sm:h-[780px] lg:h-[900px]" style={{scrollSnapAlign:"start"}}>
-                    <MesGrid calDays={calDaysNext} byDay={byDayNext} hoyKey={hoyKey} selectedDay={selectedDay}
-                      dragVisual={dragVisual} hoverDayKey={hoverDayKey}
-                      onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
-                      onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
-                      onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
-                  </div>
+                <div ref={scrollContainerRef} onScroll={handleScrollMes}
+                  className="flex-1 min-w-0 h-[480px] sm:h-[780px] lg:h-[900px] overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  {mesesData.map(({anio,mes,weeks,byDay:byDayMes})=>(
+                    <div key={`${anio}-${mes}`}>
+                      <div ref={el=>{dividerRefs.current[`${anio}-${mes}`]=el}} data-mes-key={`${anio}-${mes}`}
+                        className="sticky top-0 z-10 bg-[var(--c-card)] px-2 sm:px-3 py-2 text-xs font-bold text-[var(--c-text3)] uppercase tracking-wide border-b border-[var(--c-border2)]">
+                        {MESES[mes-1]} {anio}
+                      </div>
+                      <MesGrid weeks={weeks} byDay={byDayMes} hoyKey={hoyKey} selectedDay={selectedDay}
+                        dragVisual={dragVisual} hoverDayKey={hoverDayKey}
+                        onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
+                        onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
+                        onToggle={handleToggleTarea} dragHandlers={dragHandlers}/>
+                    </div>
+                  ))}
                 </div>
                 {/* Indicador de scroll: línea vertical a la derecha del calendario */}
                 <div className="hidden sm:block w-1.5 shrink-0 rounded-full bg-[var(--c-border)] relative h-[780px] lg:h-[900px]">
                   <div className="absolute left-0 w-full rounded-full bg-sky-500 transition-[top] duration-100 ease-out"
-                    style={{height:"33.33%",top:`${scrollProgress*66.666}%`}}/>
+                    style={{height:`${thumbPct*100}%`,top:`${scrollProgress*(1-thumbPct)*100}%`}}/>
                 </div>
               </div>
             </>
