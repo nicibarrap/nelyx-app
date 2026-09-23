@@ -887,7 +887,11 @@ export function CalendarioClient({data}:{data:CalData}){
                   con scroll nativo del navegador (sin snap). */}
               <div className="flex gap-1.5 sm:gap-2 px-1.5 sm:px-2 pb-1.5 sm:pb-2">
                 <div ref={scrollContainerRef} onScroll={handleScrollMes}
-                  className="flex-1 min-w-0 h-[480px] sm:h-[780px] lg:h-[900px] overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  // scroll-behavior:smooth anima también el scroll nativo por rueda
+                  // del mouse (que por defecto salta de golpe, sin inercia, a
+                  // diferencia del trackpad/touch que ya trae inercia del SO) —
+                  // así PC/tablet queda tan fluido como celular.
+                  className="flex-1 min-w-0 h-[480px] sm:h-[780px] lg:h-[900px] overflow-y-auto overscroll-y-contain [scroll-behavior:smooth] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {mesesData.map(({anio,mes,weeks,byDay:byDayMes})=>(
                     <div key={`${anio}-${mes}`}>
                       <div ref={el=>{dividerRefs.current[`${anio}-${mes}`]=el}} data-mes-key={`${anio}-${mes}`}
