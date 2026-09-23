@@ -232,8 +232,10 @@ export default async function ResumenPage({ searchParams }: { searchParams: { me
         </div>
       )}
 
-      {/* Cards métricas */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      {/* Cards métricas — 8 tarjetas: 2 columnas hasta lg deja siempre filas
+          parejas (4 de a 2); con 3 columnas a partir de sm, la última fila
+          quedaba con 2 tarjetas y un hueco vacío donde iría la tercera. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {cards.map((c) => (
           <div key={c.label} className={`${c.bg} border ${c.border} rounded-2xl p-4 card-hover`}>
             <div className="flex items-center justify-between mb-3">

@@ -87,6 +87,18 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
   // pantalla nueva en vez de cerrarse solo.
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
+  // El sidebar fijo ahora arranca en md (tablet), no solo en lg (desktop) —
+  // antes una tablet caía al mismo ☰ superpuesto que un celular, sin
+  // aprovechar que ya tiene ancho de sobra para una navegación siempre
+  // visible. Arranca colapsado (solo íconos) únicamente en el rango de
+  // tablet para no comerse tanto ancho — en desktop sigue expandido por
+  // defecto, como antes. El usuario puede expandir/colapsar manualmente
+  // en cualquier tamaño con el botón de siempre.
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px) and (max-width: 1023px)")
+    if (mq.matches) setCollapsed(true)
+  }, [])
+
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
     <>
       <div className={`px-4 py-5 border-b border-[var(--c-border2)] flex items-center ${collapsed && !isMobile ? "justify-center" : "justify-between"}`}>
@@ -167,7 +179,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
       {/* Mobile toggle */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3 left-3 z-40 w-9 h-9 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl flex items-center justify-center text-[var(--c-text2)] hover:text-[var(--c-text)] hover:border-sky-500/30 transition-all"
+        className="md:hidden fixed top-3 left-3 z-40 w-9 h-9 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl flex items-center justify-center text-[var(--c-text2)] hover:text-[var(--c-text)] hover:border-sky-500/30 transition-all"
       >
         ☰
       </button>
@@ -175,15 +187,15 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
       {/* Mobile overlay */}
       {mobileOpen && (
         <>
-          <div className="fixed inset-0 bg-black/70 z-40 lg:hidden backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex flex-col z-50 lg:hidden">
+          <div className="fixed inset-0 bg-black/70 z-40 md:hidden backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex flex-col z-50 md:hidden">
             <SidebarContent isMobile={true} />
           </aside>
         </>
       )}
 
-      {/* Desktop sidebar */}
-      <aside className={`hidden lg:flex ${collapsed ? "w-16" : "w-60"} min-h-screen bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex-col transition-all duration-300 flex-shrink-0`}>
+      {/* Desktop/tablet sidebar */}
+      <aside className={`hidden md:flex ${collapsed ? "w-16" : "w-60"} min-h-screen bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex-col transition-all duration-300 flex-shrink-0`}>
         <SidebarContent />
       </aside>
     </>

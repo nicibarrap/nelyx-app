@@ -16,7 +16,18 @@ export default auth(async (req) => {
   const session = req.auth
 
   if (pathname === "/auth/login" || pathname === "/auth/forzar-salida") {
-    if (session && pathname === "/auth/login") return NextResponse.redirect(new URL("/dashboard/resumen", req.url))
+    // Una Server Action invocada DESDE /auth/login (p. ej. obtenerEmpleadosDeMiCuenta,
+    // que se llama justo después de iniciar sesión, antes de salir de esta pantalla)
+    // también le llega al middleware como POST a esta misma ruta. Si se redirige
+    // igual que ante una visita real a la página, ese fetch termina aterrizando en
+    // /dashboard/resumen y el cliente recibe de vuelta el árbol RENDERIZADO de esa
+    // página en lugar del resultado esperado — el contenido del dashboard se pinta
+    // encima del login sin que la URL cambie nunca (el usuario queda visualmente
+    // "atascado" en /auth/login pese a que ya inició sesión, hasta que refresca).
+    // Las Server Actions se identifican por el header "next-action" — nunca deben
+    // quedar sujetas a esta redirección.
+    const esServerAction = req.headers.get("next-action") !== null
+    if (session && pathname === "/auth/login" && !esServerAction) return NextResponse.redirect(new URL("/dashboard/resumen", req.url))
     return NextResponse.next()
   }
 

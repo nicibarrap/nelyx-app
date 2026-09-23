@@ -55,8 +55,11 @@ export function Header({ session }: { session: any }) {
 
   return (
     <header className="h-14 bg-[var(--c-card)] border-b border-[var(--c-border)] px-4 sm:px-6 flex items-center justify-between flex-shrink-0">
-      {/* Saludo */}
-      <div className="hidden sm:block">
+      {/* Saludo — recién a partir de md: por debajo de eso el sidebar cae al
+          botón ☰ con position:fixed en la esquina superior izquierda, y
+          como no ocupa espacio en el flujo normal, tapa el inicio de este
+          saludo si aparecen a la vez. Mismo breakpoint que el sidebar. */}
+      <div className="hidden md:block">
         <p className="text-sm font-semibold text-[var(--c-text)]">
           {saludo}, {session?.user?.name?.split(" ")[0]} 👋
         </p>

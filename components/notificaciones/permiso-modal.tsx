@@ -12,8 +12,24 @@ export function PermisoNotificacionesModal({ yaPedido }: { yaPedido: boolean }) 
     if (yaPedido) return
     if (typeof Notification === "undefined") return
     if (Notification.permission !== "default") return
-    const t = setTimeout(() => setShow(true), 1500)
-    return () => clearTimeout(t)
+
+    let cancelado = false
+    // Si el usuario ya abrió otro modal (el wizard de "nuevo producto", el
+    // formulario de un cliente, etc. — todos usan la misma convención
+    // "fixed inset-0" para su fondo) en el mismo momento en que se cumplen
+    // los 1.5s, este se mostraba ENCIMA de ese otro modal — dos diálogos
+    // apilados, uno de ellos a medio tapar. Se espera a que no haya ningún
+    // otro overlay abierto antes de mostrarlo, reintentando cada segundo.
+    function hayOtroModalAbierto() {
+      return document.querySelectorAll(".fixed.inset-0").length > 0
+    }
+    function intentarMostrar() {
+      if (cancelado) return
+      if (hayOtroModalAbierto()) { setTimeout(intentarMostrar, 1000); return }
+      setShow(true)
+    }
+    const t = setTimeout(intentarMostrar, 1500)
+    return () => { cancelado = true; clearTimeout(t) }
   }, [yaPedido])
 
   async function permitir() {

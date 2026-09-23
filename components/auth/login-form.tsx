@@ -1,13 +1,11 @@
 "use client"
 import { useState } from "react"
 import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { obtenerEmpleadosDeMiCuenta, verificarBloqueoLogin } from "@/app/actions/empleados-acciones"
 import { SelectorIdentidad } from "@/components/auth/selector-identidad"
 
 export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = {}) {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
   const [infoParaElegir, setInfoParaElegir] = useState<{ cuentaId: string; nombreDueno: string; negocio: string | null; emailDueno?: string; empleados: { id: string; nombre: string }[] } | null>(null)
@@ -53,8 +51,17 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
 
   function entrarAlDashboard() {
     onLoginExitoso?.()
-    router.push("/dashboard/resumen")
-    router.refresh()
+    // Navegación dura a propósito, no router.push(): el middleware ya
+    // redirige /auth/login → /dashboard/resumen en cuanto detecta la
+    // cookie de sesión (recién creada por signIn()), y esa redirección
+    // ocurre server-side. Pedírsela al router del cliente mientras el
+    // componente sigue montado en /auth/login confunde su seguimiento de
+    // la URL: el contenido del dashboard sí llega a mostrarse, pero la
+    // barra de direcciones se queda apuntando a /auth/login — visible al
+    // refrescar la página (vuelve a caer en el login) o al usar "atrás".
+    // Con una navegación real, el navegador sigue la redirección del
+    // middleware igual que lo haría al refrescar, y la URL queda correcta.
+    window.location.href = "/dashboard/resumen"
   }
 
   if (infoParaElegir) {
@@ -65,7 +72,14 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
   const inpStyle = { background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)" }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    // method="post" es a propósito, aunque el submit real lo maneja
+    // JavaScript (preventDefault + signIn): si alguien llega a hacer clic
+    // ANTES de que React termine de hidratar (conexión lenta, dispositivo
+    // viejo), el navegador cae al envío nativo del formulario — sin esto,
+    // ese envío nativo usa GET por defecto y manda la contraseña como
+    // parte de la URL (visible en el historial, en logs del servidor, en
+    // el header Referer de cualquier recurso que cargue después).
+    <form onSubmit={handleSubmit} method="post" className="space-y-4">
       <div>
         <label className="text-xs font-semibold text-white/55 block mb-2">Correo electrónico</label>
         <div className="relative">

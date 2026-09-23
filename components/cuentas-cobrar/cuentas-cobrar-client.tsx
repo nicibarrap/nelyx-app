@@ -460,51 +460,92 @@ export function CuentasCobrarClient({ cuentasData, clientes, scoreClientes, metr
             </div>
           </div>
 
-          {/* Tabla */}
-          <div className="overflow-x-auto flex-1">
+          {/* Tabla — la versión de 7 columnas no cabe en un teléfono ni
+              siquiera con scroll horizontal (Monto quedaba completamente
+              fuera de la pantalla, sin ninguna señal de que se podía
+              deslizar); por debajo de sm se usan tarjetas apiladas en su
+              lugar, con los mismos datos priorizados para una pantalla
+              angosta. */}
+          <div className="flex-1">
             {filtradas.length === 0 ? (
               <div className="text-center py-16"><p className="text-4xl mb-3">📋</p><p className="text-sm text-[var(--c-text3)]">Sin cuentas en esta categoría</p></div>
             ) : (
-              <table className="w-full text-xs min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-[var(--c-border)] bg-[var(--c-card2)]">
-                    {["Cliente","Documento","Vencimiento","Monto","Saldo","Estado","Días"].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <div className="sm:hidden divide-y divide-[var(--c-border2)]">
                   {filtradas.map(c => {
                     const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.pendiente
                     const score = scoreMap[c.cliente.id] ?? "excelente"
                     const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
                     return (
-                      <tr key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
-                        className={`border-b border-[var(--c-border2)] cursor-pointer transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
+                      <button key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
+                        className={`w-full text-left px-4 py-3 transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center text-[10px] font-bold text-sky-400 flex-shrink-0">{getInitials(c.cliente.nombre, c.cliente.apellido)}</div>
-                            <div>
-                              <p className="font-semibold text-[var(--c-text)]">{c.cliente.nombre} {c.cliente.apellido ?? ""}</p>
-                              <span className={`text-[9px] ${sCfg.color}`}>{sCfg.dot}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[var(--c-text)] text-xs truncate">{c.cliente.nombre} {c.cliente.apellido ?? ""} <span className={sCfg.color}>{sCfg.dot}</span></p>
+                              <p className="text-[10px] text-[var(--c-text3)]">Venta #{c.numero}</p>
                             </div>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-[var(--c-text3)]">Venta #{c.numero}</td>
-                        <td className="px-4 py-3">
-                          {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : "text-[var(--c-text2)]"}>{formatFecha(c.fechaVence)}</span> : <span className="text-[var(--c-text4)]">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--c-text)]">{formatCLP(c.montoOriginal)}</td>
-                        <td className={`px-4 py-3 font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</td>
-                        <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span></td>
-                        <td className={`px-4 py-3 font-semibold ${c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : "text-[var(--c-text3)]"}`}>
-                        {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓" : c.diasAtraso > 0 ? `+${c.diasAtraso}` : c.diasHastaVence !== null ? `${c.diasHastaVence}d` : "—"}
-                      </td>
-                      </tr>
+                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-2 text-xs">
+                          <span className="text-[var(--c-text3)]">
+                            {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : ""}>Vence {formatFecha(c.fechaVence)}</span> : "Sin vencimiento"}
+                            {" · "}
+                            <span className={c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : ""}>
+                              {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓ Al día" : c.diasAtraso > 0 ? `${c.diasAtraso}d atraso` : c.diasHastaVence !== null ? `${c.diasHastaVence}d restantes` : "—"}
+                            </span>
+                          </span>
+                          <span className={`font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</span>
+                        </div>
+                      </button>
                     )
                   })}
-                </tbody>
-              </table>
+                </div>
+                <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-xs min-w-[600px]">
+                    <thead>
+                      <tr className="border-b border-[var(--c-border)] bg-[var(--c-card2)]">
+                        {["Cliente","Documento","Vencimiento","Monto","Saldo","Estado","Días"].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtradas.map(c => {
+                        const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.pendiente
+                        const score = scoreMap[c.cliente.id] ?? "excelente"
+                        const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
+                        return (
+                          <tr key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
+                            className={`border-b border-[var(--c-border2)] cursor-pointer transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center text-[10px] font-bold text-sky-400 flex-shrink-0">{getInitials(c.cliente.nombre, c.cliente.apellido)}</div>
+                                <div>
+                                  <p className="font-semibold text-[var(--c-text)]">{c.cliente.nombre} {c.cliente.apellido ?? ""}</p>
+                                  <span className={`text-[9px] ${sCfg.color}`}>{sCfg.dot}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-[var(--c-text3)]">Venta #{c.numero}</td>
+                            <td className="px-4 py-3">
+                              {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : "text-[var(--c-text2)]"}>{formatFecha(c.fechaVence)}</span> : <span className="text-[var(--c-text4)]">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-[var(--c-text)]">{formatCLP(c.montoOriginal)}</td>
+                            <td className={`px-4 py-3 font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</td>
+                            <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span></td>
+                            <td className={`px-4 py-3 font-semibold ${c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : "text-[var(--c-text3)]"}`}>
+                            {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓" : c.diasAtraso > 0 ? `+${c.diasAtraso}` : c.diasHastaVence !== null ? `${c.diasHastaVence}d` : "—"}
+                          </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
 

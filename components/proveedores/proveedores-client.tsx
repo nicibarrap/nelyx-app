@@ -318,7 +318,12 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
         {[
           { label: "Proveedores totales", val: String(proveedoresData.length), sub: `${proveedoresData.filter(p=>p.activo).length} activos`, icon: "🏪", color: "text-sky-400" },
           { label: "Compras este mes", val: formatCLP(metricas.totalComprasMes), sub: "Con proveedor asignado", icon: "🛒", color: "text-red-400" },
-          { label: "Proveedor principal", val: metricas.provPrincipal ?? "—", sub: "Mayor volumen", icon: "⭐", color: "text-[var(--c-warning)]" },
+          // A diferencia de las otras 3 (siempre números/plata, cortos), este
+          // valor es el nombre real de un proveedor — puede ser largo, así
+          // que con el mismo text-xl que las demás quedaba truncado a solo
+          // ~10 caracteres en una tarjeta angosta (grid de 2 columnas en
+          // el celular). Fuente más chica solo para esta.
+          { label: "Proveedor principal", val: metricas.provPrincipal ?? "—", sub: "Mayor volumen", icon: "⭐", color: "text-[var(--c-warning)]", chica: true },
           { label: "Inactivos", val: String(metricas.inactivos), sub: "Sin actividad +90 días", icon: "💤", color: "text-[var(--c-text3)]" },
         ].map(c => (
           <div key={c.label} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 card-hover">
@@ -326,7 +331,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
               <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider leading-tight">{c.label}</p>
               <span className="text-base">{c.icon}</span>
             </div>
-            <p className={`text-xl font-black ${c.color} truncate`}>{c.val}</p>
+            <p className={`${c.chica ? "text-base" : "text-xl"} font-black ${c.color} truncate`}>{c.val}</p>
             <p className="text-[10px] text-[var(--c-text3)] mt-1">{c.sub}</p>
           </div>
         ))}

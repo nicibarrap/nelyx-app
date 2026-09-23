@@ -25,7 +25,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar userRole={session.user.role} modulosPermitidos={modulosPermitidos} esEmpleado={session.user.esEmpleado} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header session={session} />
-        <main className="flex-1 p-4 lg:p-5 overflow-y-auto overflow-x-hidden pt-16 lg:pt-4">
+        {/* pt-16 hasta md: espacio para el ☰ fijo del sidebar, que a partir
+            de md ya no existe (sidebar siempre visible) — mismo breakpoint
+            que el sidebar y el saludo del header. */}
+        <main className="flex-1 p-4 lg:p-5 overflow-y-auto overflow-x-hidden pt-16 md:pt-4">
           {children}
         </main>
       </div>
