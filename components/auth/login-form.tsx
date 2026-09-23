@@ -72,7 +72,14 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
   const inpStyle = { background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)" }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    // method="post" es a propósito, aunque el submit real lo maneja
+    // JavaScript (preventDefault + signIn): si alguien llega a hacer clic
+    // ANTES de que React termine de hidratar (conexión lenta, dispositivo
+    // viejo), el navegador cae al envío nativo del formulario — sin esto,
+    // ese envío nativo usa GET por defecto y manda la contraseña como
+    // parte de la URL (visible en el historial, en logs del servidor, en
+    // el header Referer de cualquier recurso que cargue después).
+    <form onSubmit={handleSubmit} method="post" className="space-y-4">
       <div>
         <label className="text-xs font-semibold text-white/55 block mb-2">Correo electrónico</label>
         <div className="relative">
