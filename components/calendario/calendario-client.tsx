@@ -85,16 +85,61 @@ function getDOW(key:string){const[y,m,d]=key.split("-").map(Number);return(new D
 // siempre), acá cada mes mide lo que necesita — 4, 5 o 6 filas — que es
 // justamente lo que permite que varios meses se apilen uno tras otro en
 // un scroll continuo sin dejar espacio muerto de sobra.
-function buildMonthWeeks(anio:number,mes:number):({key:string;day:number}|null)[][]{
-  const firstDOW=(new Date(Date.UTC(anio,mes-1,1)).getUTCDay()+6)%7
-  const totalD=diasEnMes(anio,mes)
-  const cells:({key:string;day:number}|null)[]=[]
-  for(let i=0;i<firstDOW;i++)cells.push(null)
-  for(let d=1;d<=totalD;d++)cells.push({key:dateKey(anio,mes,d),day:d})
-  while(cells.length%7!==0)cells.push(null)
-  const weeks:({key:string;day:number}|null)[][]=[]
-  for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7))
+type DiaCelda={key:string;day:number;anio:number;mes:number;fueraDeMes:boolean}
+
+function lunesDeSemanaUTC(d:Date):Date{
+  const dow=(d.getUTCDay()+6)%7
+  const r=new Date(d)
+  r.setUTCDate(r.getUTCDate()-dow)
+  return r
+}
+
+// Cinta continua de semanas reales (7 días cada una, nunca celdas en
+// blanco) desde el lunes de la semana del día 1 del primer mes de la
+// ventana hasta el domingo de la semana del último día del último mes.
+// Cada celda se marca fueraDeMes según cuál mes tiene más días en esa
+// semana (su "dueño") — igual que cualquier calendario real (Google
+// Calendar, Asana): la semana de frontera muestra sus días reales de
+// ambos meses, solo que los del mes vecino quedan atenuados. Como cada
+// semana aparece una sola vez en la cinta, nunca se duplica ni se
+// alcanza a ver más de una semana (máx. 6 días) del mes vecino.
+function buildWeekRibbon(anioIni:number,mesIni:number,anioFin:number,mesFin:number):DiaCelda[][]{
+  const inicio=lunesDeSemanaUTC(new Date(Date.UTC(anioIni,mesIni-1,1)))
+  const totalDFin=diasEnMes(anioFin,mesFin)
+  const fin=lunesDeSemanaUTC(new Date(Date.UTC(anioFin,mesFin-1,totalDFin)))
+  fin.setUTCDate(fin.getUTCDate()+6)
+
+  const weeks:DiaCelda[][]=[]
+  const cur=new Date(inicio)
+  while(cur<=fin){
+    const conteo=new Map<string,number>()
+    const dias:{key:string;day:number;anio:number;mes:number}[]=[]
+    for(let i=0;i<7;i++){
+      const a=cur.getUTCFullYear(),m=cur.getUTCMonth()+1,d=cur.getUTCDate()
+      dias.push({key:dateKey(a,m,d),day:d,anio:a,mes:m})
+      const ck=`${a}-${m}`
+      conteo.set(ck,(conteo.get(ck)??0)+1)
+      cur.setUTCDate(cur.getUTCDate()+1)
+    }
+    let dueño="",max=-1
+    conteo.forEach((n,k)=>{if(n>max){max=n;dueño=k}})
+    weeks.push(dias.map(c=>({...c,fueraDeMes:`${c.anio}-${c.mes}`!==dueño})))
+  }
   return weeks
+}
+
+// Agrupa la cinta de semanas en secciones por mes "dueño" — mismo formato
+// {anio,mes,weeks} que antes, para que el resto del componente (labels,
+// dividerRefs, goMes, etc.) no tenga que cambiar.
+function agruparPorMes(weeks:DiaCelda[][]):{anio:number;mes:number;weeks:DiaCelda[][]}[]{
+  const secciones:{anio:number;mes:number;weeks:DiaCelda[][]}[]=[]
+  for(const week of weeks){
+    const dueño=week.find(c=>!c.fueraDeMes)??week[0]
+    const last=secciones[secciones.length-1]
+    if(last&&last.anio===dueño.anio&&last.mes===dueño.mes)last.weeks.push(week)
+    else secciones.push({anio:dueño.anio,mes:dueño.mes,weeks:[week]})
+  }
+  return secciones
 }
 
 function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
@@ -170,7 +215,7 @@ type DragHandlers = {
 // semanas ocupen. Las celdas null (antes del día 1, después del último)
 // quedan en blanco — nunca se muestra el día real de otro mes.
 function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelectDay,onAddDay,onToggle,dragHandlers}:{
-  weeks:({key:string;day:number}|null)[][]
+  weeks:DiaCelda[][]
   byDay:Record<string,CalEvent[]>
   hoyKey:string
   selectedDay:string|null
@@ -185,20 +230,20 @@ function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelect
     <div>
       {weeks.map((week,wi)=>(
         <div key={wi} className="grid grid-cols-7">
-          {week.map((cell,ci)=>{
-            if(!cell)return <div key={`b${wi}-${ci}`} className="border-b border-r border-[var(--c-border2)] min-h-[92px] sm:min-h-[128px] lg:min-h-[148px]"/>
+          {week.map(cell=>{
             const isHoy=cell.key===hoyKey
             const isSel=cell.key===selectedDay
             const cellEvs=byDay[cell.key]??[]
             const esDestinoDrag=!!dragVisual&&hoverDayKey===cell.key
+            const fuera=cell.fueraDeMes
             return(
               <div key={cell.key} data-day-key={cell.key}
                 onClick={()=>onSelectDay(cell.key)}
                 className={`group relative p-1.5 sm:p-1.5 min-h-[92px] sm:min-h-[128px] lg:min-h-[148px] border-b border-r border-[var(--c-border2)] cursor-pointer overflow-hidden transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
-                  ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
+                  ${fuera?"bg-black/10":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
                 <div className="flex items-center justify-between mb-1 sm:mb-1.5">
                   <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold
-                    ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":"text-[var(--c-text2)]"}`}>
+                    ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":fuera?"text-[var(--c-text4)]":"text-[var(--c-text2)]"}`}>
                     {cell.day}
                   </div>
                   <button onClick={e=>{e.stopPropagation();onAddDay(cell.key)}}
@@ -206,7 +251,7 @@ function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelect
                     title="Agregar tarea">+</button>
                 </div>
                 {/* Desktop: event pills */}
-                <div className="hidden sm:flex flex-col gap-1">
+                <div className={`hidden sm:flex flex-col gap-1 ${fuera?"opacity-50":""}`}>
                   {cellEvs.slice(0,4).map(ev=><EventPill key={ev.id} ev={ev} onToggle={onToggle} drag={dragHandlers}/>)}
                   {cellEvs.length>4&&(
                     <button onClick={e=>{e.stopPropagation();onSelectDay(cell.key)}}
@@ -218,7 +263,7 @@ function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelect
                 {/* Mobile: grouped dots with count — celda más grande que antes,
                     así que caben hasta 4 grupos en vez de 3. */}
                 {cellEvs.length>0&&(
-                  <div className="flex sm:hidden gap-1 flex-wrap mt-1">
+                  <div className={`flex sm:hidden gap-1 flex-wrap mt-1 ${fuera?"opacity-50":""}`}>
                     {Object.entries(
                       cellEvs.reduce((acc,ev)=>{acc[ev.tipo]=(acc[ev.tipo]??0)+1;return acc},{} as Record<string,number>)
                     ).slice(0,4).map(([tipo,cnt])=>{
@@ -609,13 +654,21 @@ export function CalendarioClient({data}:{data:CalData}){
     return arr
   },[anioBase])
 
-  const mesesData=useMemo(()=>mesesWindow.map(({anio,mes})=>{
-    const weeks=buildMonthWeeks(anio,mes)
-    const evs=aplicarFiltro(buildEvents(data,anio,mes),filtro)
-    const byDayMes:Record<string,CalEvent[]>={}
-    for(const ev of evs){if(!byDayMes[ev.fecha])byDayMes[ev.fecha]=[];byDayMes[ev.fecha].push(ev)}
-    return{anio,mes,weeks,byDay:byDayMes}
-  }),[mesesWindow,data,filtro])
+  const mesesData=useMemo(()=>{
+    const primero=mesesWindow[0],ultimo=mesesWindow[mesesWindow.length-1]
+    const ribbon=buildWeekRibbon(primero.anio,primero.mes,ultimo.anio,ultimo.mes)
+    return agruparPorMes(ribbon)
+  },[mesesWindow])
+
+  // Un solo mapa de eventos por día para toda la cinta — así los días de
+  // frontera (fueraDeMes) también muestran sus tareas/costos reales, no
+  // solo los "dueños" de cada semana.
+  const byDayRibbon=useMemo(()=>{
+    const evs=mesesWindow.flatMap(({anio,mes})=>aplicarFiltro(buildEvents(data,anio,mes),filtro))
+    const m:Record<string,CalEvent[]>={}
+    for(const ev of evs){if(!m[ev.fecha])m[ev.fecha]=[];m[ev.fecha].push(ev)}
+    return m
+  },[mesesWindow,data,filtro])
 
   const primerMesWindow=mesesWindow[0]
   const ultimoMesWindow=mesesWindow[mesesWindow.length-1]
@@ -892,13 +945,13 @@ export function CalendarioClient({data}:{data:CalData}){
                   // diferencia del trackpad/touch que ya trae inercia del SO) —
                   // así PC/tablet queda tan fluido como celular.
                   className="flex-1 min-w-0 h-[480px] sm:h-[780px] lg:h-[900px] overflow-y-auto overscroll-y-contain [scroll-behavior:smooth] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  {mesesData.map(({anio,mes,weeks,byDay:byDayMes})=>(
+                  {mesesData.map(({anio,mes,weeks})=>(
                     <div key={`${anio}-${mes}`}>
                       <div ref={el=>{dividerRefs.current[`${anio}-${mes}`]=el}} data-mes-key={`${anio}-${mes}`}
                         className="sticky top-0 z-10 bg-[var(--c-card)] px-2 sm:px-3 py-2 text-xs font-bold text-[var(--c-text3)] uppercase tracking-wide border-b border-[var(--c-border2)]">
                         {MESES[mes-1]} {anio}
                       </div>
-                      <MesGrid weeks={weeks} byDay={byDayMes} hoyKey={hoyKey} selectedDay={selectedDay}
+                      <MesGrid weeks={weeks} byDay={byDayRibbon} hoyKey={hoyKey} selectedDay={selectedDay}
                         dragVisual={dragVisual} hoverDayKey={hoverDayKey}
                         onSelectDay={key=>{setSelectedDay(key);setShowForm(false);setEditingEv(null)}}
                         onAddDay={key=>{setSelectedDay(key);setShowForm(true);setEditingEv(null)}}
