@@ -246,7 +246,7 @@ function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelect
                 data-mes-key={cell.esInicioMes?mesKey:undefined}
                 onClick={()=>onSelectDay(cell.key)}
                 className={`group relative p-1.5 sm:p-1.5 min-h-[92px] sm:min-h-[128px] lg:min-h-[148px] border-b border-r border-[var(--c-border2)] cursor-pointer overflow-hidden transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
-                  ${fuera?"bg-black/10":""} ${cell.esInicioMes?"bg-sky-500/[0.07] ring-1 ring-inset ring-sky-500/25":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
+                  ${fuera?"bg-[var(--c-card2)]":""} ${cell.esInicioMes?"bg-sky-500/[0.07] ring-1 ring-inset ring-sky-500/25":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
                 <div className="flex items-center gap-1 mb-1 sm:mb-1.5">
                   <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0
                     ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":fuera?"text-[var(--c-text4)]":"text-[var(--c-text2)]"}`}>
