@@ -246,21 +246,20 @@ function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelect
                 data-mes-key={cell.esInicioMes?mesKey:undefined}
                 onClick={()=>onSelectDay(cell.key)}
                 className={`group relative p-1.5 sm:p-1.5 min-h-[92px] sm:min-h-[128px] lg:min-h-[148px] border-b border-r border-[var(--c-border2)] cursor-pointer overflow-hidden transition-all duration-200 hover:bg-[var(--c-hover)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]
-                  ${fuera?"bg-[var(--c-card2)]":""} ${cell.esInicioMes?"bg-sky-500/[0.07] ring-1 ring-inset ring-sky-500/25":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
+                  ${fuera?"bg-[var(--c-card2)]":""} ${cell.esInicioMes?"border-t-2 border-t-sky-500 sm:border-t-0 sm:bg-sky-500/[0.07] sm:ring-1 sm:ring-inset sm:ring-sky-500/25":""} ${isSel?"bg-sky-500/5 border-l-2 border-l-sky-500":""} ${isHoy?"ring-1 ring-inset ring-sky-500/25 bg-sky-500/[0.03]":""} ${esDestinoDrag?"bg-sky-500/20 ring-2 ring-inset ring-sky-500":""}`}>
                 <div className="flex items-center gap-1 mb-1 sm:mb-1.5">
                   <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0
                     ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":fuera?"text-[var(--c-text4)]":"text-[var(--c-text2)]"}`}>
                     {cell.day}
                   </div>
                   {cell.esInicioMes&&(
-                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wide text-sky-400 truncate">
-                      <span className="sm:hidden">{MESES[cell.mes-1].slice(0,3)}</span>
-                      <span className="hidden sm:inline">{MESES[cell.mes-1]}</span>
+                    <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wide text-sky-400 truncate">
+                      {MESES[cell.mes-1]}
                     </span>
                   )}
                   <div className="flex-1"/>
                   <button onClick={e=>{e.stopPropagation();onAddDay(cell.key)}}
-                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity flex-shrink-0"
+                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-[10px] sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity flex-shrink-0"
                     title="Agregar tarea">+</button>
                 </div>
                 {/* Desktop: event pills */}
