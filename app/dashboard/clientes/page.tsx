@@ -3,14 +3,17 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ClientesClient } from "@/components/clientes/clientes-client"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
+import { hoyEnChile } from "@/lib/timezone"
 
 export const metadata: Metadata = { title: "Clientes" }
 
 export default async function ClientesPage() {
   const session = await auth()
-  const hoy = new Date()
+  // Vercel corre en UTC, no en la hora de Chile — con new Date() crudo,
+  // "ventas de este mes" podía perder o mover al mes siguiente las ventas
+  // del último día, durante la noche chilena.
+  const hoy = hoyEnChile()
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-  const hace30 = new Date(hoy.getTime() - 30 * 86400000)
 
   const [clientes, movsMes, deudas, cuentasCobrar, usuario, plantillas] = await Promise.all([
     db.cliente.findMany({
