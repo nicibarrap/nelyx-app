@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { PermisoNotificacionesModal } from "@/components/notificaciones/permiso-modal"
 import { AutoReparadorPush } from "@/components/notificaciones/auto-reparador-push"
+import { AutoLogoutEmpleado } from "@/components/dashboard/auto-logout-empleado"
 import { db } from "@/lib/db"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -34,6 +35,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </div>
       <PermisoNotificacionesModal yaPedido={notifCfg?.permisoPedido ?? false} />
       <AutoReparadorPush />
+      <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />
     </div>
   )
 }

@@ -9,10 +9,22 @@ import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unid
 import { registrarMovimientoStock, type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerLoteFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
+import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  return session
+}
+
+/** Igual que getSession(), pero además rechaza a un empleado al que ese
+ * módulo se le dejó en "solo lectura" — usarla en toda acción que CREE,
+ * EDITE o ELIMINE algo (nunca en una que solo lea). */
+async function getSessionEscritura(moduloKey: ModuloKey) {
+  const session = await getSession()
+  if (esSoloLectura(session.user.modulosPermitidos, moduloKey)) {
+    throw new Error("Tu acceso a este módulo es solo de lectura")
+  }
   return session
 }
 
@@ -408,7 +420,7 @@ export async function eliminarCategoriaPersonalizada(id: string) {
 
 // ── PRODUCTOS ──────────────────────────────────────────────
 export async function crearProducto(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
 
@@ -520,7 +532,7 @@ export async function importarProductosMasivo(productos: {
   descripcion: string | null
   fechaVencimiento?: string | null
 }[]) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   if (!productos || productos.length === 0) throw new Error("No hay productos para importar")
 
   const errores: string[] = []
@@ -568,7 +580,7 @@ export async function importarProductosMasivo(productos: {
 }
 
 export async function actualizarProducto(id: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
 
@@ -635,7 +647,7 @@ export async function ajustarStock(
   motivo: TipoMovimientoStock = "ajuste_manual",
   opciones?: { observacion?: string; costoUnitario?: number; proveedorId?: string; fechaVencimiento?: string }
 ) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
   if (!cantidadUnidadDisplay || cantidadUnidadDisplay <= 0) throw new Error("La cantidad debe ser mayor a 0")
@@ -682,13 +694,13 @@ export async function ajustarStock(
 }
 
 export async function toggleProducto(id: string, activo: boolean) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   await db.producto.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/productos")
 }
 
 export async function eliminarProducto(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("No encontrado")
   // Desvincular movimientos
@@ -1018,7 +1030,7 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
 
 // ── CLIENTES ──────────────────────────────────────────────
 export async function crearCliente(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("clientes")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("El nombre es requerido")
 
@@ -1046,7 +1058,7 @@ export async function crearCliente(formData: FormData) {
 }
 
 export async function actualizarCliente(id: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("clientes")
   const cl = await db.cliente.findFirst({ where: { id, userId: session.user.id } })
   if (!cl) throw new Error("Cliente no encontrado")
 
@@ -1075,7 +1087,7 @@ export async function actualizarCliente(id: string, formData: FormData) {
 }
 
 export async function eliminarCliente(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("clientes")
   // No se permite eliminar si tiene una cuenta por cobrar todavía
   // pendiente — borrarlo ahí perdería de vista a quién cobrarle. Su
   // historial de ventas y cuentas ya pagadas sí se preserva siempre
@@ -1088,13 +1100,13 @@ export async function eliminarCliente(id: string) {
 }
 
 export async function toggleActivoCliente(id: string, activo: boolean) {
-  const session = await getSession()
+  const session = await getSessionEscritura("clientes")
   await db.cliente.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/clientes")
 }
 
 export async function crearNotaCliente(clienteId: string, texto: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("clientes")
   const cl = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id } })
   if (!cl) throw new Error("Cliente no encontrado")
   await db.notaCliente.create({ data: { clienteId, texto: texto.trim() } })
@@ -1102,7 +1114,7 @@ export async function crearNotaCliente(clienteId: string, texto: string) {
 }
 
 export async function eliminarNotaCliente(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("clientes")
   const nota = await db.notaCliente.findFirst({ where: { id }, include: { cliente: { select: { userId: true } } } })
   if (!nota || nota.cliente.userId !== session.user.id) throw new Error("Sin acceso")
   await db.notaCliente.delete({ where: { id } })
@@ -1587,7 +1599,7 @@ export async function actualizarEstadoEventoCalendario(id: string, estado: strin
  * confirmó explícitamente, así que se actualiza el precio de venta.
  */
 export async function actualizarPrecioProducto(productoId: string, nuevoPrecio: number) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id: productoId, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
   await db.producto.update({ where: { id: productoId }, data: { precio: nuevoPrecio } })

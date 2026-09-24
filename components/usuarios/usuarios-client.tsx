@@ -3,16 +3,34 @@ import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
-import { crearEmpleado, actualizarEmpleado, toggleActivoEmpleado } from "@/app/actions/empleados-acciones"
-import { MODULOS_NELYX } from "@/lib/permisos"
+import { crearEmpleado, actualizarEmpleado, toggleActivoEmpleado, obtenerActividadEmpleados } from "@/app/actions/empleados-acciones"
+import { MODULOS_NELYX, claveSoloLectura } from "@/lib/permisos"
+import { ETIQUETAS, formatCLP } from "@/lib/utils"
 
 type Empleado = { id: string; nombre: string; activo: boolean; modulosPermitidos: string[]; createdAt: string }
+type ActividadItem = { id: string; tipo: string; monto: number; fecha: string; descripcion: string | null; categoria: string | null; realizadoPorNombre: string | null; createdAt: string }
 
 const inp = "w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
 
 function SelectorModulos({ seleccionados, onChange }: { seleccionados: string[]; onChange: (m: string[]) => void }) {
+  function estaSeleccionado(key: string) {
+    return seleccionados.includes(key) || seleccionados.includes(claveSoloLectura(key))
+  }
+  function esSoloLectura(key: string) {
+    return seleccionados.includes(claveSoloLectura(key))
+  }
   function toggle(key: string) {
-    onChange(seleccionados.includes(key) ? seleccionados.filter(k => k !== key) : [...seleccionados, key])
+    onChange(estaSeleccionado(key)
+      ? seleccionados.filter(k => k !== key && k !== claveSoloLectura(key))
+      : [...seleccionados, key])
+  }
+  function toggleSoloLectura(key: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (esSoloLectura(key)) {
+      onChange(seleccionados.map(k => k === claveSoloLectura(key) ? key : k))
+    } else {
+      onChange(seleccionados.map(k => k === key ? claveSoloLectura(key) : k))
+    }
   }
   return (
     <div>
@@ -23,13 +41,25 @@ function SelectorModulos({ seleccionados, onChange }: { seleccionados: string[];
           <button type="button" onClick={() => onChange([])} className="text-[10px] text-[var(--c-text4)] hover:text-[var(--c-text3)]">Nada</button>
         </div>
       </div>
+      <p className="text-[10px] text-[var(--c-text4)] mb-1.5">Toca 👁 en un módulo ya habilitado para que solo pueda verlo, sin crear ni editar nada ahí.</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-        {MODULOS_NELYX.map(m => (
-          <button key={m.key} type="button" onClick={() => toggle(m.key)}
-            className={`text-xs px-2.5 py-2 rounded-lg border font-medium text-left transition-all ${seleccionados.includes(m.key) ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-[var(--c-card2)] text-[var(--c-text3)] border-[var(--c-border)]"}`}>
-            {seleccionados.includes(m.key) ? "✓ " : ""}{m.label}
-          </button>
-        ))}
+        {MODULOS_NELYX.map(m => {
+          const sel = estaSeleccionado(m.key)
+          const ro = esSoloLectura(m.key)
+          return (
+            <button key={m.key} type="button" onClick={() => toggle(m.key)}
+              className={`text-xs px-2.5 py-2 rounded-lg border font-medium text-left transition-all flex items-center gap-1 ${sel ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-[var(--c-card2)] text-[var(--c-text3)] border-[var(--c-border)]"}`}>
+              <span className="flex-1">{sel ? "✓ " : ""}{m.label}</span>
+              {sel && (
+                <span role="button" tabIndex={0} onClick={e => toggleSoloLectura(m.key, e)}
+                  title={ro ? "Solo lectura — toca para permitir editar" : "Puede editar — toca para dejar solo lectura"}
+                  className={`text-[11px] px-1 rounded ${ro ? "opacity-100" : "opacity-30 hover:opacity-70"}`}>
+                  👁
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -100,11 +130,74 @@ function FormEmpleado({ empleado, onCerrar, onGuardado }: { empleado?: Empleado;
   )
 }
 
+function ActividadEmpleados({ onCerrar }: { onCerrar: () => void }) {
+  const [items, setItems] = useState<ActividadItem[] | null>(null)
+  const [filtroNombre, setFiltroNombre] = useState<string>("todos")
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
+  useEffect(() => {
+    obtenerActividadEmpleados().then(setItems).catch(() => { toast.error("No se pudo cargar la actividad"); setItems([]) })
+  }, [])
+
+  if (!montado) return null
+
+  const nombres = Array.from(new Set((items ?? []).map(i => i.realizadoPorNombre).filter(Boolean))) as string[]
+  const visibles = (items ?? []).filter(i => filtroNombre === "todos" || i.realizadoPorNombre === filtroNombre)
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 max-w-lg w-full max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-bold text-[var(--c-text)]">📋 Actividad de usuarios</p>
+          <button onClick={onCerrar} className="text-[var(--c-text4)] hover:text-[var(--c-text2)] text-lg">✕</button>
+        </div>
+        <p className="text-[11px] text-[var(--c-text4)] mb-3">Ventas, gastos y otros movimientos registrados por cada usuario — últimos 30 días.</p>
+
+        {nombres.length > 1 && (
+          <select value={filtroNombre} onChange={e => setFiltroNombre(e.target.value)} className={`${inp} mb-3`}>
+            <option value="todos">Todos los usuarios</option>
+            {nombres.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        )}
+
+        <div className="flex-1 overflow-y-auto -mx-1 px-1">
+          {items === null ? (
+            <p className="text-xs text-[var(--c-text4)] text-center py-8">Cargando...</p>
+          ) : visibles.length === 0 ? (
+            <p className="text-xs text-[var(--c-text4)] text-center py-8">Aún no hay movimientos registrados por un usuario adicional.</p>
+          ) : (
+            <div className="divide-y divide-[var(--c-border2)]">
+              {visibles.map(item => {
+                const et = ETIQUETAS[item.tipo] ?? { label: item.tipo, emoji: "•", color: "" }
+                return (
+                  <div key={item.id} className="py-2.5 flex items-start gap-2.5">
+                    <span className="text-base flex-shrink-0">{et.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[var(--c-text)]">
+                        <span className="font-semibold">{item.realizadoPorNombre}</span> registró {et.label.toLowerCase()}
+                        {item.descripcion && <span className="text-[var(--c-text3)]"> — {item.descripcion}</span>}
+                      </p>
+                      <p className="text-[10px] text-[var(--c-text4)]">{new Date(item.createdAt).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-[var(--c-text2)] flex-shrink-0">{formatCLP(item.monto)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Empleado[] }) {
   const router = useRouter()
   const [empleados, setEmpleados] = useState(empleadosIniciales)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando, setEditando] = useState<Empleado | null>(null)
+  const [mostrarActividad, setMostrarActividad] = useState(false)
   const [isPending, start] = useTransition()
 
   function recargar() {
@@ -126,10 +219,18 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
 
   return (
     <div className="space-y-4">
-      <button onClick={() => setMostrarForm(true)}
-        className="h-10 px-5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-sky-500/20">
-        + Nuevo usuario
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setMostrarForm(true)}
+          className="h-10 px-5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-sky-500/20">
+          + Nuevo usuario
+        </button>
+        {empleados.length > 0 && (
+          <button onClick={() => setMostrarActividad(true)}
+            className="h-10 px-5 border border-[var(--c-border)] text-[var(--c-text2)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">
+            📋 Ver actividad
+          </button>
+        )}
+      </div>
 
       {empleados.length === 0 ? (
         <div className="text-center py-12 text-[var(--c-text4)]">
@@ -149,7 +250,12 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
                   {!emp.activo && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">Desactivado</span>}
                 </p>
                 <p className="text-[11px] text-[var(--c-text4)]">
-                  {emp.modulosPermitidos.length === 0 ? "Sin módulos habilitados" : emp.modulosPermitidos.map(k => MODULOS_NELYX.find(m => m.key === k)?.label ?? k).join(", ")}
+                  {emp.modulosPermitidos.length === 0 ? "Sin módulos habilitados" : emp.modulosPermitidos.map(k => {
+                    const ro = k.endsWith(":ro")
+                    const base = ro ? k.slice(0, -3) : k
+                    const label = MODULOS_NELYX.find(m => m.key === base)?.label ?? base
+                    return ro ? `${label} (solo ver)` : label
+                  }).join(", ")}
                 </p>
               </div>
               <button onClick={() => setEditando(emp)} className="text-xs px-3 py-1.5 border border-[var(--c-border)] text-[var(--c-text3)] rounded-lg hover:bg-[var(--c-hover)] transition-all flex-shrink-0">Editar</button>
@@ -164,6 +270,7 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
 
       {mostrarForm && <FormEmpleado onCerrar={() => setMostrarForm(false)} onGuardado={recargar} />}
       {editando && <FormEmpleado empleado={editando} onCerrar={() => setEditando(null)} onGuardado={recargar} />}
+      {mostrarActividad && <ActividadEmpleados onCerrar={() => setMostrarActividad(false)} />}
     </div>
   )
 }

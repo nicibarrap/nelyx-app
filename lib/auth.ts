@@ -143,6 +143,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             data: calcularNuevoEstadoTrasFallo(empleado.intentosFallidosPin),
           })
           await registrarIntentoFallido(ip)
+          // El aviso al dueño (si esto recién lo bloqueó) se dispara desde
+          // verificarBloqueoPin en empleados-acciones.ts, no acá — ese
+          // archivo nunca lo importa middleware.ts, así que mantiene el
+          // envío de push (web-push, con dependencias pesadas de Node)
+          // fuera del bundle de Edge Runtime que arrastra este archivo.
           return null
         }
         // PIN correcto — se limpia cualquier intento fallido anterior.

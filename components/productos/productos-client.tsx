@@ -446,7 +446,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
         setFechaVencimientoAjuste("")
         setCantidadAjuste("1")
         if (resultado?.avisoCosto) setAvisoCosto(resultado.avisoCosto)
-      } catch { toast.error("Error al ajustar stock") }
+      } catch (err: any) { toast.error(err?.message ?? "Error al ajustar stock") }
     })
   }
 
@@ -627,7 +627,7 @@ function ToggleActivoBtn({ producto }: { producto: Producto }) {
       try {
         await toggleProducto(producto.id, !producto.activo)
         toast.success(producto.activo ? "Producto desactivado" : "Producto activado")
-      } catch { toast.error("Error") }
+      } catch (err: any) { toast.error(err?.message ?? "Error") }
     })
   }
   return (

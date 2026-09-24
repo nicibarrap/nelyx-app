@@ -23,12 +23,32 @@ export const MODULOS_NELYX = [
 
 export type ModuloKey = typeof MODULOS_NELYX[number]["key"]
 
+// Un módulo "solo lectura" se guarda en el mismo array modulosPermitidos,
+// con este sufijo en vez de agregar una columna nueva a la tabla — evita
+// una migración de base de datos para algo que es, en el fondo, una
+// variante del mismo permiso ("puede ver este módulo", con o sin poder
+// modificar nada en él).
+const SUFIJO_SOLO_LECTURA = ":ro"
+
 /** null/undefined = acceso total (dueño, o un empleado al que se le
  * habilitó todo). Si es un array, solo esas claves están permitidas —
- * incluso si viene vacío, un empleado sin nada marcado no ve nada. */
+ * incluso si viene vacío, un empleado sin nada marcado no ve nada. Una
+ * clave "modulo:ro" (solo lectura) también cuenta como acceso al módulo. */
 export function tieneAcceso(modulosPermitidos: string[] | null | undefined, moduloKey: string): boolean {
   if (modulosPermitidos == null) return true
-  return modulosPermitidos.includes(moduloKey)
+  return modulosPermitidos.includes(moduloKey) || modulosPermitidos.includes(moduloKey + SUFIJO_SOLO_LECTURA)
+}
+
+/** ¿Puede VER pero no crear/editar/eliminar nada en este módulo? Solo
+ * aplica a un empleado con ese módulo marcado "modulo:ro" — el dueño
+ * (modulosPermitidos null) nunca es de solo lectura. */
+export function esSoloLectura(modulosPermitidos: string[] | null | undefined, moduloKey: string): boolean {
+  if (modulosPermitidos == null) return false
+  return modulosPermitidos.includes(moduloKey + SUFIJO_SOLO_LECTURA)
+}
+
+export function claveSoloLectura(moduloKey: string): string {
+  return moduloKey + SUFIJO_SOLO_LECTURA
 }
 
 /** Dado un pathname como "/dashboard/productos/reponer", determina a qué
