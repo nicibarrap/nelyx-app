@@ -1,5 +1,5 @@
 "use client"
-import { useState, useTransition, useMemo, useEffect } from "react"
+import { useState, useTransition, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
@@ -72,6 +72,21 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
   // Portal directo a document.body — mismo fix que en Clientes/Proveedores.
   const [montado, setMontado] = useState(false)
   useEffect(() => { setMontado(true) }, [])
+
+  // Sin fecha de vencimiento, la cuenta nunca se marca "vencida" ni sube de
+  // Nivel 1 en el Centro de cobranza (ambos se calculan solo a partir de
+  // esta fecha) — el atajo de abajo evita que quede así sin querer, sin
+  // forzar el campo (sigue siendo opcional).
+  const fechaVentaRef = useRef<HTMLInputElement>(null)
+  const fechaVenceRef = useRef<HTMLInputElement>(null)
+  const [vencVacio, setVencVacio] = useState(true)
+  function usar30Dias() {
+    const base = fechaVentaRef.current?.value ? new Date(fechaVentaRef.current.value) : new Date()
+    base.setDate(base.getDate() + 30)
+    const valor = `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,"0")}-${String(base.getDate()).padStart(2,"0")}`
+    if (fechaVenceRef.current) fechaVenceRef.current.value = valor
+    setVencVacio(false)
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -181,12 +196,16 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
             </div>
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha venta *</label>
-              <input name="fechaVenta" type="date" required defaultValue={localToday()} className={inp} />
+              <input ref={fechaVentaRef} name="fechaVenta" type="date" required defaultValue={localToday()} className={inp} />
             </div>
           </div>
           <div>
-            <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha vencimiento</label>
-            <input name="fechaVence" type="date" className={inp} />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] text-[var(--c-text3)] font-semibold">Fecha vencimiento</label>
+              {vencVacio && <button type="button" onClick={usar30Dias} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Usar 30 días →</button>}
+            </div>
+            <input ref={fechaVenceRef} name="fechaVence" type="date" onChange={e => setVencVacio(!e.target.value)} className={inp} />
+            {vencVacio && <p className="text-[10px] text-[var(--c-text4)] mt-1">Sin fecha, esta cuenta nunca se marcará como vencida.</p>}
           </div>
           <div>
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Observaciones</label>
