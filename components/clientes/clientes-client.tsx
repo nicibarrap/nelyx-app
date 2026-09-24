@@ -151,7 +151,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
     if (!nota.trim()) return
     start(async () => {
       try { await crearNotaCliente(cliente.id, nota); setNota(""); toast.success("Nota agregada") }
-      catch { toast.error("Error al agregar nota") }
+      catch (err: any) { toast.error(err?.message ?? "Error al agregar nota") }
     })
   }
 
@@ -161,7 +161,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
         await toggleActivoCliente(cliente.id, !cliente.activo)
         toast.success(cliente.activo ? "Cliente desactivado" : "Cliente reactivado")
         onClose()
-      } catch { toast.error("Error") }
+      } catch (err: any) { toast.error(err?.message ?? "Error") }
     })
   }
 

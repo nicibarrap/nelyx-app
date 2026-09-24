@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
+import { notificar } from "@/lib/notificaciones"
 
 /** Solo el dueño puede administrar empleados — nunca un empleado, sin
  * importar qué módulos tenga habilitados. Esta restricción vive acá, no
@@ -22,6 +23,21 @@ export async function obtenerEmpleados() {
     orderBy: { createdAt: "asc" },
   })
   return empleados
+}
+
+/** Qué hizo cada empleado — usa Movimiento.realizadoPorNombre, que ya se
+ * guarda como texto plano (no una relación) precisamente para que este
+ * historial siga existiendo aunque el empleado se elimine después. */
+export async function obtenerActividadEmpleados(dias: number = 30) {
+  const session = await getSessionDueno()
+  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000)
+  const movimientos = await db.movimiento.findMany({
+    where: { userId: session.user.id, realizadoPorNombre: { not: null }, fecha: { gte: desde } },
+    select: { id: true, tipo: true, monto: true, fecha: true, descripcion: true, categoria: true, realizadoPorNombre: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  })
+  return movimientos.map(m => ({ ...m, monto: Number(m.monto), fecha: m.fecha.toISOString(), createdAt: m.createdAt.toISOString() }))
 }
 
 export async function crearEmpleado(nombre: string, pin: string, modulosPermitidos: string[]) {
@@ -85,11 +101,25 @@ export async function toggleActivoEmpleado(empleadoId: string) {
  * error de autorización hasta el cliente.
  */
 export async function verificarBloqueoPin(empleadoId: string) {
-  const empleado = await db.user.findUnique({ where: { id: empleadoId }, select: { bloqueadoHastaPin: true } })
+  const empleado = await db.user.findUnique({ where: { id: empleadoId }, select: { nombre: true, cuentaPrincipalId: true, bloqueadoHastaPin: true } })
   if (!empleado?.bloqueadoHastaPin || empleado.bloqueadoHastaPin <= new Date()) {
     return { bloqueado: false, minutosRestantes: 0 }
   }
   const minutosRestantes = Math.ceil((empleado.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
+  // Avisa al dueño — 5 PIN incorrectos seguidos puede ser un empleado que
+  // olvidó su PIN, o alguien intentando adivinarlo. claveUnica está atada
+  // al momento exacto del bloqueo (bloqueadoHastaPin no cambia mientras
+  // sigue bloqueado), así que reintentos repetidos durante esos 15
+  // minutos no generan avisos duplicados — notificar() ya lo deduplica.
+  if (empleado.cuentaPrincipalId) {
+    await notificar({
+      userId: empleado.cuentaPrincipalId, categoria: "alertasGenerales", prioridad: "alta",
+      titulo: `PIN bloqueado: ${empleado.nombre}`,
+      mensaje: "5 intentos de PIN incorrectos seguidos — el acceso queda bloqueado 15 minutos.",
+      accionUrl: "/dashboard/usuarios",
+      claveUnica: `pin-bloqueo:${empleadoId}:${empleado.bloqueadoHastaPin.getTime()}`,
+    }).catch(() => {})
+  }
   return { bloqueado: true, minutosRestantes }
 }
 

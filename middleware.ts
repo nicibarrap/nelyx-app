@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
+import { tieneAcceso } from "@/lib/permisos"
 
 // Cuánto tiempo se confía en el último resultado de /api/check-session antes
 // de volver a consultarlo. Antes se consultaba la DB en CADA request al
@@ -100,7 +101,7 @@ export default auth(async (req) => {
     if (modulosFrescos != null) {
       const match = pathname.match(/^\/dashboard\/([^\/]+)/)
       const modulo = match?.[1]
-      if (modulo && modulo !== "sin-permiso" && !modulosFrescos.includes(modulo)) {
+      if (modulo && modulo !== "sin-permiso" && !tieneAcceso(modulosFrescos, modulo)) {
         respuesta = NextResponse.redirect(new URL(`/dashboard/sin-permiso?modulo=${modulo}`, req.url))
       }
     }
