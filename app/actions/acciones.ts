@@ -1060,6 +1060,8 @@ export async function crearCliente(formData: FormData) {
       esFrecuente:      formData.get("esFrecuente") === "on",
       esVip:            formData.get("esVip") === "on",
       permiteCredito:   formData.get("permiteCredito") === "on",
+      limiteCredito:    formData.get("limiteCredito") ? parseFloat(formData.get("limiteCredito") as string) : null,
+      cumpleanos:       formData.get("cumpleanos") ? new Date(formData.get("cumpleanos") as string) : null,
       observaciones:    (formData.get("observaciones") as string)?.trim() || null,
       userId:           session.user.id,
     }
@@ -1089,6 +1091,8 @@ export async function actualizarCliente(id: string, formData: FormData) {
       esFrecuente:      formData.get("esFrecuente") === "on",
       esVip:            formData.get("esVip") === "on",
       permiteCredito:   formData.get("permiteCredito") === "on",
+      limiteCredito:    formData.get("limiteCredito") ? parseFloat(formData.get("limiteCredito") as string) : null,
+      cumpleanos:       formData.get("cumpleanos") ? new Date(formData.get("cumpleanos") as string) : null,
       activo:           formData.get("activo") !== "off",
       observaciones:    (formData.get("observaciones") as string)?.trim() || null,
     }

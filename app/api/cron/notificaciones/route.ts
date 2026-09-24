@@ -1,9 +1,34 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
+import { enviarPushAUsuario } from "@/lib/push"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
+import { reemplazarVariables, calcularNivelSugerido, PLANTILLAS_DEFAULT } from "@/lib/cobranza"
+import { enviarEmail } from "@/lib/email"
+import { formatCLP } from "@/lib/utils"
 import * as Sentry from "@sentry/nextjs"
+
+/**
+ * Registra un evento como "ya procesado" (mismo mecanismo de idempotencia
+ * que notificar(), la restricción @unique de claveUnica) SIN pasar por el
+ * filtro de preferencias de notificaciones push del dueño — a diferencia
+ * de un aviso interno, esto decide si se le manda o no un correo a un
+ * CLIENTE, así que no debe depender de si el dueño tiene apagadas las
+ * notificaciones push de la categoría "clientes" en Configuración.
+ */
+async function marcarEnviadoACliente(params: { userId: string; titulo: string; mensaje: string; accionUrl: string; claveUnica: string }) {
+  try {
+    await db.notificacion.create({
+      data: { userId: params.userId, categoria: "clientes", prioridad: "baja", titulo: params.titulo, mensaje: params.mensaje, accionUrl: params.accionUrl, claveUnica: params.claveUnica },
+    })
+  } catch (err: any) {
+    if (err?.code === "P2002") return false // ya se había enviado — no reenviar
+    throw err
+  }
+  await enviarPushAUsuario(params.userId, { titulo: params.titulo, mensaje: params.mensaje, url: params.accionUrl })
+  return true
+}
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -181,5 +206,112 @@ async function ejecutarCron() {
     })
   }
 
-  return NextResponse.json({ ok: true, revisadas: eventosHoy.length + tareasHoy.length + costosFijos.length + deudas.length + cuentas.length + productos.length, enviadas })
+  // ── 8) COBRANZA AUTOMÁTICA POR CORREO (solo dueños que lo activaron) ───
+  const usuariosCobranzaAuto = await db.user.findMany({
+    where: { recordatoriosCobranzaAutoActivo: true },
+    select: { id: true, nombre: true, negocio: true },
+  })
+  let cuentasParaEmail: Awaited<ReturnType<typeof db.cuentaPorCobrar.findMany>> = []
+  if (usuariosCobranzaAuto.length > 0) {
+    const idsActivos = usuariosCobranzaAuto.map(u => u.id)
+    const [cuentasRaw, plantillasTodas] = await Promise.all([
+      db.cuentaPorCobrar.findMany({
+        where: { userId: { in: idsActivos }, estado: { in: ["pendiente", "parcial", "vencida"] }, fechaVence: { not: null } },
+        include: { cliente: { select: { nombre: true, apellido: true, email: true } } },
+      }),
+      db.plantillaCobranza.findMany({ where: { userId: { in: idsActivos } } }),
+    ])
+    cuentasParaEmail = cuentasRaw
+    const mapaUsuarios = new Map(usuariosCobranzaAuto.map(u => [u.id, u]))
+    const mapaPlantillas = new Map(plantillasTodas.map(p => [`${p.userId}:${p.nivel}`, p.mensaje]))
+
+    enviadas += await procesarEnLotes(cuentasRaw, 10, async (cc) => {
+      if (!cc.fechaVence || !cc.cliente?.email) return false
+      // Mismo signo que ya usa la sección 5 de este cron: positivo = faltan
+      // días para vencer, negativo = días de atraso.
+      const diff = diasEntreChile(ahora, cc.fechaVence)
+      // Puntos de contacto: un recordatorio amistoso antes del vencimiento,
+      // luego al día siguiente de vencer y cada semana de atraso — nunca a
+      // diario, para no bombardear al cliente.
+      const trigger = diff === 2 ? "pre2" : diff === -1 ? "atraso1" : [-7, -14, -21, -30].includes(diff) ? `atraso${-diff}` : null
+      if (!trigger) return false
+
+      const usuario = mapaUsuarios.get(cc.userId)
+      if (!usuario) return false
+      const diasAtraso = Math.max(0, -diff)
+      const nivel = calcularNivelSugerido(diasAtraso)
+      const nombreCliente = `${cc.cliente.nombre} ${cc.cliente.apellido ?? ""}`.trim()
+      const vars = {
+        nombreCliente,
+        montoPendiente: formatCLP(Number(cc.saldoPendiente)),
+        fechaVenta: new Date(cc.fechaVenta).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
+        fechaVencimiento: cc.fechaVence.toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
+        numeroDocumento: `Factura #${cc.numero}`,
+        nombreNegocio: usuario.negocio || usuario.nombre,
+        usuarioEnvia: usuario.nombre,
+        diasAtraso: String(diasAtraso),
+      }
+      const plantilla = mapaPlantillas.get(`${cc.userId}:${nivel}`) ?? PLANTILLAS_DEFAULT[nivel]
+      const mensaje = reemplazarVariables(plantilla, vars)
+
+      const yaEnviado = !(await marcarEnviadoACliente({
+        userId: cc.userId,
+        titulo: `Recordatorio automático enviado a ${nombreCliente}`,
+        mensaje: `Correo de cobranza (Nivel ${nivel}) por ${vars.montoPendiente}.`,
+        accionUrl: "/dashboard/cuentas-cobrar",
+        claveUnica: `cobranza-auto:${cc.id}:${trigger}`,
+      }))
+      if (yaEnviado) return false
+
+      const enviado = await enviarEmail({ to: cc.cliente.email, subject: `${vars.numeroDocumento} — Saldo pendiente ${vars.montoPendiente}`, text: mensaje })
+      if (enviado) {
+        await db.contactoCobranza.create({ data: { cuentaId: cc.id, clienteId: cc.clienteId, userId: cc.userId, canal: "email", nivel, mensaje } }).catch(() => {})
+      }
+      return enviado
+    })
+  }
+
+  // ── 9) CUMPLEAÑOS DE CLIENTES (solo dueños que lo activaron) ────────────
+  const usuariosCumpleanosAuto = await db.user.findMany({
+    where: { recordatoriosCumpleanosAutoActivo: true },
+    select: { id: true, nombre: true, negocio: true },
+  })
+  let clientesCumpleanos: Awaited<ReturnType<typeof db.cliente.findMany>> = []
+  if (usuariosCumpleanosAuto.length > 0) {
+    const mapaUsuariosCumple = new Map(usuariosCumpleanosAuto.map(u => [u.id, u]))
+    clientesCumpleanos = await db.cliente.findMany({
+      where: { userId: { in: usuariosCumpleanosAuto.map(u => u.id) }, activo: true, email: { not: null }, cumpleanos: { not: null } },
+    })
+    enviadas += await procesarEnLotes(clientesCumpleanos, 10, async (cl) => {
+      if (!cl.cumpleanos || !cl.email) return false
+      // Igual que fechaVence en Cuentas por Cobrar: la fecha se guarda como
+      // "medianoche UTC de ese día", y ahora (hoyEnChile) ya representa el
+      // calendario correcto de Chile — comparar mes/día directo funciona
+      // porque el servidor corre en UTC en producción.
+      if (cl.cumpleanos.getMonth() !== ahora.getMonth() || cl.cumpleanos.getDate() !== ahora.getDate()) return false
+
+      const usuario = mapaUsuariosCumple.get(cl.userId)
+      if (!usuario) return false
+      const nombreCliente = `${cl.nombre} ${cl.apellido ?? ""}`.trim()
+      const nombreNegocio = usuario.negocio || usuario.nombre
+      const mensaje = `Hola ${nombreCliente}.\n\n¡Feliz cumpleaños! Todo el equipo de ${nombreNegocio} te desea un excelente día.\n\nGracias por confiar en nosotros.\n${nombreNegocio}`
+
+      const yaEnviado = !(await marcarEnviadoACliente({
+        userId: cl.userId,
+        titulo: `🎂 Saludo de cumpleaños enviado a ${nombreCliente}`,
+        mensaje: "Se envió un correo automático de cumpleaños.",
+        accionUrl: "/dashboard/clientes",
+        claveUnica: `cumple-auto:${cl.id}:${ahora.getFullYear()}`,
+      }))
+      if (yaEnviado) return false
+
+      return enviarEmail({ to: cl.email, subject: `🎉 ¡Feliz cumpleaños de parte de ${nombreNegocio}!`, text: mensaje })
+    })
+  }
+
+  return NextResponse.json({
+    ok: true,
+    revisadas: eventosHoy.length + tareasHoy.length + costosFijos.length + deudas.length + cuentas.length + productos.length + cuentasParaEmail.length + clientesCumpleanos.length,
+    enviadas,
+  })
 }

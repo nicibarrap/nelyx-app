@@ -48,6 +48,10 @@ model User {
   notificaciones        Notificacion[]
   notificacionConfig    NotificacionConfig?
   conexionesPago        ConexionPago[]
+  // Ambos apagados por defecto — recordatorios automáticos a CLIENTES (no
+  // al dueño) solo deben salir si el dueño explícitamente los activa.
+  recordatoriosCobranzaAutoActivo   Boolean @default(false)
+  recordatoriosCumpleanosAutoActivo Boolean @default(false)
 }
 
 enum Rol {
@@ -232,6 +236,9 @@ model Cliente {
   permiteCredito   Boolean       @default(false)
   activo           Boolean       @default(true)
   observaciones    String?
+  // Solo importan día y mes — el año queda fijo en el que se haya elegido
+  // al completar el formulario, se ignora al comparar contra "hoy".
+  cumpleanos       DateTime?
   userId           String
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   movimientos      Movimiento[]
