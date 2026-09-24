@@ -79,7 +79,16 @@ export function reemplazarVariables(plantilla: string, vars: VariablesMensaje): 
 export function generarLinkWhatsapp(telefono: string, mensaje: string): string {
   let limpio = telefono.replace(/[^\d+]/g, "")
   if (!limpio.startsWith("+")) {
-    limpio = limpio.startsWith("56") ? `+${limpio}` : `+56${limpio.replace(/^0/, "")}`
+    // Los números chilenos (fijos y móviles) tienen 9 dígitos sin código de
+    // país — antes se asumía "ya trae código de país" con solo mirar si
+    // empezaba con "56", lo que interpretaba mal un número local de 9
+    // dígitos que por coincidencia empezara con esos dos dígitos (ej. un
+    // fijo de alguna región). Con el código de país ya puesto son 11
+    // dígitos en total, así que el largo saca la duda: cualquier otro largo
+    // se trata como número local (con o sin el 0 de tronco adelante).
+    limpio = (limpio.length === 11 && limpio.startsWith("56"))
+      ? `+${limpio}`
+      : `+56${limpio.replace(/^0/, "")}`
   }
   return `https://wa.me/${limpio.replace("+", "")}?text=${encodeURIComponent(mensaje)}`
 }
