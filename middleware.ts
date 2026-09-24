@@ -43,13 +43,21 @@ export default auth(async (req) => {
   // permitidos FRESCOS (no los del JWT, que solo se recalculan al iniciar
   // sesión). El resultado se cachea en una cookie propia por
   // FRESCURA_SEGUNDOS para no pagar la consulta en cada clic.
+  //
+  // La cookie se ata al id de quien está actuando (empleado o dueño). Sin
+  // esto, "Cambiar de usuario" no invalida la cookie — es una cookie
+  // aparte de la sesión — así que durante la ventana de FRESCURA_SEGUNDOS
+  // el empleado recién entrado heredaba los módulos cacheados de quien
+  // estaba antes (p. ej. el dueño, con acceso total) en vez de los suyos.
+  const idActuando = (session.user as any)?.empleadoId || session.user?.id
   let modulosFrescos: string[] | null | undefined = undefined
   let huboConsultaFresca = false
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/admin")) {
-    let cache: { activo: boolean; modulosPermitidos: string[] | null } | null = null
+    let cache: { id: string; activo: boolean; modulosPermitidos: string[] | null } | null = null
     const cacheRaw = req.cookies.get(COOKIE_CHECK)?.value
     if (cacheRaw) {
       try { cache = JSON.parse(cacheRaw) } catch { cache = null }
+      if (cache && cache.id !== idActuando) cache = null
     }
 
     if (cache) {
@@ -99,7 +107,7 @@ export default auth(async (req) => {
   }
 
   if (huboConsultaFresca) {
-    respuesta.cookies.set(COOKIE_CHECK, JSON.stringify({ activo: true, modulosPermitidos: modulosFrescos ?? null }), {
+    respuesta.cookies.set(COOKIE_CHECK, JSON.stringify({ id: idActuando, activo: true, modulosPermitidos: modulosFrescos ?? null }), {
       maxAge: FRESCURA_SEGUNDOS,
       httpOnly: true,
       sameSite: "lax",
