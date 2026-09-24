@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic"
 
 export default async function ClientesAdminPage() {
   const session = await auth()
-  if (!session || session.user.role !== "ADMIN") redirect("/dashboard/resumen")
+  if (!session || session.user.role !== "ADMIN" || session.user.esEmpleado) redirect("/dashboard/resumen")
 
   // Aplica automáticamente: fin de prueba → cobro, cobros vencidos, próximos a vencer, etc.
   await sincronizarSuscripciones()

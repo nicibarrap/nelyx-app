@@ -79,22 +79,6 @@ export async function toggleActivoEmpleado(empleadoId: string) {
 }
 
 /**
- * Pública — sin sesión — usada por la pantalla de login para mostrar la
- * lista de "¿quién eres?" en un dispositivo ya emparejado con una cuenta.
- * Solo expone nombres, nunca nada sensible.
- */
-export async function obtenerEmpleadosParaLogin(cuentaId: string) {
-  const cuenta = await db.user.findFirst({ where: { id: cuentaId, activo: true, cuentaPrincipalId: null }, select: { nombre: true, negocio: true } })
-  if (!cuenta) return null
-  const empleados = await db.user.findMany({
-    where: { cuentaPrincipalId: cuentaId, activo: true },
-    select: { id: true, nombre: true },
-    orderBy: { nombre: "asc" },
-  })
-  return { nombreDueno: cuenta.nombre, negocio: cuenta.negocio, empleados }
-}
-
-/**
  * Pública — sin sesión — se consulta después de un intento fallido para
  * saber si fue "PIN incorrecto" o "ya estás bloqueado por varios
  * intentos", ya que NextAuth nunca deja pasar el mensaje exacto de un
@@ -134,9 +118,7 @@ export async function verificarBloqueoLogin(email: string) {
 /**
  * Basado en la sesión activa (no en una cookie de dispositivo) — se usa
  * tanto justo después de que el dueño inicia sesión, como desde "Cambiar
- * de usuario" dentro del dashboard. Requiere sesión válida — a diferencia
- * de obtenerEmpleadosParaLogin, que es pública porque se usa antes de
- * autenticarse.
+ * de usuario" dentro del dashboard. Requiere sesión válida.
  */
 export async function obtenerEmpleadosDeMiCuenta() {
   const session = await auth()

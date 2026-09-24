@@ -143,9 +143,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // id = la CUENTA (dueño), nunca el id propio del empleado — así
         // todas las consultas existentes (where: { userId: session.user.id })
         // siguen viendo los datos del negocio correcto, sin cambiar nada.
+        //
+        // role: NUNCA se propaga "ADMIN" a una sesión de empleado, aunque la
+        // cuenta dueña sea una cuenta ADMIN de Nelyx — ese rol solo existe
+        // para el panel interno /admin (staff de Nelyx), y un empleado con
+        // PIN jamás debe poder entrar ahí. Sin este límite, cualquier
+        // empleado de una cuenta ADMIN heredaba acceso completo al panel
+        // administrativo de la plataforma.
         return {
           id: cuenta.id, email: cuenta.email, name: empleado.nombre,
-          role: cuenta.rol, negocio: cuenta.negocio,
+          role: cuenta.rol === "ADMIN" ? "USER" : cuenta.rol, negocio: cuenta.negocio,
           esEmpleado: true, empleadoId: empleado.id, modulosPermitidos: empleado.modulosPermitidos,
         } as any
       },

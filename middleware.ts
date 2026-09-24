@@ -77,7 +77,10 @@ export default auth(async (req) => {
     }
   }
 
-  if (pathname.startsWith("/admin") && session.user?.role !== "ADMIN") {
+  // El rol ADMIN nunca debería viajar en una sesión de empleado (ver
+  // lib/auth.ts), pero se revalida acá también como segunda barrera —
+  // mismo patrón de defensa en profundidad que el resto de la app.
+  if (pathname.startsWith("/admin") && (session.user?.role !== "ADMIN" || session.user?.esEmpleado)) {
     return NextResponse.redirect(new URL("/dashboard/resumen", req.url))
   }
 
