@@ -152,16 +152,20 @@ export function CentroCobranza({ cuenta, plantillas, nombreNegocio, usuarioEnvia
         </div>
       </div>
 
-      {/* Canal de contacto */}
+      {/* Canal de contacto — deshabilitado (con tooltip) en vez de dejar
+          clickear y recién avisar con un toast después, si al cliente le
+          falta ese dato de contacto. */}
       <div>
         <p className="text-xs font-semibold text-[var(--c-text)] mb-2">Canal de contacto</p>
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={handleWhatsapp} disabled={isPending}
-            className="flex items-center justify-center gap-2 h-10 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 text-xs font-bold transition-all disabled:opacity-50">
+          <button type="button" onClick={handleWhatsapp} disabled={isPending || !cuenta.cliente.telefono}
+            title={cuenta.cliente.telefono ? undefined : "Este cliente no tiene teléfono registrado"}
+            className="flex items-center justify-center gap-2 h-10 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-500/10">
             💬 WhatsApp
           </button>
-          <button type="button" onClick={handleEmail} disabled={isPending}
-            className="flex items-center justify-center gap-2 h-10 rounded-xl bg-[var(--c-card2)] hover:bg-[var(--c-hover)] border border-[var(--c-border)] text-[var(--c-text2)] text-xs font-bold transition-all disabled:opacity-50">
+          <button type="button" onClick={handleEmail} disabled={isPending || !cuenta.cliente.email}
+            title={cuenta.cliente.email ? undefined : "Este cliente no tiene correo registrado"}
+            className="flex items-center justify-center gap-2 h-10 rounded-xl bg-[var(--c-card2)] hover:bg-[var(--c-hover)] border border-[var(--c-border)] text-[var(--c-text2)] text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--c-card2)]">
             ✉️ Email
           </button>
         </div>
