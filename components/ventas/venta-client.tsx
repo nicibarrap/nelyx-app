@@ -686,8 +686,24 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
               <p className="text-[11px] text-amber-300">Se generará una cuenta por cobrar para el cliente seleccionado.</p>
             </div>
             <div>
-              <label className="text-[11px] text-[var(--c-text3)] mb-1 block">Fecha de vencimiento (opcional)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] text-[var(--c-text3)]">Fecha de vencimiento (opcional)</label>
+                {!fechaVence && (
+                  <button type="button" onClick={() => {
+                    const d = new Date(fechaVenta); d.setDate(d.getDate() + 30)
+                    setFechaVence(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)
+                  }} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Usar 30 días →</button>
+                )}
+              </div>
               <input type="date" value={fechaVence} onChange={e => setFechaVence(e.target.value)} className={inp} />
+              {/* Sin fecha de vencimiento, esta cuenta nunca se va a marcar
+                  "vencida" ni va a subir de Nivel 1 en el Centro de
+                  cobranza (ambos se calculan solo a partir de esta fecha) —
+                  por eso el atajo de arriba, para que no quede pendiente
+                  para siempre sin querer. */}
+              {!fechaVence && (
+                <p className="text-[10px] text-[var(--c-text4)] mt-1">Sin fecha, esta cuenta nunca se marcará como vencida.</p>
+              )}
             </div>
           </div>
         )}
