@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { generarCostosDelMes } from "@/app/actions/acciones"
+import { hoyEnChile } from "@/lib/timezone"
+import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import { CostosFijosClient } from "@/components/costos-fijos/costos-fijos-client"
 
 export const metadata: Metadata = { title: "Costos Fijos" }
@@ -9,11 +11,13 @@ export const metadata: Metadata = { title: "Costos Fijos" }
 export default async function CostosFijosPage() {
   const session = await auth()
   const userId = session!.user.id
-  const hoy = new Date()
+  // Vercel corre en UTC — con la hora de Chile en la noche, un `new Date()`
+  // crudo ya piensa que es el día siguiente y marcaba costos como
+  // "pendiente" varias horas antes de que en verdad llegara su día.
+  const hoy = hoyEnChile()
   const mes = hoy.getMonth() + 1
   const anio = hoy.getFullYear()
   const diaActual = hoy.getDate()
-  const diasDelMes = new Date(anio, mes, 0).getDate()
 
   // Asegura que los costos cuyo día ya llegó queden en estado "Generado"
   await generarCostosDelMes(userId, mes, anio)
@@ -43,24 +47,13 @@ export default async function CostosFijosPage() {
     db.categoriaPersonalizada.findMany({ where: { userId, tipo: "COSTO_FIJO" }, orderBy: { nombre: "asc" } }),
   ])
 
-  // ¿El costo está dentro de su rango de vigencia este mes? (entre fechaInicio y fechaTermino, si tiene)
-  function esAplicableEsteMes(fechaInicio: Date, fechaTermino: Date | null): boolean {
-    const iMes = fechaInicio.getMonth() + 1, iAnio = fechaInicio.getFullYear()
-    if (anio < iAnio || (anio === iAnio && mes < iMes)) return false
-    if (fechaTermino) {
-      const tMes = fechaTermino.getMonth() + 1, tAnio = fechaTermino.getFullYear()
-      if (anio > tAnio || (anio === tAnio && mes > tMes)) return false
-    }
-    return true
-  }
-
   function calcularEstado(c: typeof costos[number]): "programado" | "pendiente" | "generado" | "pagado" | "pausado" | "finalizado" {
     if (c.estado === "pausado") return "pausado"
     if (c.estado === "finalizado") return "finalizado"
-    if (!esAplicableEsteMes(c.fechaInicio, c.fechaTermino)) return "programado"
+    if (!esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio)) return "programado"
     const gen = c.generaciones[0]
     if (!gen) {
-      const diaDelMes = Math.min(c.fechaInicio.getDate(), diasDelMes)
+      const diaDelMes = diaOcurrenciaEnMes(c.fechaInicio, mes, anio)
       return diaDelMes <= diaActual ? "pendiente" : "programado"
     }
     return gen.pagado ? "pagado" : "generado"
@@ -112,7 +105,7 @@ export default async function CostosFijosPage() {
       if (c.estadoDerivado === "programado") {
         fecha = new Date(c.fechaInicio)
       } else {
-        fecha = new Date(anio, mes - 1, Math.min(new Date(c.fechaInicio).getDate(), diasDelMes))
+        fecha = new Date(anio, mes - 1, diaOcurrenciaEnMes(new Date(c.fechaInicio), mes, anio))
       }
       return { ...c, fechaRelevante: fecha.toISOString() }
     })

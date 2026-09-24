@@ -1,6 +1,7 @@
 "use client"
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
 import { useState, useTransition } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { crearCostoRecurrente, crearCostoUnico, actualizarEstadoCosto, eliminarCostoRecurrente, marcarCostoPagado, crearCategoriaPersonalizada } from "@/app/actions/acciones"
@@ -337,6 +338,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [pagandoId, setPagandoId] = useState<string | null>(null)
+  const [eliminando, setEliminando] = useState<{ id: string; nombre: string } | null>(null)
   const [isPending, start] = useTransition()
   const cubierto = resultadoCobertura >= 0
   const activos = costosData.filter(c => c.estado === "activo")
@@ -349,15 +351,16 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
   function handleEstado(id: string, estado: "activo" | "pausado" | "finalizado") {
     start(async () => {
       try { await actualizarEstadoCosto(id, estado); toast.success("Estado actualizado") }
-      catch { toast.error("Error") }
+      catch (err: any) { toast.error(err?.message ?? "Error") }
     })
   }
 
-  function handleEliminar(id: string, nombre: string) {
-    if (!confirm(`¿Eliminar "${nombre}"?`)) return
+  function handleEliminar() {
+    if (!eliminando) return
+    const { id } = eliminando
     start(async () => {
-      try { await eliminarCostoRecurrente(id); toast.success("Eliminado") }
-      catch { toast.error("Error") }
+      try { await eliminarCostoRecurrente(id); toast.success("Eliminado"); setEliminando(null) }
+      catch (err: any) { toast.error(err?.message ?? "Error") }
     })
   }
 
@@ -553,7 +556,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
                           : c.estado === "pausado"
                             ? <button onClick={() => handleEstado(c.id, "activo")} disabled={isPending} className="text-[10px] px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg transition-all">Activar</button>
                             : null}
-                        <button onClick={() => handleEliminar(c.id, c.nombre)} disabled={isPending}
+                        <button onClick={() => setEliminando({ id: c.id, nombre: c.nombre })} disabled={isPending}
                           className="text-[10px] px-2.5 py-1 bg-red-500/5 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/10 transition-all">Eliminar</button>
                       </div>
                     </div>
@@ -570,6 +573,39 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
           <p className="text-[11px] text-[var(--c-text3)]">🔄 Al llegar el día de generación el costo pasa a "Generado". Confirma el pago para que impacte tu flujo de caja.</p>
         </div>
       </div>
+
+      {eliminando && <ConfirmarEliminarModal nombre={eliminando.nombre} isPending={isPending} onCancelar={() => setEliminando(null)} onConfirmar={handleEliminar} />}
     </div>
+  )
+}
+
+function ConfirmarEliminarModal({ nombre, isPending, onCancelar, onConfirmar }: { nombre: string; isPending: boolean; onCancelar: () => void; onConfirmar: () => void }) {
+  if (typeof document === "undefined") return null
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" onClick={() => !isPending && onCancelar()}>
+      <div className="bg-[var(--c-card)] border border-red-500/20 rounded-2xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xl">⚠️</span>
+          <p className="text-sm font-bold text-[var(--c-text)]">Eliminar "{nombre}"</p>
+        </div>
+        <p className="text-xs text-[var(--c-text2)] mb-2">
+          Esto elimina el costo fijo recurrente de forma <strong className="text-red-400">permanente</strong> — no se puede deshacer. No se va a volver a generar en ningún mes futuro.
+        </p>
+        <p className="text-xs text-[var(--c-text2)] mb-4">
+          Los pagos que ya confirmaste con este costo <strong className="text-emerald-400">no se borran</strong> — siguen apareciendo en Movimientos y Reportes, solo que sin el vínculo directo al costo fijo.
+        </p>
+        <div className="flex gap-2">
+          <button onClick={onCancelar} disabled={isPending}
+            className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text2)] text-sm rounded-xl hover:bg-[var(--c-card2)] transition-all disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirmar} disabled={isPending}
+            className="flex-1 h-10 bg-red-500 hover:bg-red-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50">
+            {isPending ? "Eliminando..." : "Sí, eliminar"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

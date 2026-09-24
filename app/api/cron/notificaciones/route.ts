@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
+import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import * as Sentry from "@sentry/nextjs"
 
 export const dynamic = "force-dynamic"
@@ -104,15 +105,11 @@ async function ejecutarCron() {
     const gen = cf.generaciones[0]
     if (gen?.pagado) return false
     const mesActual = ahora.getMonth() + 1, anioActual = ahora.getFullYear()
-    const iMes = cf.fechaInicio.getMonth() + 1, iAnio = cf.fechaInicio.getFullYear()
-    if (anioActual < iAnio || (anioActual === iAnio && mesActual < iMes)) return false
-    if (cf.fechaTermino) {
-      const tMes = cf.fechaTermino.getMonth() + 1, tAnio = cf.fechaTermino.getFullYear()
-      if (anioActual > tAnio || (anioActual === tAnio && mesActual > tMes)) return false
-    }
-    const totalDiasMes = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate()
-    const diaVence = Math.min(cf.fechaInicio.getDate(), totalDiasMes)
-    const fechaVence = new Date(ahora.getFullYear(), ahora.getMonth(), diaVence)
+    // A nivel de día, no solo de mes/año — un costo que ya terminó antes de
+    // su día de cobro dentro del mismo mes no debe seguir avisando.
+    if (!esAplicableEnMes(cf.fechaInicio, cf.fechaTermino, mesActual, anioActual)) return false
+    const diaVence = diaOcurrenciaEnMes(cf.fechaInicio, mesActual, anioActual)
+    const fechaVence = new Date(anioActual, mesActual - 1, diaVence)
     const diff = diasEntreChile(ahora, fechaVence)
 
     if ([7, 3, 1, 0].includes(diff)) {
