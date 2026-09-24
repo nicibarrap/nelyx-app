@@ -1,6 +1,6 @@
 "use client"
 import { useState, useTransition, useMemo, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearProveedor, actualizarProveedor, eliminarProveedor, toggleActivoProveedor, toggleFavoritoProveedor, crearNotaProveedor, eliminarNotaProveedor } from "@/app/actions/acciones"
@@ -15,6 +15,7 @@ type Proveedor = {
   categoria: string | null; esFavorito: boolean; activo: boolean; observaciones: string | null
   createdAt: string; totalComprado: number; compras: number; promedioCompra: number
   diasSinCompra: number | null; ultimaCompra: string | null; sinActividad: boolean
+  deudaPendiente: number; proximoVencimiento: string | null
   movimientos: { id: string; monto: number; fecha: string; descripcion: string | null }[]
   notas: { id: string; texto: string; createdAt: string }[]
 }
@@ -159,6 +160,7 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
                 {prov.esFavorito && <span className="text-[var(--c-warning)] text-sm">⭐</span>}
                 {prov.activo ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">Activo</span>
                   : <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-500/10 text-[var(--c-text4)] border border-[var(--c-border)] font-semibold">Inactivo</span>}
+                {prov.deudaPendiente > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold">Con deuda</span>}
               </div>
               {prov.categoria && <p className="text-xs text-[var(--c-text3)] mt-0.5 truncate">📦 {prov.categoria}</p>}
               {prov.telefono && <p className="text-xs text-[var(--c-text3)] truncate">📱 {prov.telefono}</p>}
@@ -174,9 +176,10 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
           </div>
         </div>
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
           {[
             { label: "Total comprado", val: formatCLP(prov.totalComprado), color: "text-red-400" },
+            { label: "Deuda pendiente", val: formatCLP(prov.deudaPendiente), color: prov.deudaPendiente > 0 ? "text-red-400" : "text-[var(--c-text3)]" },
             { label: "Nº compras", val: String(prov.compras), color: "text-sky-400" },
             { label: "Promedio compra", val: formatCLP(Math.round(prov.promedioCompra)), color: "text-violet-400" },
             { label: "Última compra", val: formatRel(prov.ultimaCompra), color: "text-[var(--c-text2)]" },
@@ -209,6 +212,7 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
                 { label: "Ciudad", val: prov.ciudad ?? "—" },
                 { label: "Proveedor desde", val: new Date(prov.createdAt).toLocaleDateString("es-CL") },
                 { label: "Días sin compra", val: prov.diasSinCompra === null ? "Sin compras registradas" : `${prov.diasSinCompra} días`, color: prov.diasSinCompra !== null && prov.diasSinCompra > 90 ? "text-[var(--c-warning)]" : "text-[var(--c-text)]" },
+                ...(prov.deudaPendiente > 0 ? [{ label: "Próximo vencimiento", val: prov.proximoVencimiento ? new Date(prov.proximoVencimiento).toLocaleDateString("es-CL", { day: "numeric", month: "long", timeZone: "UTC" }) : "Sin fecha", color: "text-red-400" }] : []),
               ].map(r => (
                 <div key={r.label} className="flex justify-between py-1 border-b border-[var(--c-border2)] last:border-0">
                   <span className="text-xs text-[var(--c-text3)]">{r.label}</span>
@@ -298,16 +302,24 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
 
 interface Props {
   proveedoresData: Proveedor[]
-  metricas: { totalComprasMes: number; provPrincipal: string | null; inactivos: number }
+  metricas: { totalComprasMes: number; provPrincipal: string | null; inactivos: number; conDeuda: number }
 }
 
 export function ProveedoresClient({ proveedoresData, metricas }: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [search, setSearch] = useState("")
-  const [filtro, setFiltro] = useState<"todos"|"activos"|"inactivos"|"favoritos">("todos")
+  const [filtro, setFiltro] = useState<"todos"|"activos"|"inactivos"|"favoritos"|"deuda">("todos")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Proveedor | null>(null)
+
+  // Soporta ?id=<proveedorId> para llegar directo desde una notificación
+  // (ej. el aviso de vencimiento de una deuda vinculada a este proveedor).
+  useEffect(() => {
+    const id = searchParams.get("id")
+    if (id) setSelectedId(id)
+  }, [searchParams])
 
   const selected = useMemo(() => proveedoresData.find(p => p.id === selectedId) ?? null, [proveedoresData, selectedId])
 
@@ -318,6 +330,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
       case "activos":    return list.filter(p => p.activo)
       case "inactivos":  return list.filter(p => !p.activo)
       case "favoritos":  return list.filter(p => p.esFavorito)
+      case "deuda":      return list.filter(p => p.deudaPendiente > 0)
     }
     return list
   }, [proveedoresData, search, filtro])
@@ -327,6 +340,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
   const TABS_FILTRO = [
     { key: "todos" as const, label: `Todos (${proveedoresData.length})` },
     { key: "activos" as const, label: `Activos (${proveedoresData.filter(p=>p.activo).length})` },
+    { key: "deuda" as const, label: `Con deuda (${metricas.conDeuda})` },
     { key: "inactivos" as const, label: `Inactivos (${metricas.inactivos})` },
     { key: "favoritos" as const, label: `⭐ Favoritos (${proveedoresData.filter(p=>p.esFavorito).length})` },
   ]
@@ -351,11 +365,12 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
       </div>
 
       {/* Métricas */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: "Proveedores totales", val: String(proveedoresData.length), sub: `${proveedoresData.filter(p=>p.activo).length} activos`, icon: "🏪", color: "text-sky-400" },
           { label: "Compras este mes", val: formatCLP(metricas.totalComprasMes), sub: "Con proveedor asignado", icon: "🛒", color: "text-red-400" },
-          // A diferencia de las otras 3 (siempre números/plata, cortos), este
+          { label: "Con deuda", val: String(metricas.conDeuda), sub: "Proveedores con saldo pendiente", icon: "⚠️", color: "text-red-400" },
+          // A diferencia de las otras (siempre números/plata, cortos), este
           // valor es el nombre real de un proveedor — puede ser largo, así
           // que con el mismo text-xl que las demás quedaba truncado a solo
           // ~10 caracteres en una tarjeta angosta (grid de 2 columnas en
@@ -416,7 +431,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
                   <p className="text-[10px] text-[var(--c-text3)]">{formatRel(p.ultimaCompra)}</p>
                   {p.totalComprado > 0 && <p className="text-xs font-bold text-red-400">{formatCLP(p.totalComprado)}</p>}
                 </div>
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!p.activo ? "bg-zinc-500" : p.sinActividad ? "bg-amber-400" : "bg-emerald-400"}`} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!p.activo ? "bg-zinc-500" : p.deudaPendiente > 0 ? "bg-red-400" : p.sinActividad ? "bg-amber-400" : "bg-emerald-400"}`} />
               </div>
             ))}
           </div>

@@ -33,12 +33,13 @@ type DeudaEditar = {
   descripcion: string | null
 }
 
-interface Props { deudaEditar?: DeudaEditar | null; onClose?: () => void }
+interface Props { deudaEditar?: (DeudaEditar & { proveedorId?: string | null }) | null; onClose?: () => void; proveedores?: { id: string; nombre: string }[] }
 
-export function FormularioDeuda({ deudaEditar, onClose }: Props = {}) {
+export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Props = {}) {
   const [open, setOpen] = useState(!!deudaEditar)
   const [isPending, start] = useTransition()
 
+  const [proveedorId, setProveedorId] = useState(deudaEditar?.proveedorId ?? "")
   const [acreedor, setAcreedor]     = useState(deudaEditar?.acreedor ?? "")
   const [tipo, setTipo]             = useState(deudaEditar?.tipo ?? "Crédito bancario")
   const [entidad, setEntidad]       = useState(deudaEditar?.entidad ?? "")
@@ -76,6 +77,7 @@ export function FormularioDeuda({ deudaEditar, onClose }: Props = {}) {
 
     const fd = new FormData()
     fd.append("acreedor", acreedor)
+    if (proveedorId) fd.append("proveedorId", proveedorId)
     fd.append("tipo", tipo)
     fd.append("entidad", entidad)
     fd.append("monto", monto.toString())
@@ -126,10 +128,25 @@ export function FormularioDeuda({ deudaEditar, onClose }: Props = {}) {
               {/* Info general */}
               <div>
                 <p className="text-[11px] font-bold text-[var(--c-text3)] uppercase tracking-wider mb-3">1. ¿A quién le debes?</p>
+                {proveedores.length > 0 && (
+                  <div className="mb-3">
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Vincular a un proveedor (opcional)</label>
+                    <select value={proveedorId} onChange={e => {
+                      const id = e.target.value
+                      setProveedorId(id)
+                      const prov = proveedores.find(p => p.id === id)
+                      if (prov) { setAcreedor(prov.nombre); setTipo("Deuda proveedor") }
+                    }} className={sel}>
+                      <option value="">Sin vincular (acreedor libre)</option>
+                      {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                    <p className="text-[10px] text-[var(--c-text4)] mt-1">Al vincularla, aparecerá como deuda pendiente en la ficha de ese proveedor.</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Acreedor *</label>
-                    <input value={acreedor} onChange={e => setAcreedor(e.target.value)} required placeholder="Banco Falabella, proveedor..." className={inp} />
+                    <input value={acreedor} onChange={e => { setAcreedor(e.target.value); setProveedorId("") }} required placeholder="Banco Falabella, proveedor..." className={inp} />
                   </div>
                   <div>
                     <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Tipo de deuda</label>
