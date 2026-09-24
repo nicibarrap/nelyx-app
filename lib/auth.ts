@@ -105,14 +105,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         empleadoId: { label: "Empleado", type: "text" },
         pin: { label: "PIN", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const cuentaId = credentials?.cuentaId as string | undefined
         const empleadoId = credentials?.empleadoId as string | undefined
         const pin = credentials?.pin as string | undefined
         if (!cuentaId || !empleadoId || !pin) return null
 
+        // Este endpoint (/api/auth/callback/empleado-pin) es público — no
+        // requiere sesión previa, igual que el login del dueño — así que
+        // le aplica la misma barrera contra fuerza bruta / spray por IP,
+        // probando distintos pares cuentaId+empleadoId desde el mismo
+        // origen. El bloqueo por cuenta (más abajo) protege UN empleado
+        // puntual; este protege contra probar muchos a la vez.
+        const ip = ipDeRequest(request)
+        if (await demasiadosIntentosDesdeIp(ip)) return null
+
         const empleado = await db.user.findFirst({ where: { id: empleadoId, cuentaPrincipalId: cuentaId, activo: true } })
-        if (!empleado || !empleado.pin) return null
+        if (!empleado || !empleado.pin) {
+          await registrarIntentoFallido(ip)
+          return null
+        }
 
         // Bloqueo temporal tras varios PIN incorrectos seguidos — sin
         // esto, alguien podría probar las 10.000 combinaciones posibles
@@ -130,6 +142,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             where: { id: empleado.id },
             data: calcularNuevoEstadoTrasFallo(empleado.intentosFallidosPin),
           })
+          await registrarIntentoFallido(ip)
           return null
         }
         // PIN correcto — se limpia cualquier intento fallido anterior.
