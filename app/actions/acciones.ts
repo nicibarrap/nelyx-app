@@ -272,6 +272,13 @@ async function registrarVentaInterno(items: Array<{
   const factorDescuento = subtotal > 0 ? (subtotal - descuentoTotal) / subtotal : 1
   const descuentoSuffix = descuentoTotal > 0 ? ` [Desc: $${Math.round(descuentoTotal).toLocaleString("es-CL")} de $${Math.round(subtotal).toLocaleString("es-CL")}]` : ""
 
+  // Verificado ANTES de tocar stock — si se hiciera después del loop que
+  // descuenta inventario, un rechazo por límite de crédito dejaría el
+  // stock ya descontado sin ninguna venta ni cuenta que lo respalde.
+  if (tipoPago === "credito" && clienteId) {
+    await verificarLimiteCredito(clienteId, subtotal - descuentoTotal)
+  }
+
   let costoTotalCarrito = 0
 
   // Crear un movimiento por cada producto y descontar stock
@@ -342,6 +349,7 @@ async function registrarVentaInterno(items: Array<{
   }
 
   // Auto-create CuentaPorCobrar if venta a crédito con cliente
+  // (límite de crédito ya verificado arriba, antes de tocar stock)
   if (tipoPago === "credito" && clienteId) {
     const totalBruto = items.reduce((a, i) => a + i.precio * i.cantidad, 0)
     const descuentoVal = Math.min(descuento ?? 0, totalBruto)
@@ -1206,6 +1214,28 @@ export async function eliminarNotaProveedor(id: string) {
 
 
 // ── CUENTAS POR COBRAR ──────────────────────────────────────
+
+/**
+ * Único punto que valida el límite de crédito de un cliente — antes solo
+ * se chequeaba al crear una cuenta por cobrar manualmente desde Cuentas
+ * por Cobrar; una venta a crédito desde Venta llamaba directo a
+ * crearCuentaPorCobrarConNumero y se saltaba el límite por completo,
+ * dejando entrar crédito ilimitado por esa puerta aunque el cliente
+ * tuviera uno configurado.
+ */
+async function verificarLimiteCredito(clienteId: string, montoNuevo: number) {
+  const cliente = await db.cliente.findUnique({ where: { id: clienteId }, select: { limiteCredito: true, nombre: true } })
+  if (!cliente?.limiteCredito) return
+  const deudaActual = await db.cuentaPorCobrar.aggregate({
+    where: { clienteId, estado: { in: ["pendiente","parcial","vencida"] } },
+    _sum: { saldoPendiente: true }
+  })
+  const totalDeuda = Number(deudaActual._sum.saldoPendiente ?? 0)
+  if (totalDeuda + montoNuevo > Number(cliente.limiteCredito)) {
+    throw new Error(`Límite de crédito excedido para ${cliente.nombre}. Disponible: $${Math.max(0, Number(cliente.limiteCredito) - totalDeuda).toLocaleString("es-CL")}`)
+  }
+}
+
 export async function crearCuentaPorCobrar(formData: FormData) {
   const session = await getSession()
   const clienteId = formData.get("clienteId") as string
@@ -1213,18 +1243,8 @@ export async function crearCuentaPorCobrar(formData: FormData) {
   const monto = parseFloat(formData.get("monto") as string)
   if (!monto || monto <= 0) throw new Error("Monto inválido")
 
-  // Check límite de crédito
-  const cliente = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id }, select: { limiteCredito: true, nombre: true } })
-  if (cliente?.limiteCredito) {
-    const deudaActual = await db.cuentaPorCobrar.aggregate({
-      where: { clienteId, estado: { in: ["pendiente","parcial","vencida"] } },
-      _sum: { saldoPendiente: true }
-    })
-    const totalDeuda = Number(deudaActual._sum.saldoPendiente ?? 0)
-    if (totalDeuda + monto > Number(cliente.limiteCredito)) {
-      throw new Error(`Límite de crédito excedido para ${cliente.nombre}. Disponible: $${Math.max(0, Number(cliente.limiteCredito) - totalDeuda).toLocaleString("es-CL")}`)
-    }
-  }
+  await verificarLimiteCredito(clienteId, monto)
+  const cliente = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id }, select: { nombre: true } })
 
   const nuevaCuenta = await crearCuentaPorCobrarConNumero(session.user.id, {
     clienteId,
