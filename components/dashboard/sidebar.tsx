@@ -34,17 +34,20 @@ function NavItem({ href, icon, label, badge, activo, collapsed, moduloKey, modul
   const isActive = pathname === href || (href !== "#" && pathname.startsWith(href + "/"))
   const sinPermiso = moduloKey && modulosPermitidos != null && !modulosPermitidos.includes(moduloKey)
 
-  if (!activo || badge === "Pronto" || sinPermiso) {
+  // Un módulo sin permiso se oculta del todo, no se muestra "candado" — el
+  // dueño decide qué módulos existen para cada empleado, y mostrar el
+  // nombre de un módulo bloqueado ya revela información que el dueño puede
+  // no querer que ese empleado sepa que existe.
+  if (sinPermiso) return null
+
+  if (!activo || badge === "Pronto") {
     return (
-      <div title={sinPermiso ? "No tienes acceso a este módulo" : undefined}
-        className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-[var(--c-text4)] cursor-not-allowed select-none">
+      <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-[var(--c-text4)] cursor-not-allowed select-none">
         <span className="text-sm w-5 text-center opacity-30">{icon}</span>
         {!collapsed && (
           <>
             <span className="flex-1">{label}</span>
-            {sinPermiso ? (
-              <span className="text-[10px]">🔒</span>
-            ) : badge && (
+            {badge && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--c-card2)] text-[var(--c-text4)] border border-[var(--c-border2)] font-medium">
                 {badge}
               </span>
@@ -146,7 +149,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
           </>
         )}
 
-        {userRole === "ADMIN" && (
+        {userRole === "ADMIN" && !esEmpleado && (
           <>
             <SectionLabel label="Administración" collapsed={!isMobile && collapsed} />
             {[

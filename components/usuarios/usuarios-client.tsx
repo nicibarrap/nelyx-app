@@ -84,7 +84,7 @@ function FormEmpleado({ empleado, onCerrar, onGuardado }: { empleado?: Empleado;
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">
               PIN de 4 números {esEdicion && <span className="text-[var(--c-text4)] font-normal">(déjalo vacío para no cambiarlo)</span>}
             </label>
-            <input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="••••" className={`${inp} tracking-[0.3em]`} />
+            <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" maxLength={4} autoComplete="off" placeholder="••••" className={`${inp} tracking-[0.3em]`} />
           </div>
           <SelectorModulos seleccionados={modulos} onChange={setModulos} />
         </div>

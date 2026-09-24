@@ -10,7 +10,7 @@ import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 
 async function getAdminSession() {
   const session = await auth()
-  if (!session || session.user.role !== "ADMIN") throw new Error("No autorizado")
+  if (!session || session.user.role !== "ADMIN" || session.user.esEmpleado) throw new Error("No autorizado")
   return session
 }
 
