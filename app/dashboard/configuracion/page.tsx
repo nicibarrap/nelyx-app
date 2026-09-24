@@ -8,15 +8,12 @@ import { DiagnosticoPushClient } from "@/components/configuracion/diagnostico-pu
 import { PlantillasCobranzaClient } from "@/components/configuracion/plantillas-cobranza-client"
 import { ConexionMaquinaPagoClient } from "@/components/configuracion/conexion-maquina-pago-client"
 import { ProyectosTareaClient } from "@/components/configuracion/proyectos-tarea-client"
+import { SeccionColapsable } from "@/components/configuracion/seccion-colapsable"
 
 export const metadata: Metadata = { title: "Configuración" }
 export const dynamic = "force-dynamic"
 
 const CAMPOS = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales"] as const
-
-function SeccionLabel({ label }: { label: string }) {
-  return <p className="text-[11px] font-semibold text-[var(--c-text4)] uppercase tracking-wider px-1">{label}</p>
-}
 
 export default async function ConfiguracionPage() {
   const [cfgRaw, plantillas, conexionesPago, proyectosTarea] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerProyectosTarea()])
@@ -30,36 +27,39 @@ export default async function ConfiguracionPage() {
         <p className="text-sm text-[var(--c-text3)] mt-0.5">Administra tus preferencias en NELYX.</p>
       </div>
 
-      {/* Agrupado por tema, no por dónde "cupiera" — así se entiende de
-          un vistazo qué hace cada sección. 2 columnas en pantallas
-          grandes (aprovechando el espacio), 1 sola en celular. */}
+      {/* Orden de arriba hacia abajo = importancia/frecuencia de uso para
+          el día a día del negocio: primero cómo te enteras de lo que pasa
+          (Notificaciones) y cómo cobras (Pagos, Cobranza), después cómo
+          organizas tus tareas (Tareas) y por último una herramienta de
+          soporte que casi nunca hace falta tocar (Diagnóstico técnico).
+
+          En celular y tablet (hasta lg:) cada sección es un acordeón
+          colapsado — solo Notificaciones arranca abierta — para no
+          obligar a hacer scroll por todo de una. En pc (lg:+, con espacio
+          de sobra) todo queda expandido en 2 columnas, como antes. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <div className="space-y-5">
-          <div className="space-y-3">
-            <SeccionLabel label="💳 Pagos" />
-            <ConexionMaquinaPagoClient conexiones={conexionesPago} />
-          </div>
-          <div className="space-y-3">
-            <SeccionLabel label="🔔 Notificaciones" />
+          <SeccionColapsable icon="🔔" titulo="Notificaciones" defaultOpen>
             <ConfigNotificacionesClient cfg={cfg} />
-          </div>
+          </SeccionColapsable>
+          <SeccionColapsable icon="📋" titulo="Cobranza">
+            <PlantillasCobranzaClient plantillas={plantillas} />
+          </SeccionColapsable>
         </div>
         <div className="space-y-5">
-          <div className="space-y-3">
-            <SeccionLabel label="📋 Cobranza" />
-            <PlantillasCobranzaClient plantillas={plantillas} />
-          </div>
-          <div className="space-y-3">
-            <SeccionLabel label="🔧 Diagnóstico técnico" />
-            <DiagnosticoPushClient />
-          </div>
+          <SeccionColapsable icon="💳" titulo="Pagos">
+            <ConexionMaquinaPagoClient conexiones={conexionesPago} />
+          </SeccionColapsable>
         </div>
       </div>
 
-      <div className="space-y-3">
-        <SeccionLabel label="🗂️ Tareas" />
+      <SeccionColapsable icon="🗂️" titulo="Tareas">
         <ProyectosTareaClient proyectos={proyectosTarea} />
-      </div>
+      </SeccionColapsable>
+
+      <SeccionColapsable icon="🔧" titulo="Diagnóstico técnico">
+        <DiagnosticoPushClient />
+      </SeccionColapsable>
     </div>
   )
 }
