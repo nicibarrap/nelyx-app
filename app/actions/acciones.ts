@@ -10,6 +10,8 @@ import { registrarMovimientoStock, type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerLoteFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
+import { hoyEnChile } from "@/lib/timezone"
+import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 
 async function getSession() {
   const session = await auth()
@@ -928,9 +930,11 @@ export async function eliminarCostoRecurrente(id: string) {
 }
 
 export async function generarCostosDelMes(userId: string, mes: number, anio: number): Promise<number> {
-  const hoy = new Date()
+  // hoyEnChile(), no new Date() crudo — el servidor corre en UTC, y en la
+  // noche chilena eso ya cree que es el día siguiente, generando (o
+  // saltándose) un costo con horas de anticipación o atraso.
+  const hoy = hoyEnChile()
   const diaActual = hoy.getDate()
-  const diasDelMes = new Date(anio, mes, 0).getDate()
 
   const costosActivos = await db.costoFijoRecurrente.findMany({
     where: { userId, estado: "activo" },
@@ -942,15 +946,13 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
     // Si ya fue generado este mes, saltar
     if (costo.generaciones.length > 0) continue
 
+    // Fuera de rango (antes del inicio, o después del término) — a nivel
+    // de día, no solo de mes/año.
+    if (!esAplicableEnMes(costo.fechaInicio, costo.fechaTermino, mes, anio)) continue
+
     // El día del mes en que se repite es siempre el mismo que fechaInicio —
     // ajustado si el mes es más corto (ej. inicio el 31, en febrero cae el 28).
-    const diaDelMes = Math.min(costo.fechaInicio.getDate(), diasDelMes)
-    const fechaEsteMes = new Date(anio, mes - 1, diaDelMes)
-
-    // Antes de la fecha de inicio real: todavía no corresponde generarlo.
-    if (fechaEsteMes < new Date(costo.fechaInicio.getFullYear(), costo.fechaInicio.getMonth(), costo.fechaInicio.getDate())) continue
-    // Después de la fecha de término (si tiene una): ya no se repite.
-    if (costo.fechaTermino && fechaEsteMes > costo.fechaTermino) continue
+    const diaDelMes = diaOcurrenciaEnMes(costo.fechaInicio, mes, anio)
     // Si es el mes actual, solo generar cuando el día ya llegó (no antes).
     if (mes === hoy.getMonth() + 1 && anio === hoy.getFullYear() && diaDelMes > diaActual) continue
 
