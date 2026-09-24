@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { ClientesClient } from "@/components/clientes/clientes-client"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
 import { hoyEnChile } from "@/lib/timezone"
+import { calcularIntervaloPromedioDias, calcularDebioVolver, calcularSegmento, calcularUmbralValioso } from "@/lib/cliente-insights"
 
 export const metadata: Metadata = { title: "Clientes" }
 
@@ -69,6 +70,10 @@ export default async function ClientesPage() {
     const deudaPendiente = cuentasCobrar.filter(cc => cc.clienteId === c.id).reduce((a, cc) => a + Number(cc.saldoPendiente), 0)
     const compras = ventasContado.length + ventasCredito.length
     const ticketPromedio = compras > 0 ? totalComprado / compras : 0
+    const intervaloPromedioDias = calcularIntervaloPromedioDias([
+      ...ventasContado.map(m => new Date(m.fecha)),
+      ...ventasCredito.map(cc => new Date(cc.fechaVenta)),
+    ])
 
     return {
       id: c.id,
@@ -86,6 +91,8 @@ export default async function ClientesPage() {
       esFrecuente: c.esFrecuente,
       esVip: c.esVip,
       permiteCredito: c.permiteCredito,
+      limiteCredito: c.limiteCredito ? Number(c.limiteCredito) : null,
+      cumpleanos: c.cumpleanos ? c.cumpleanos.toISOString() : null,
       activo: c.activo,
       observaciones: c.observaciones,
       createdAt: c.createdAt.toISOString(),
@@ -95,6 +102,7 @@ export default async function ClientesPage() {
       deudaPendiente,
       compras,
       ticketPromedio,
+      intervaloPromedioDias,
       inactivo: diasSinCompra > 30,
       movimientos: movs.map(m => ({ monto: Number(m.monto), fecha: m.fecha.toISOString(), tipo: m.tipo, descripcion: m.descripcion })),
       cuentasPorCobrar: ventasCredito.map(cc => ({
@@ -108,17 +116,30 @@ export default async function ClientesPage() {
     }
   })
 
+  // Segmento automático — necesita el umbral de "valioso" calculado sobre
+  // TODA la cartera, así que va en una segunda pasada después de tener
+  // totalComprado de cada cliente.
+  const umbralValioso = calcularUmbralValioso(
+    clientesData.filter(c => c.compras >= 2).map(c => c.totalComprado)
+  )
+  const clientesConSegmento = clientesData.map(c => {
+    const debioVolver = calcularDebioVolver(c)
+    const segmento = calcularSegmento({ ...c, esValiosoPorMonto: c.totalComprado >= umbralValioso })
+    return { ...c, debioVolver, segmento }
+  })
+
   // Métricas globales
   const totalVentasMes = movsMes.reduce((a, m) => a + Number(m.monto), 0)
-  const conDeuda = clientesData.filter(c => c.deudaPendiente > 0).length // Now uses real CuentaPorCobrar data
-  const frecuentes = clientesData.filter(c => c.esFrecuente).length
-  const inactivos = clientesData.filter(c => c.inactivo || !c.activo).length
-  const ticketProm = clientesData.filter(c => c.compras > 0).reduce((a, c, _, arr) => a + c.ticketPromedio / arr.length, 0)
+  const conDeuda = clientesConSegmento.filter(c => c.deudaPendiente > 0).length // Now uses real CuentaPorCobrar data
+  const frecuentes = clientesConSegmento.filter(c => c.esFrecuente).length
+  const inactivos = clientesConSegmento.filter(c => c.inactivo || !c.activo).length
+  const ticketProm = clientesConSegmento.filter(c => c.compras > 0).reduce((a, c, _, arr) => a + c.ticketPromedio / arr.length, 0)
+  const debieronVolver = clientesConSegmento.filter(c => c.debioVolver).length
 
   return (
     <ClientesClient
-      clientesData={clientesData}
-      metricas={{ totalVentasMes, conDeuda, frecuentes, inactivos, ticketProm }}
+      clientesData={clientesConSegmento}
+      metricas={{ totalVentasMes, conDeuda, frecuentes, inactivos, ticketProm, debieronVolver }}
       nombreNegocio={usuario?.negocio || usuario?.nombre || "Nuestro negocio"}
       usuarioEnvia={usuario?.nombre || ""}
       plantillas={plantillas}

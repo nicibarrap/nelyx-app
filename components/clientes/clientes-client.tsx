@@ -1,5 +1,5 @@
 "use client"
-import { useState, useTransition, useMemo, useEffect } from "react"
+import { useState, useTransition, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
@@ -7,6 +7,7 @@ import { crearCliente, actualizarCliente, eliminarCliente, crearNotaCliente, eli
 import { formatCLP } from "@/lib/utils"
 import { CentroCobranza } from "@/components/cuentas-cobrar/centro-cobranza"
 import type { NivelCobranza } from "@/lib/cobranza"
+import { sugerirLimiteCredito, SEGMENTOS_CFG, type SegmentoCliente } from "@/lib/cliente-insights"
 
 const TIPOS = ["Minorista","Mayorista","Empresa","Distribuidor","Particular"]
 const FRECUENCIAS = ["Diaria","Semanal","Quincenal","Mensual","Eventual"]
@@ -18,9 +19,11 @@ type Cliente = {
   telefono: string | null; email: string | null; direccion: string | null; ciudad: string | null
   tipoCliente: string | null; frecuenciaCompra: string | null; metodoPago: string | null
   diasPago: number | null; esFrecuente: boolean; esVip: boolean; permiteCredito: boolean
+  limiteCredito: number | null; cumpleanos: string | null
   activo: boolean; observaciones: string | null; createdAt: string
   totalComprado: number; ultimaActividad: string; diasSinCompra: number
   deudaPendiente: number; compras: number; ticketPromedio: number; inactivo: boolean
+  intervaloPromedioDias: number | null; debioVolver: boolean; segmento: SegmentoCliente
   movimientos: { monto: number; fecha: string; tipo: string; descripcion: string | null }[]
   cuentasPorCobrar?: { id: string; numero: number; monto: number; saldoPendiente: number; estado: string; fecha: string; fechaVence: string | null; diasAtraso: number; descripcion: string | null }[]
   notas: { id: string; texto: string; createdAt: string }[]
@@ -61,6 +64,10 @@ function Avatar({ nombre, apellido, size = "md" }: { nombre: string; apellido?: 
 function FormCliente({ cliente, onClose, onSuccess }: { cliente?: Cliente | null; onClose: () => void; onSuccess: () => void }) {
   const [isPending, start] = useTransition()
   const isEdit = !!cliente
+  const limiteRef = useRef<HTMLInputElement>(null)
+  // Solo tiene sentido sugerir con historial real de compras — un cliente
+  // nuevo no tiene ticket promedio del cual partir.
+  const sugerido = cliente ? sugerirLimiteCredito(cliente.ticketPromedio, cliente.compras) : null
 
   // Portal directo a document.body — evita que el modal quede atrapado
   // dentro del contenedor animado de la página (mismo fix que en Proveedores).
@@ -122,6 +129,28 @@ function FormCliente({ cliente, onClose, onSuccess }: { cliente?: Cliente | null
                   <span className="text-xs font-medium text-[var(--c-text2)]">{opt.label}</span>
                 </label>
               ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-[var(--c-text3)] uppercase tracking-wider mb-3">Crédito y fechas</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] text-[var(--c-text3)] font-semibold">Límite de crédito</label>
+                  {sugerido !== null && (
+                    <button type="button" onClick={() => { if (limiteRef.current) limiteRef.current.value = String(sugerido) }}
+                      className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">
+                      💡 Sugerido: {formatCLP(sugerido)}
+                    </button>
+                  )}
+                </div>
+                <input ref={limiteRef} name="limiteCredito" type="number" min="0" step="1000"
+                  defaultValue={cliente?.limiteCredito ?? ""} placeholder="Sin límite" className={inp} />
+              </div>
+              <div>
+                <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Cumpleaños</label>
+                <input name="cumpleanos" type="date" defaultValue={cliente?.cumpleanos ? cliente.cumpleanos.slice(0, 10) : ""} className={inp} />
+              </div>
             </div>
           </div>
           <div><label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Observaciones</label><textarea name="observaciones" defaultValue={cliente?.observaciones ?? ""} rows={2} placeholder="Notas sobre el cliente..." className={`${inp} h-auto py-2.5 resize-none`} /></div>
@@ -201,6 +230,11 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
                 {cliente.esVip && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-[var(--c-warning)] border border-amber-500/20 font-semibold">⭐ VIP</span>}
                 {cliente.deudaPendiente > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold">Con deuda</span>}
                 {(!cliente.activo || cliente.inactivo) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-500/10 text-[var(--c-text4)] border border-[var(--c-border)] font-semibold">{"Inactivo"}</span>}
+                {cliente.segmento !== "regular" && cliente.segmento !== "inactivo" && cliente.segmento !== "nuevo" && (
+                  <span title="Calculado automáticamente según su historial de compras" className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${SEGMENTOS_CFG[cliente.segmento].bg} ${SEGMENTOS_CFG[cliente.segmento].color} ${SEGMENTOS_CFG[cliente.segmento].border}`}>
+                    {SEGMENTOS_CFG[cliente.segmento].icon} {SEGMENTOS_CFG[cliente.segmento].label}
+                  </span>
+                )}
               </div>
               {cliente.empresa && <p className="text-xs text-[var(--c-text3)] mt-0.5 truncate">🏪 {cliente.empresa}</p>}
               {cliente.telefono && <p className="text-xs text-[var(--c-text3)] truncate">📱 {cliente.telefono}</p>}
@@ -252,6 +286,14 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
       <div className="flex-1 overflow-y-auto p-5">
         {tab === "resumen" && (
           <div className="space-y-4">
+            {cliente.debioVolver && cliente.intervaloPromedioDias !== null && (
+              <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3.5 py-2.5">
+                <span className="text-sm flex-shrink-0">⏰</span>
+                <p className="text-[11px] text-[var(--c-text2)]">
+                  <strong className="text-[var(--c-warning)]">Debería haber vuelto:</strong> suele comprar cada ~{Math.round(cliente.intervaloPromedioDias)} días y van {cliente.diasSinCompra} sin novedad.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wider mb-2">Información general</p>
@@ -262,6 +304,9 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
                     { label: "Frecuencia compra", val: cliente.frecuenciaCompra ?? "—" },
                     { label: "Método pago", val: cliente.metodoPago ?? "—" },
                     { label: "Días promedio pago", val: cliente.diasPago ? `${cliente.diasPago} días` : "—" },
+                    { label: "Cumpleaños", val: cliente.cumpleanos ? new Date(cliente.cumpleanos).toLocaleDateString("es-CL", { day: "numeric", month: "long", timeZone: "UTC" }) : "—" },
+                    { label: "Límite de crédito", val: cliente.limiteCredito ? formatCLP(cliente.limiteCredito) : "Sin límite" },
+                    { label: "Segmento (automático)", val: `${SEGMENTOS_CFG[cliente.segmento].icon} ${SEGMENTOS_CFG[cliente.segmento].label}` },
                     { label: "Estado", val: cliente.activo ? "Activo" : "Inactivo", color: cliente.activo ? "text-emerald-400" : "text-[var(--c-text4)]" },
                   ].map(r => (
                     <div key={r.label} className="flex justify-between py-1 border-b border-[var(--c-border2)] last:border-0">
@@ -458,7 +503,7 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
 
 interface Props {
   clientesData: Cliente[]
-  metricas: { totalVentasMes: number; conDeuda: number; frecuentes: number; inactivos: number; ticketProm: number }
+  metricas: { totalVentasMes: number; conDeuda: number; frecuentes: number; inactivos: number; ticketProm: number; debieronVolver: number }
   nombreNegocio: string
   usuarioEnvia: string
   plantillas: Record<NivelCobranza, string>
@@ -467,7 +512,7 @@ interface Props {
 export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioEnvia, plantillas }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
-  const [filtro, setFiltro] = useState<"todos"|"deuda"|"frecuentes"|"inactivos">("todos")
+  const [filtro, setFiltro] = useState<"todos"|"deuda"|"frecuentes"|"inactivos"|"debieron_volver">("todos")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
@@ -481,6 +526,14 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
     [...clientesData].filter(c => c.totalComprado > 0).sort((a, b) => b.totalComprado - a.totalComprado).slice(0, 5),
     [clientesData])
 
+  // Clientes que, según su propio patrón de compra, ya deberían haber
+  // vuelto — mientras más atrasados respecto a su intervalo habitual, antes.
+  const clientesDebieronVolver = useMemo(() =>
+    [...clientesData].filter(c => c.debioVolver && c.intervaloPromedioDias !== null)
+      .sort((a, b) => (b.diasSinCompra / b.intervaloPromedioDias!) - (a.diasSinCompra / a.intervaloPromedioDias!))
+      .slice(0, 5),
+    [clientesData])
+
   const filtrados = useMemo(() => {
     let list = clientesData
     if (search) { const q = search.toLowerCase(); list = list.filter(c => `${c.nombre} ${c.apellido ?? ""} ${c.empresa ?? ""} ${c.telefono ?? ""}`.toLowerCase().includes(q)) }
@@ -488,6 +541,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
       case "deuda":    return list.filter(c => c.deudaPendiente > 0)
       case "frecuentes": return list.filter(c => c.esFrecuente)
       case "inactivos":  return list.filter(c => c.inactivo || !c.activo)
+      case "debieron_volver": return list.filter(c => c.debioVolver)
     }
     return list
   }, [clientesData, search, filtro])
@@ -496,6 +550,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
     { key: "todos" as const, label: `Todos (${clientesData.length})` },
     { key: "deuda" as const, label: `Con deuda (${metricas.conDeuda})` },
     { key: "frecuentes" as const, label: `Frecuentes (${metricas.frecuentes})` },
+    { key: "debieron_volver" as const, label: `Deberían volver (${metricas.debieronVolver})` },
     { key: "inactivos" as const, label: `Inactivos (${metricas.inactivos})` },
   ]
 
@@ -563,6 +618,23 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
         </div>
       )}
 
+      {/* Deberían haber vuelto — según el patrón de compra de cada uno */}
+      {clientesDebieronVolver.length > 0 && (
+        <div className="bg-[var(--c-card)] border border-amber-500/20 rounded-2xl p-5">
+          <p className="text-sm font-semibold text-[var(--c-text)] mb-1">⏰ Deberían haber vuelto</p>
+          <p className="text-[11px] text-[var(--c-text4)] mb-4">Según cuánto suelen tardar entre compra y compra</p>
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            {clientesDebieronVolver.map(c => (
+              <button key={c.id} onClick={() => setSelectedId(c.id)}
+                className="flex flex-col gap-1 p-3 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:border-amber-500/30 transition-all text-left">
+                <p className="text-xs font-semibold text-[var(--c-text)] truncate">{c.nombre} {c.apellido ?? ""}</p>
+                <p className="text-[11px] text-[var(--c-warning)]">cada ~{Math.round(c.intervaloPromedioDias!)}d, van {c.diasSinCompra}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Layout: Lista + Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
@@ -611,7 +683,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
                     : <p className="text-xs text-[var(--c-text4)]">$0</p>
                   }
                 </div>
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.deudaPendiente > 0 ? "bg-red-400" : c.inactivo ? "bg-amber-400" : "bg-emerald-400"}`} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.deudaPendiente > 0 ? "bg-red-400" : (c.inactivo || c.debioVolver) ? "bg-amber-400" : "bg-emerald-400"}`} />
               </div>
             ))}
           </div>
