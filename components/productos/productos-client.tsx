@@ -867,7 +867,14 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
       )}
       {editingProducto && (
         <FormProducto
-          inventarioActivo={inventarioActivo}
+          // Igual que en ProductoDetalle: se edita según lo que el
+          // producto REALMENTE es, no según el interruptor de la página —
+          // de lo contrario, con el interruptor apagado (su valor por
+          // defecto), este formulario ocultaba los campos de stock,
+          // costo, unidad de medida y código de barras, y al guardar los
+          // dejaba en null/valores por defecto aunque el producto sí
+          // llevara inventario real.
+          inventarioActivo={editingProducto.controlaInventario}
           producto={editingProducto}
           dbCategorias={customCategorias}
           dbUnidades={customUnidades}
@@ -905,7 +912,13 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
       {selectedProducto && !editingProducto && (
         <ProductoDetalle
           producto={selectedProducto}
-          inventarioActivo={inventarioActivo}
+          // La propia ficha del producto manda, no el interruptor de la
+          // página — antes, un producto que SÍ controla inventario perdía
+          // su sección de stock/Kardex/lotes en la ficha (y peor, sus
+          // campos en el formulario de edición) con solo tener el
+          // interruptor "Control de inventario" de la página en apagado
+          // (el valor por defecto en cualquier sesión nueva).
+          inventarioActivo={selectedProducto.controlaInventario}
           onEdit={() => { setEditingProducto(selectedProducto); setShowForm(false) }}
           onClose={() => setSelectedId(null)}
           onDeleted={() => setSelectedId(null)}
