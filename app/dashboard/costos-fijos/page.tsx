@@ -120,6 +120,22 @@ export default async function CostosFijosPage() {
     .filter(m => !movimientoIdsConGeneracion.has(m.id))
     .map(m => ({ id: m.id, nombre: m.descripcion ?? "Costo único", monto: Number(m.monto), fecha: m.fecha.toISOString(), categoria: m.categoria }))
 
+  // Proyección — cuánto suman los costos fijos recurrentes activos en cada
+  // uno de los próximos 3 meses, no solo el actual. Reutiliza exactamente
+  // la misma regla (esAplicableEnMes) que ya decide qué aplica este mes —
+  // así nunca puede desincronizarse de lo que se ve arriba. Solo mira
+  // costos RECURRENTES: uno único no se puede proyectar (por definición no
+  // se repite), y los gastos variables no son predecibles por diseño.
+  const proyeccionMeses = [1, 2, 3].map(offset => {
+    const fechaProy = new Date(anio, mes - 1 + offset, 1)
+    const mesProy = fechaProy.getMonth() + 1
+    const anioProy = fechaProy.getFullYear()
+    const total = costos
+      .filter(c => c.estado === "activo" && esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesProy, anioProy))
+      .reduce((a, c) => a + Number(c.monto), 0)
+    return { mes: mesProy, anio: anioProy, total }
+  })
+
   return (
     <CostosFijosClient
       costosData={costosData}
@@ -133,6 +149,7 @@ export default async function CostosFijosPage() {
       conteoEstados={conteoEstados}
       proximosCostos={proximosCostos}
       costosUnicosEsteMes={costosUnicosEsteMes}
+      proyeccionMeses={proyeccionMeses}
       dbCategorias={categoriasDB.map(c => c.nombre)}
     />
   )

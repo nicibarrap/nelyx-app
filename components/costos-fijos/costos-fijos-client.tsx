@@ -23,6 +23,7 @@ type Costo = {
 
 type ProximoCosto = Costo & { fechaRelevante: string }
 type CostoUnico = { id: string; nombre: string; monto: number; fecha: string; categoria: string | null }
+type MesProyectado = { mes: number; anio: number; total: number }
 
 interface Props {
   costosData: Costo[]
@@ -35,6 +36,7 @@ interface Props {
   conteoEstados: { programado: number; pendiente: number; generado: number; pagado: number }
   proximosCostos: ProximoCosto[]
   costosUnicosEsteMes: CostoUnico[]
+  proyeccionMeses: MesProyectado[]
   dbCategorias?: string[]
 }
 
@@ -334,7 +336,7 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
   )
 }
 
-export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gastosVariables, excedenteOperativo, resultadoCobertura, mes, anio, conteoEstados, proximosCostos, costosUnicosEsteMes, dbCategorias = [] }: Props) {
+export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gastosVariables, excedenteOperativo, resultadoCobertura, mes, anio, conteoEstados, proximosCostos, costosUnicosEsteMes, proyeccionMeses, dbCategorias = [] }: Props) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [pagandoId, setPagandoId] = useState<string | null>(null)
@@ -345,6 +347,9 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
   const pagadoMonto = activos.filter(c => c.estadoDerivado === "pagado").reduce((a, c) => a + c.monto, 0)
   // Para la barra visual: qué % del total mensual queda cubierto por el excedente operativo real
   const pctCubierto = totalMes > 0 ? Math.max(0, Math.min(100, Math.round((excedenteOperativo / totalMes) * 100))) : 0
+  // Para las barras de la proyección: relativas al mayor monto entre el mes
+  // actual y los 3 proyectados, así el mes actual sirve de referencia visual.
+  const maxProyeccion = Math.max(totalMes, ...proyeccionMeses.map(p => p.total), 1)
 
   const MESES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -461,6 +466,33 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
           {!cubierto && excedenteOperativo < 0 && (
             <p className="text-xs text-[var(--c-text3)] mt-1">Tus gastos variables ya superan tus ingresos este mes, antes de considerar costos fijos.</p>
           )}
+        </div>
+      )}
+
+      {/* Proyección — próximos 3 meses */}
+      {proyeccionMeses.some(p => p.total > 0) && (
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
+          <p className="text-sm font-semibold text-[var(--c-text)] mb-1 inline-flex items-center">
+            📊 Proyección — próximos 3 meses
+            <InfoTip text="Suma de tus costos fijos recurrentes activos en cada uno de los próximos meses, según su fecha de inicio y término. No incluye costos únicos ni gastos variables — solo lo que ya sabes que se va a repetir." />
+          </p>
+          <p className="text-xs text-[var(--c-text3)] mb-4">Planifica tu caja con anticipación, no mes a mes.</p>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {proyeccionMeses.map(p => {
+              const pct = Math.max(4, Math.round((p.total / maxProyeccion) * 100))
+              return (
+                <div key={`${p.anio}-${p.mes}`} className="bg-[var(--c-card2)] rounded-xl p-2.5 sm:p-3 border border-[var(--c-border)] min-w-0">
+                  <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider truncate">
+                    {MESES[p.mes]}{p.anio !== anio ? ` ${p.anio}` : ""}
+                  </p>
+                  <p className="text-xs sm:text-sm font-bold text-orange-400 mt-1 truncate">{formatCLP(p.total)}</p>
+                  <div className="h-1.5 bg-[var(--c-hover)] rounded-full overflow-hidden mt-2">
+                    <div className="h-full bg-orange-400/70 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
