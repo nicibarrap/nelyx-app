@@ -104,6 +104,9 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
   const [tab, setTab] = useState<"resumen"|"compras"|"notas">("resumen")
   const [nota, setNota] = useState("")
   const [isPending, start] = useTransition()
+  const [confirmarEliminar, setConfirmarEliminar] = useState(false)
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
 
   function handleNota() {
     if (!nota.trim()) return
@@ -124,6 +127,20 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
     start(async () => {
       try { await toggleFavoritoProveedor(prov.id, !prov.esFavorito); toast.success(prov.esFavorito ? "Removido de favoritos" : "Marcado como favorito") }
       catch { toast.error("Error") }
+    })
+  }
+
+  function handleEliminar() {
+    start(async () => {
+      try {
+        await eliminarProveedor(prov.id)
+        toast.success("Proveedor eliminado")
+        setConfirmarEliminar(false)
+        onClose()
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo eliminar")
+        setConfirmarEliminar(false)
+      }
     })
   }
 
@@ -152,6 +169,7 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
             <button onClick={handleToggleFav} className="text-xs px-2 py-1.5 rounded-lg border border-[var(--c-border)] text-[var(--c-text3)] hover:text-[var(--c-warning)] transition-all">{prov.esFavorito ? "★" : "☆"}</button>
             <button onClick={handleToggleActivo} className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all whitespace-nowrap ${prov.activo ? "border-[var(--c-border)] text-[var(--c-text3)] hover:text-[var(--c-warning)]" : "border-emerald-500/20 text-emerald-400"}`}>{prov.activo ? "Desactivar" : "Activar"}</button>
             <button onClick={onEdit} className="text-xs px-2.5 py-1.5 rounded-lg border border-[var(--c-border)] text-[var(--c-text2)] hover:text-sky-400 transition-all">✏️</button>
+            <button onClick={() => setConfirmarEliminar(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-[var(--c-border)] text-[var(--c-text2)] hover:text-red-400 transition-all">🗑️</button>
             <button onClick={onClose} className="text-[var(--c-text3)] w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-lg">×</button>
           </div>
         </div>
@@ -255,13 +273,32 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
           </div>
         )}
       </div>
+
+      {confirmarEliminar && montado && createPortal(
+        <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 max-w-sm w-full">
+            <p className="text-sm font-bold text-[var(--c-text)] mb-1">¿Eliminar a {prov.nombre}?</p>
+            <p className="text-xs text-[var(--c-text3)] mb-4">Si tiene compras registradas (gastos o reposiciones de stock), no se podrá eliminar hasta que las conserves de otra forma — usa "Desactivar" en su lugar.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmarEliminar(false)} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">
+                Cancelar
+              </button>
+              <button onClick={handleEliminar} disabled={isPending}
+                className="flex-1 h-10 bg-red-500 hover:bg-red-400 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all">
+                {isPending ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
 
 interface Props {
   proveedoresData: Proveedor[]
-  metricas: { totalComprasMes: number; conDeuda: number; provPrincipal: string | null; inactivos: number }
+  metricas: { totalComprasMes: number; provPrincipal: string | null; inactivos: number }
 }
 
 export function ProveedoresClient({ proveedoresData, metricas }: Props) {

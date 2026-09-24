@@ -1196,6 +1196,17 @@ export async function toggleFavoritoProveedor(id: string, esFavorito: boolean) {
 
 export async function eliminarProveedor(id: string) {
   const session = await getSession()
+  // Sin este chequeo, borrar un proveedor con compras registradas fallaba
+  // con el error crudo de la restricción de llave foránea de Postgres (no
+  // hay onDelete configurado a propósito, para no perder el historial de
+  // gastos/reposiciones) — el usuario solo veía "Error" genérico.
+  const [tieneGastos, tieneReposiciones] = await Promise.all([
+    db.movimiento.findFirst({ where: { proveedorId: id, userId: session.user.id }, select: { id: true } }),
+    db.movimientoStock.findFirst({ where: { proveedorId: id, userId: session.user.id }, select: { id: true } }),
+  ])
+  if (tieneGastos || tieneReposiciones) {
+    throw new Error("Este proveedor tiene compras registradas — desactívalo en vez de eliminarlo, para conservar el historial.")
+  }
   await db.proveedor.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/proveedores")
 }
