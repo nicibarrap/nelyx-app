@@ -224,6 +224,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
         await crearProducto(fd)
         toast.success("✅ Producto creado con éxito")
         onSuccess()
+        onClose()
       } catch (err: any) {
         toast.error(err?.message ?? "Error al guardar el producto")
       }
