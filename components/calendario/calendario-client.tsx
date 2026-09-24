@@ -59,7 +59,7 @@ type CalEvent = {
   proyectoId?:string|null; proyectoColor?:string|null; proyectoNombre?:string|null
   serieId?:string|null
 }
-type Filtro = "todas"|"costos"|"deudas"|"cobros"|"tareas"|"recordatorios"
+type Filtro = "todas"|"costos"|"tareas"|"recordatorios"|"eventos"
 type Vista = "mes"|"semana"
 
 type CalData = {
@@ -188,10 +188,9 @@ function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
 function aplicarFiltro(events:CalEvent[],filtro:Filtro):CalEvent[]{
   if(filtro==="todas")return events
   if(filtro==="costos")return events.filter(e=>e.tipo==="costo_fijo")
-  if(filtro==="deudas")return events.filter(e=>e.tipo==="deuda")
-  if(filtro==="cobros")return events.filter(e=>e.tipo==="cuenta_cobrar")
   if(filtro==="tareas")return events.filter(e=>e.tipo==="tarea")
   if(filtro==="recordatorios")return events.filter(e=>e.tipo==="recordatorio")
+  if(filtro==="eventos")return events.filter(e=>e.tipo==="evento")
   return events
 }
 
@@ -254,10 +253,10 @@ function MesGrid({weeks,byDay,hoyKey,selectedDay,dragVisual,hoverDayKey,onSelect
                     número + nombre del mes, ni se corre ni se corta en
                     celdas angostas (celular). */}
                 <button onClick={e=>{e.stopPropagation();onAddDay(cell.key)}}
-                  className="absolute top-1.5 right-1.5 sm:top-1.5 sm:right-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-[10px] sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity z-[1]"
+                  className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-sky-500 text-white text-[10px] sm:text-sm font-bold flex items-center justify-center hover:bg-sky-400 transition-opacity z-[1]"
                   title="Agregar tarea">+</button>
-                <div className="flex items-center gap-1 mb-1 sm:mb-1.5 pr-5 sm:pr-7">
-                  <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0
+                <div className="flex items-center gap-1 mb-1 sm:mb-1.5 pr-4 sm:pr-7">
+                  <div className={`w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[11px] sm:text-sm font-bold flex-shrink-0
                     ${isHoy?"bg-sky-500 text-white shadow-[0_0_10px_rgba(14,165,233,0.5)]":isSel?"border border-sky-500 text-sky-400":fuera?"text-[var(--c-text4)]":"text-[var(--c-text2)]"}`}>
                     {cell.day}
                   </div>
@@ -1027,20 +1026,25 @@ export function CalendarioClient({data}:{data:CalData}){
             </>
           )}
 
-          {/* Legend/filters */}
+          {/* Legend/filters — mismos 4 tipos que se pueden crear desde
+              "+ Evento manual" (Tarea, Recordatorio, Evento personal) más
+              Costos fijos (que llegan solos desde ese módulo), con el mismo
+              emoji que ya usa cada uno en las celdas y en el panel del día.
+              Deuda y Cuenta por cobrar quedan fuera de estos chips — no son
+              algo que el usuario cree o filtre a diario acá — pero sus
+              eventos se siguen viendo igual con "Todas". */}
           <div className="px-4 py-3 border-t border-[var(--c-border)] flex flex-wrap gap-2 items-center">
             {([
-              {k:"todas",   label:"Todas",         dot:""},
-              {k:"costos",  label:"Costos fijos",  dot:"bg-orange-400"},
-              {k:"deudas",  label:"Deudas",         dot:"bg-violet-400"},
-              {k:"cobros",  label:"Cobros/CxC",     dot:"bg-sky-400"},
-              {k:"tareas",  label:"Tareas",         dot:"bg-blue-400"},
-              {k:"recordatorios",label:"Recordatorios",dot:"bg-amber-400"},
-            ] as {k:Filtro;label:string;dot:string}[]).map(({k,label,dot})=>(
+              {k:"todas",        label:"Todas",           icon:""},
+              {k:"tareas",       label:"Tarea",           icon:TIPO_CONFIG.tarea.icon},
+              {k:"recordatorios",label:"Recordatorio",    icon:TIPO_CONFIG.recordatorio.icon},
+              {k:"eventos",      label:"Evento personal", icon:TIPO_CONFIG.evento.icon},
+              {k:"costos",       label:"Costos fijos",    icon:TIPO_CONFIG.costo_fijo.icon},
+            ] as {k:Filtro;label:string;icon:string}[]).map(({k,label,icon})=>(
               <button key={k} onClick={()=>setFiltro(k)}
                 className={`flex items-center gap-1.5 text-[11px] font-medium transition-all px-2 py-0.5 rounded-full
                   ${filtro===k?"bg-[var(--c-card2)] text-[var(--c-text)]":"text-[var(--c-text4)] hover:text-[var(--c-text3)]"}`}>
-                {dot&&<span className={`w-2 h-2 rounded-full ${dot}`}/>}
+                {icon&&<span className="text-xs leading-none">{icon}</span>}
                 {label}
               </button>
             ))}
