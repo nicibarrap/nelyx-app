@@ -52,6 +52,10 @@ model User {
   // al dueño) solo deben salir si el dueño explícitamente los activa.
   recordatoriosCobranzaAutoActivo   Boolean @default(false)
   recordatoriosCumpleanosAutoActivo Boolean @default(false)
+  // Con cuántos días de anticipación se manda el recordatorio previo al
+  // vencimiento — configurable porque el valor fijo anterior (2 días) se
+  // saltaba por completo una cuenta creada con vencimiento "mañana".
+  recordatoriosCobranzaDiasAntes    Int     @default(2)
 }
 
 enum Rol {
