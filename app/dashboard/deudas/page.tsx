@@ -12,16 +12,19 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
   const session = await auth()
   const filtro = searchParams.filtro ?? "todas"
 
-  const deudas = await db.deuda.findMany({
-    where: { userId: session!.user.id },
-    include: { pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] } },
-    orderBy: [{ pagada: "asc" }, { fechaVence: "asc" }, { createdAt: "desc" }],
-    // Tope defensivo — mismo motivo que en /dashboard/clientes: incluye
-    // deudas ya pagadas (historial completo), que con los años podría
-    // crecer mucho. Las pendientes (lo relevante del día a día) siempre
-    // ordenan primero, así que nunca quedan afuera del tope.
-    take: 3000,
-  })
+  const [deudas, proveedores] = await Promise.all([
+    db.deuda.findMany({
+      where: { userId: session!.user.id },
+      include: { pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] } },
+      orderBy: [{ pagada: "asc" }, { fechaVence: "asc" }, { createdAt: "desc" }],
+      // Tope defensivo — mismo motivo que en /dashboard/clientes: incluye
+      // deudas ya pagadas (historial completo), que con los años podría
+      // crecer mucho. Las pendientes (lo relevante del día a día) siempre
+      // ordenan primero, así que nunca quedan afuera del tope.
+      take: 3000,
+    }),
+    db.proveedor.findMany({ where: { userId: session!.user.id, activo: true }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
+  ])
 
   const hoy = new Date()
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -88,7 +91,7 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
           <h1 className="text-lg font-bold text-[var(--c-text)]">Deudas</h1>
           <p className="text-xs text-[var(--c-text3)] mt-0.5">Administra todas las deudas de tu negocio</p>
         </div>
-        <FormularioDeuda />
+        <FormularioDeuda proveedores={proveedores} />
       </div>
 
       {/* Cards métricas */}

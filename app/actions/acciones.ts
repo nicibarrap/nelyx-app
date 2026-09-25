@@ -740,6 +740,14 @@ export async function crearDeuda(formData: FormData) {
   const montoTotalStr = formData.get("montoTotal") as string
   const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
 
+  // Se valida que el proveedor exista y sea del mismo dueño — sin esto, un
+  // proveedorId manipulado en el formData podría vincular la deuda al
+  // proveedor de OTRO usuario.
+  const proveedorIdForm = (formData.get("proveedorId") as string) || null
+  const proveedorId = proveedorIdForm
+    ? (await db.proveedor.findFirst({ where: { id: proveedorIdForm, userId: session.user.id }, select: { id: true } }))?.id ?? null
+    : null
+
   await db.deuda.create({
     data: {
       acreedor: formData.get("acreedor") as string,
@@ -756,11 +764,13 @@ export async function crearDeuda(formData: FormData) {
       cuotaManual,
       tipoTasa,
       montoTotal,
+      proveedorId,
       userId: session.user.id,
     },
   })
   revalidatePath("/dashboard/deudas")
   revalidatePath("/dashboard/resumen")
+  revalidatePath("/dashboard/proveedores")
 }
 
 function calcularValorCuota(monto: number, interesMensual: number, cuotas: number): number {
@@ -833,6 +843,10 @@ export async function editarDeuda(id: string, formData: FormData) {
   const fechaPrimerPagoStr = formData.get("fechaPrimerPago") as string
   const montoTotalStr = formData.get("montoTotal") as string
   const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
+  const proveedorIdForm = (formData.get("proveedorId") as string) || null
+  const proveedorId = proveedorIdForm
+    ? (await db.proveedor.findFirst({ where: { id: proveedorIdForm, userId: session.user.id }, select: { id: true } }))?.id ?? null
+    : null
 
   await db.deuda.update({
     where: { id },
@@ -849,11 +863,13 @@ export async function editarDeuda(id: string, formData: FormData) {
       cuotas,
       valorCuota,
       montoTotal,
+      proveedorId,
     }
   })
   revalidatePath("/dashboard/deudas")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/alertas")
+  revalidatePath("/dashboard/proveedores")
 }
 
 export async function eliminarDeuda(id: string) {

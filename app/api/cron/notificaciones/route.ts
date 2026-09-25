@@ -147,13 +147,23 @@ async function ejecutarCron() {
   })
 
   // ── 4) DEUDAS: vence mañana / hoy ───────────────────────────────────────
-  const deudas = await db.deuda.findMany({ where: { pagada: false, fechaVence: { not: null } } })
+  const deudas = await db.deuda.findMany({
+    where: { pagada: false, fechaVence: { not: null } },
+    include: { proveedor: { select: { id: true, telefono: true } } },
+  })
   enviadas += await procesarEnLotes(deudas, 10, (d) => {
     if (!d.fechaVence) return Promise.resolve(false)
     const diff = diasEntreChile(ahora, d.fechaVence)
     if (diff === 1 || diff === 0) {
       const etiqueta = diff === 0 ? "hoy" : "mañana"
-      return notificar({ userId: d.userId, categoria: "deudas", prioridad: "alta", titulo: `${d.acreedor}: cuota vence ${etiqueta}`, mensaje: `Monto: ${Number(d.valorCuota ?? d.monto).toLocaleString("es-CL")}`, accionUrl: "/dashboard/deudas", claveUnica: `deuda:${d.id}:${diff===0?"hoy":"mañana"}:${hoyStr.slice(0,7)}` })
+      // Cuando la deuda está vinculada a un proveedor real (no solo el
+      // texto libre "acreedor"), el aviso lleva directo a su ficha y
+      // suma su teléfono — un clic para llegar a quién hay que pagarle,
+      // no solo a la lista genérica de Deudas.
+      const monto = `Monto: ${Number(d.valorCuota ?? d.monto).toLocaleString("es-CL")}`
+      const mensaje = d.proveedor?.telefono ? `${monto} · 📱 ${d.proveedor.telefono}` : monto
+      const accionUrl = d.proveedor ? `/dashboard/proveedores?id=${d.proveedor.id}` : "/dashboard/deudas"
+      return notificar({ userId: d.userId, categoria: "deudas", prioridad: "alta", titulo: `${d.acreedor}: cuota vence ${etiqueta}`, mensaje, accionUrl, claveUnica: `deuda:${d.id}:${diff===0?"hoy":"mañana"}:${hoyStr.slice(0,7)}` })
     }
     return Promise.resolve(false)
   })
