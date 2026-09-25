@@ -47,6 +47,17 @@ function useCountUp(target: number, mounted: boolean, reducedMotion: boolean, du
 
 const fmtCLP = (n: number) => `$${n.toLocaleString("es-CL")}`
 
+/* ─── Tooltip al hover — mismo estilo en toda la mini-dashboard ─── */
+function HoverTip({ show, children, align = "center" }: { show: boolean; children: React.ReactNode; align?: "center" | "left" | "right" }) {
+  const alignClass = align === "left" ? "left-0" : align === "right" ? "right-0" : "left-1/2 -translate-x-1/2"
+  return (
+    <div className={`pointer-events-none absolute z-30 bottom-full mb-2 ${alignClass} w-max max-w-[160px] rounded-lg border border-white/10 px-2.5 py-1.5 text-[9px] leading-snug text-white/80 shadow-xl transition-all duration-150 ${show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"}`}
+      style={{ background: "#0b1730" }}>
+      {children}
+    </div>
+  )
+}
+
 /* ─── Sparkline — se dibuja de izquierda a derecha al montar ─── */
 function Spark({ color, d, animate, delayMs = 0 }: { color: string; d: string; animate: boolean; delayMs?: number }) {
   const gid = "g" + color.replace("#", "")
@@ -70,9 +81,44 @@ function Spark({ color, d, animate, delayMs = 0 }: { color: string; d: string; a
   )
 }
 
+/* ─── Medidor de Liquidez — reemplaza la dona de "Gastos por categoría",
+   el gráfico más genérico posible (cualquier app contable lo tiene).
+   Cuántos días te dura el disponible actual al ritmo de gasto de este
+   mes — misma fórmula y mismos umbrales que /dashboard/resumen — es una
+   métrica que casi ninguna competencia muestra. ─── */
+function GaugeLiquidez({ animate, dias, categoria, color }: { animate: boolean; dias: number; categoria: string; color: string }) {
+  const [hover, setHover] = useState(false)
+  const max = 90
+  const r = 26, cx = 34, cy = 30
+  const circ = Math.PI * r
+  const frac = Math.min(dias, max) / max
+  const arcPath = `M${cx - r},${cy} A${r},${r} 0 0 1 ${cx + r},${cy}`
+  return (
+    <div className="relative flex flex-col items-center"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <HoverTip show={hover}>Cuánto te dura tu disponible al ritmo de gasto de este mes.</HoverTip>
+      <svg width="68" height="32" viewBox="0 0 68 32">
+        <path d={arcPath} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" strokeLinecap="round" />
+        <path d={arcPath} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
+          style={{
+            strokeDasharray: animate ? `${frac * circ} ${circ}` : `0 ${circ}`,
+            transition: `stroke-dasharray 800ms ease-out 250ms, filter 200ms ease-out`,
+            filter: hover ? `drop-shadow(0 0 4px ${color})` : "none",
+          }} />
+      </svg>
+      <div className="absolute top-[7px] flex flex-col items-center">
+        <span className="text-sm font-bold text-white leading-none tabular-nums">{dias}</span>
+        <span className="text-[7px] text-white/35">días</span>
+      </div>
+      <p className="text-[9px] font-semibold leading-none" style={{ color }}>{categoria}</p>
+    </div>
+  )
+}
+
 export function MiniDashboard() {
   const mounted = useMounted()
   const reducedMotion = usePrefersReducedMotion()
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
   // `animate` solo dispara la transición CSS hacia el valor final — el
   // media query global (@media prefers-reduced-motion) ya se encarga de
   // volverla instantánea para quien lo pidió. Si acá también se apagara
@@ -92,13 +138,20 @@ export function MiniDashboard() {
     { label: "Disponible", val: fmtCLP(disponible), pct: "Efectivo disponible", up: null as boolean | null, c: "#3b82f6", d: "" },
   ]
 
-  const donutSegmentos = [{ p: 45, c: "#3b82f6", o: 0 }, { p: 25, c: "#8b5cf6", o: 45 }, { p: 15, c: "#10b981", o: 70 }, { p: 15, c: "#f59e0b", o: 85 }]
+  const barras = [30, 45, 38, 58, 50, 65, 60, 78, 70, 85, 80, 100]
 
   return (
     <div className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(5,12,35,0.9)" }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/8">
         <div className="flex items-center gap-2">
+          {/* Puntos de ventana — refuerza que esto es "una app real", no
+              una imagen suelta, sin agregarle una barra nueva al alto. */}
+          <div className="hidden sm:flex items-center gap-1 mr-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400/40" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400/40" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/40" />
+          </div>
           <span className="text-xs font-semibold text-white/70">Resumen general</span>
           <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
             <span className="relative flex w-1.5 h-1.5">
@@ -116,7 +169,7 @@ export function MiniDashboard() {
       {/* Top stats row */}
       <div className="grid grid-cols-4 divide-x divide-white/8 border-b border-white/8">
         {stats.map(({ label, val, pct, up, c, d }, i) => (
-          <div key={label} className="p-2">
+          <div key={label} className="p-1.5 transition-colors duration-150 hover:bg-white/[0.03]">
             <p className="text-[10px] text-white/35 mb-1">{label}</p>
             <p className="text-sm font-bold text-white mb-0.5 tabular-nums">{val}</p>
             {up !== null ? (
@@ -147,12 +200,22 @@ export function MiniDashboard() {
         <div className="p-2 col-span-1">
           <p className="text-[10px] text-white/35 mb-2">Evolución de ventas</p>
           <div className="flex items-end gap-px h-12">
-            {[30, 45, 38, 58, 50, 65, 60, 78, 70, 85, 80, 100].map((h, i) => (
-              <div key={i} className="flex-1 rounded-sm" style={{
-                height: animate ? `${h}%` : "2%",
-                background: i === 11 ? "linear-gradient(to top,#2563eb,#60a5fa)" : "rgba(59,130,246,0.3)",
-                transition: `height 550ms cubic-bezier(0.22,1,0.36,1) ${i * 25}ms`,
-              }} />
+            {barras.map((h, i) => (
+              <div key={i} className="relative flex-1 h-full flex items-end"
+                onMouseEnter={() => setHoveredBar(i)} onMouseLeave={() => setHoveredBar(null)}>
+                {hoveredBar === i && (
+                  <HoverTip show align={i > 8 ? "right" : i < 3 ? "left" : "center"}>
+                    Día {i + 1}: {fmtCLP(h * 12000)}
+                  </HoverTip>
+                )}
+                <div className="w-full rounded-sm" style={{
+                  height: animate ? `${h}%` : "2%",
+                  background: hoveredBar === i
+                    ? "linear-gradient(to top,#2563eb,#93c5fd)"
+                    : i === 11 ? "linear-gradient(to top,#2563eb,#60a5fa)" : "rgba(59,130,246,0.3)",
+                  transition: `height 550ms cubic-bezier(0.22,1,0.36,1) ${i * 25}ms, background 150ms ease-out`,
+                }} />
+              </div>
             ))}
           </div>
           <div className="flex justify-between mt-1">
@@ -161,38 +224,17 @@ export function MiniDashboard() {
             ))}
           </div>
         </div>
-        {/* Donut */}
+        {/* Liquidez */}
         <div className="p-2 col-span-1">
-          <p className="text-[10px] text-white/35 mb-2">Gastos por categoría</p>
-          <div className="flex items-center gap-2">
-            <svg width="40" height="40" viewBox="0 0 36 36" className="flex-shrink-0">
-              {donutSegmentos.map(({ p, c, o }, i) => {
-                const r = 13, cx = 18, cy = 18, circ = 2 * Math.PI * r, dash = (p / 100) * circ, off = (o / 100) * circ
-                return <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth="7"
-                  style={{
-                    strokeDasharray: animate ? `${dash} ${circ - dash}` : `0 ${circ}`,
-                    transition: `stroke-dasharray 650ms ease-out ${i * 110}ms`,
-                  }}
-                  strokeDashoffset={-off} transform={`rotate(-90 ${cx} ${cy})`} />
-              })}
-            </svg>
-            <div className="space-y-0.5 min-w-0">
-              {[{ l: "Compra mercadería", p: "45%", c: "#3b82f6" }, { l: "Costos fijos", p: "25%", c: "#8b5cf6" }, { l: "Servicios", p: "15%", c: "#10b981" }, { l: "Otros", p: "15%", c: "#f59e0b" }].map(({ l, p, c }) => (
-                <div key={l} className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c }} />
-                  <span className="text-[8px] text-white/40 truncate">{l}</span>
-                  <span className="text-[8px] font-bold text-white/60 ml-auto">{p}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <p className="text-[10px] text-white/35 mb-2">Liquidez</p>
+          <GaugeLiquidez animate={animate} dias={47} categoria="Saludable" color="#34d399" />
         </div>
         {/* Proximos vencimientos */}
         <div className="p-2 col-span-1">
           <p className="text-[10px] text-white/35 mb-2">Próximos vencimientos</p>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {[{ n: "Pago arriendo", f: "15 Jun", v: "$250.000" }, { n: "Proveedor ABC", f: "18 Jun", v: "$120.000" }, { n: "Luz", f: "20 Jun", v: "$80.000" }].map(({ n, f, v }) => (
-              <div key={n} className="flex items-center justify-between">
+              <div key={n} className="flex items-center justify-between rounded-md px-1 -mx-1 py-0.5 transition-colors duration-150 hover:bg-white/[0.04]">
                 <div>
                   <p className="text-[9px] text-white/60 font-medium">{n}</p>
                   <p className="text-[8px] text-white/30">{f}</p>
