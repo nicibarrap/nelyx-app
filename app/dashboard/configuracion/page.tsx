@@ -31,40 +31,38 @@ export default async function ConfiguracionPage() {
 
       {/* Orden de arriba hacia abajo = importancia/frecuencia de uso para
           el día a día del negocio: primero cómo te enteras de lo que pasa
-          (Notificaciones) y cómo cobras (Pagos, Cobranza), después cómo
-          organizas tus tareas (Tareas) y por último una herramienta de
-          soporte que casi nunca hace falta tocar (Diagnóstico técnico).
+          (Notificaciones) y cómo cobras (Cobranza, Automatizaciones,
+          Pagos), después cómo organizas tus tareas (Tareas) y por último
+          una herramienta de soporte que casi nunca hace falta tocar
+          (Diagnóstico técnico).
 
-          En celular y tablet (hasta lg:) cada sección es un acordeón
-          colapsado — solo Notificaciones arranca abierta — para no
-          obligar a hacer scroll por todo de una. En pc (lg:+, con espacio
-          de sobra) todo queda expandido en 2 columnas, como antes. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className="space-y-5">
-          <SeccionColapsable icon="🔔" titulo="Notificaciones" defaultOpen>
-            <ConfigNotificacionesClient cfg={cfg} />
-          </SeccionColapsable>
-          <SeccionColapsable icon="📋" titulo="Cobranza">
-            <PlantillasCobranzaClient plantillas={plantillas} />
-          </SeccionColapsable>
-          <SeccionColapsable icon="🤖" titulo="Automatizaciones de clientes">
-            <AutomatizacionesClienteClient valores={automatizaciones} />
-          </SeccionColapsable>
-        </div>
-        <div className="space-y-5">
-          <SeccionColapsable icon="💳" titulo="Pagos">
-            <ConexionMaquinaPagoClient conexiones={conexionesPago} />
-          </SeccionColapsable>
-        </div>
+          Cada sección es un acordeón colapsado — solo Notificaciones
+          arranca abierta — para no obligar a hacer scroll por todo de
+          una. Antes en pc (lg:+) todo quedaba forzado a expandido en 2
+          columnas, lo que con secciones de largo muy distinto (10
+          notificaciones vs. 1 tarjeta de pago) dejaba columnas muy
+          desparejas. Una sola columna se ve igual de ordenada en
+          cualquier tamaño de pantalla. */}
+      <div className="space-y-5 max-w-2xl">
+        <SeccionColapsable icon="🔔" titulo="Notificaciones" defaultOpen>
+          <ConfigNotificacionesClient cfg={cfg} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="📋" titulo="Cobranza">
+          <PlantillasCobranzaClient plantillas={plantillas} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="🤖" titulo="Automatizaciones de clientes">
+          <AutomatizacionesClienteClient valores={automatizaciones} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="💳" titulo="Pagos">
+          <ConexionMaquinaPagoClient conexiones={conexionesPago} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="🗂️" titulo="Tareas">
+          <ProyectosTareaClient proyectos={proyectosTarea} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="🔧" titulo="Diagnóstico técnico">
+          <DiagnosticoPushClient />
+        </SeccionColapsable>
       </div>
-
-      <SeccionColapsable icon="🗂️" titulo="Tareas">
-        <ProyectosTareaClient proyectos={proyectosTarea} />
-      </SeccionColapsable>
-
-      <SeccionColapsable icon="🔧" titulo="Diagnóstico técnico">
-        <DiagnosticoPushClient />
-      </SeccionColapsable>
     </div>
   )
 }
