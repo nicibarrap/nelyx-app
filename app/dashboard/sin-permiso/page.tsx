@@ -1,7 +1,8 @@
 import Link from "next/link"
 import { MODULOS_NELYX } from "@/lib/permisos"
 
-export default function SinPermisoPage({ searchParams }: { searchParams: { modulo?: string } }) {
+export default async function SinPermisoPage(props: { searchParams: Promise<{ modulo?: string }> }) {
+  const searchParams = await props.searchParams;
   const modulo = MODULOS_NELYX.find(m => m.key === searchParams.modulo)
   return (
     <div className="max-w-md mx-auto mt-16 text-center space-y-4">

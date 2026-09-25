@@ -14,7 +14,8 @@ import Link from "next/link"
 export const metadata: Metadata = { title: "Resumen" }
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
-export default async function ResumenPage({ searchParams }: { searchParams: { mes?: string; anio?: string } }) {
+export default async function ResumenPage(props: { searchParams: Promise<{ mes?: string; anio?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await auth()
   const hoy = hoyEnChile()
   const mes = parseInt(searchParams.mes ?? String(hoy.getMonth() + 1))

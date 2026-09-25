@@ -1,8 +1,12 @@
+/* @import debe ir antes de cualquier otra regla (spec CSS) — @tailwind
+   base/components/utilities se expande a CSS real, así que si el import
+   queda después, técnicamente ya no es "lo primero" del archivo. Webpack
+   lo toleraba; Turbopack (Next 15) lo rechaza en build. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 * { box-sizing: border-box; }
 
