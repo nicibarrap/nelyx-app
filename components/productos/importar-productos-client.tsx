@@ -32,8 +32,8 @@ export function ImportarProductosClient({ productosExistentes }: Props) {
       if (filasSinEjemplo.length === 0) { toast.error("El archivo no tiene productos — solo las filas de ejemplo, o está vacío"); setCargando(false); return }
       const validadas = validarFilas(filasSinEjemplo, productosExistentes)
       setFilas(validadas)
-    } catch {
-      toast.error("No se pudo leer el archivo — confirma que sea un Excel (.xlsx) válido")
+    } catch (err: any) {
+      toast.error(err?.message ?? "No se pudo leer el archivo — confirma que sea un Excel (.xlsx) válido")
     }
     setCargando(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
