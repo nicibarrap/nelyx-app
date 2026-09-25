@@ -68,8 +68,8 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
     return <SelectorIdentidad info={infoParaElegir} cuentaId={infoParaElegir.cuentaId} onListo={entrarAlDashboard} oscuro />
   }
 
-  const inp = "w-full h-12 rounded-xl px-4 pl-11 text-sm text-white placeholder:text-white/25 outline-none transition-all focus:ring-2 focus:ring-blue-500/20"
-  const inpStyle = { background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)" }
+  const inp = "w-full h-12 rounded-xl px-4 pl-11 text-sm text-white placeholder:text-white/25 outline-none transition-all border border-white/[0.12] hover:border-white/20 focus:border-blue-400/50 focus:ring-2 focus:ring-blue-500/20"
+  const inpStyle = { background:"rgba(255,255,255,0.07)" }
 
   return (
     // method="post" es a propósito, aunque el submit real lo maneja
@@ -110,7 +110,7 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
         </div>
       </div>
       <button type="submit" disabled={loading}
-        className="w-full h-12 font-semibold text-white rounded-xl transition-all flex items-center justify-center gap-2"
+        className="w-full h-12 font-semibold text-white rounded-xl transition-all duration-200 flex items-center justify-center gap-2 hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 active:brightness-95 disabled:hover:translate-y-0 disabled:hover:brightness-100"
         style={{background:"linear-gradient(135deg,#2563eb,#3b82f6)",boxShadow:"0 4px 24px rgba(37,99,235,0.35)"}}>
         {loading?(
           <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Ingresando...</>
