@@ -3,7 +3,13 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
-export type { TerminalMP }
+// El tipo NO se re-exporta desde acá a propósito — un archivo "use server"
+// solo debe exportar funciones async. Bajo Turbopack (Next 15), mezclar un
+// "export type" en un archivo de Server Actions rompe el bundle cliente
+// generado para CUALQUIERA que importe algo de este archivo (hasta
+// componentes que nunca usan ese tipo, como venta-client.tsx, quedaban con
+// un "ReferenceError: TerminalMP is not defined" en runtime). Quien
+// necesite el tipo lo importa directo desde lib/pagos/mercadopago.
 
 async function getSession() {
   const session = await auth()

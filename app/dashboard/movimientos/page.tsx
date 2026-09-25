@@ -7,7 +7,8 @@ import Link from "next/link"
 
 export const metadata: Metadata = { title: "Movimientos" }
 
-export default async function MovimientosPage({ searchParams }: { searchParams: { mes?: string; anio?: string } }) {
+export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await auth()
   const hoy = new Date()
   const mes = parseInt(searchParams.mes ?? String(hoy.getMonth() + 1))

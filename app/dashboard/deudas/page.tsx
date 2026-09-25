@@ -8,7 +8,8 @@ import { GraficoDeudas } from "@/components/deudas/grafico-deudas"
 
 export const metadata: Metadata = { title: "Deudas" }
 
-export default async function DeudasPage({ searchParams }: { searchParams: { filtro?: string } }) {
+export default async function DeudasPage(props: { searchParams: Promise<{ filtro?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await auth()
   const filtro = searchParams.filtro ?? "todas"
 
@@ -29,9 +30,19 @@ export default async function DeudasPage({ searchParams }: { searchParams: { fil
   const hoy = new Date()
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
 
-  // Calcular estado de cada deuda
+  // Calcular estado de cada deuda — de paso se convierten los campos
+  // Decimal de Prisma a number: son instancias de clase, no objetos
+  // planos, y React no permite pasarlas de un Server Component a un
+  // Client Component (ListaDeudas más abajo es "use client").
   const deudasConEstado = deudas.map(d => ({
     ...d,
+    monto: Number(d.monto),
+    montoPagado: Number(d.montoPagado),
+    montoTotal: d.montoTotal != null ? Number(d.montoTotal) : null,
+    cuotaManual: d.cuotaManual != null ? Number(d.cuotaManual) : null,
+    interes: d.interes != null ? Number(d.interes) : null,
+    valorCuota: d.valorCuota != null ? Number(d.valorCuota) : null,
+    pagos: d.pagos.map(p => ({ ...p, monto: Number(p.monto) })),
     estado: calcularEstadoDeuda(d) as EstadoDeuda,
   }))
 

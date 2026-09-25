@@ -1,7 +1,8 @@
 "use client"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
-import { listarTerminalesParaConectar, conectarMercadoPago, desconectarPago, type TerminalMP } from "@/app/actions/pagos-acciones"
+import { listarTerminalesParaConectar, conectarMercadoPago, desconectarPago } from "@/app/actions/pagos-acciones"
+import type { TerminalMP } from "@/lib/pagos/mercadopago"
 
 type Conexion = { id: string; proveedor: string; terminalId: string | null; activo: boolean; ultimaConexionOk: string | null }
 
