@@ -1,16 +1,22 @@
 import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { calcularEstadoDeuda, formatCLP, formatFechaCorta, ESTADO_CONFIG } from "@/lib/utils"
 import { obtenerLotesPorVencer } from "@/app/actions/kardex-acciones"
 import { FilaLotePorVencer } from "@/components/productos/fila-lote-por-vencer"
 import Link from "next/link"
 
 export const metadata: Metadata = { title: "Alertas" }
+export const dynamic = "force-dynamic"
 
 export default async function AlertasPage() {
   const session = await auth()
-  const hoy = new Date()
+  const userId = session!.user.id
+  // hoyEnChile() — Vercel corre en UTC; con un new Date() crudo, de noche
+  // en Chile "mañana", "vence hoy" y "los últimos 7 días" se calculan mal.
+  const hoy = hoyEnChile()
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
 
   const en7Dias = new Date(hoy.getTime() + 7 * 86400000)
@@ -19,28 +25,33 @@ export default async function AlertasPage() {
   const anioActual = hoy.getFullYear()
   const diaActual = hoy.getDate()
 
-  const [deudas, productosRaw, movsMes, cuentasVencidas, cuentasProximas, costosFijos, lotesPorVencer] = await Promise.all([
-    db.deuda.findMany({ where: { userId: session!.user.id, pagada: false }, orderBy: { fechaVence: "asc" } }),
-    db.producto.findMany({ where: { userId: session!.user.id, activo: true, stock: { not: null } }, select: { id: true, nombre: true, stock: true, stockMinimo: true } }),
+  const [deudas, productosRaw, movsMes, cuentasVencidas, cuentasProximas, tareasVencidas, costosFijos, lotesPorVencer] = await Promise.all([
+    db.deuda.findMany({ where: { userId, pagada: false }, orderBy: { fechaVence: "asc" } }),
+    db.producto.findMany({ where: { userId, activo: true, stock: { not: null } }, select: { id: true, nombre: true, stock: true, stockMinimo: true } }),
     db.movimiento.findMany({
-      where: { userId: session!.user.id, tipo: "VENTA", productoId: { not: null }, fecha: { gte: inicioMes } },
+      where: { userId, tipo: "VENTA", productoId: { not: null }, fecha: { gte: inicioMes } },
       select: { productoId: true, monto: true, producto: { select: { nombre: true } } }
     }),
     db.cuentaPorCobrar.findMany({
-      where: { userId: session!.user.id, estado: "vencida", saldoPendiente: { gt: 0 } },
+      where: { userId, estado: "vencida", saldoPendiente: { gt: 0 } },
       include: { cliente: { select: { nombre: true, apellido: true } } },
       take: 5, orderBy: { fechaVence: "asc" }
     }),
     db.cuentaPorCobrar.findMany({
-      where: { userId: session!.user.id, estado: { in: ["pendiente","parcial"] }, fechaVence: { gte: hoy, lte: en7Dias } },
+      where: { userId, estado: { in: ["pendiente","parcial"] }, fechaVence: { gte: inicioHoy, lte: en7Dias } },
       include: { cliente: { select: { nombre: true, apellido: true } } },
       take: 5, orderBy: { fechaVence: "asc" }
     }),
+    db.eventoCalendario.findMany({
+      where: { userId, estado: "pendiente", fecha: { lt: inicioHoy } },
+      select: { id: true, titulo: true, fecha: true, tipo: true },
+      take: 5, orderBy: { fecha: "asc" }
+    }),
     db.costoFijoRecurrente.findMany({
-      where: { userId: session!.user.id, estado: "activo" },
+      where: { userId, estado: "activo" },
       include: { generaciones: { where: { mes: mesActual, anio: anioActual } } }
     }),
-    obtenerLotesPorVencer(session!.user.id),
+    obtenerLotesPorVencer(userId),
   ])
 
   // Alertas de costos fijos (computadas, sin tabla dedicada)
@@ -56,7 +67,10 @@ export default async function AlertasPage() {
   const costosGeneraMañana = costosFijos.filter(c => costoAplicableEsteMes(c.fechaInicio, c.fechaTermino) && c.generaciones.length === 0 && c.fechaInicio.getDate() === mananaDate.getDate())
   const costosPendientesAtrasados = costosFijos.filter(c => costoAplicableEsteMes(c.fechaInicio, c.fechaTermino) && c.generaciones.length === 0 && c.fechaInicio.getDate() <= diaActual)
   const costosGeneradosSinPagar = costosFijos.filter(c => c.generaciones.length > 0 && !c.generaciones[0].pagado)
-  const costosPagadosRecientes = costosFijos.filter(c => c.generaciones.length > 0 && c.generaciones[0].pagado && c.generaciones[0].fechaPagado && (hoy.getTime() - new Date(c.generaciones[0].fechaPagado).getTime()) < 3 * 86400000)
+  // "Pagado hace poco" compara contra timestamps reales (no días de
+  // calendario) — acá sí corresponde el reloj real, no hoyEnChile().
+  const ahoraReal = new Date()
+  const costosPagadosRecientes = costosFijos.filter(c => c.generaciones.length > 0 && c.generaciones[0].pagado && c.generaciones[0].fechaPagado && (ahoraReal.getTime() - new Date(c.generaciones[0].fechaPagado).getTime()) < 3 * 86400000)
 
   // Alertas deudas
   const deudasConEstado = deudas.map(d => ({ ...d, estado: calcularEstadoDeuda(d) }))
@@ -69,7 +83,7 @@ export default async function AlertasPage() {
   const stockBajo = productosRaw.filter(p => p.stock! > 0 && p.stockMinimo !== null && p.stock! <= p.stockMinimo)
   const lotesConDias = lotesPorVencer.map(l => ({
     ...l,
-    diasRestantes: Math.ceil((new Date(l.fechaVencimiento).getTime() - hoy.getTime()) / 86400000),
+    diasRestantes: diasEntreChile(hoy, new Date(l.fechaVencimiento)),
   }))
 
   // Top vendidos este mes
@@ -81,19 +95,41 @@ export default async function AlertasPage() {
   }
   const topProductos = Object.values(ventasProd).sort((a, b) => b.count - a.count).slice(0, 5)
 
-  const totalAlertas = vencidas.length + proximas.length + agotados.length + stockBajo.length + costosGeneraMañana.length + costosPendientesAtrasados.length + costosGeneradosSinPagar.length + lotesConDias.length
+  const totalAlertas = vencidas.length + proximas.length + cuentasVencidas.length + cuentasProximas.length +
+    tareasVencidas.length + agotados.length + stockBajo.length +
+    costosGeneraMañana.length + costosPendientesAtrasados.length + lotesConDias.length
 
   const alertasDeuda = [
     ...vencidas.map(d => ({ id: d.id, tipo: "error" as const, titulo: `Deuda vencida: ${d.acreedor}`, desc: `Venció el ${d.fechaVence ? formatFechaCorta(d.fechaVence) : "—"}`, monto: Number(d.montoTotal ?? d.monto)-Number(d.montoPagado) })),
     ...proximas.map(d => {
-      const dias = d.fechaVence ? Math.ceil((new Date(d.fechaVence).getTime()-hoy.getTime())/86400000) : null
+      const dias = d.fechaVence ? diasEntreChile(hoy, new Date(d.fechaVence)) : null
       return { id: d.id, tipo: "warning" as const, titulo: `Pago próximo: ${d.acreedor}`, desc: dias !== null ? `Vence en ${dias} día${dias!==1?"s":""}` : "Próxima a vencer", monto: Number(d.montoTotal ?? d.monto)-Number(d.montoPagado) }
     }),
     ...alDia.map(d => ({ id: d.id, tipo: "info" as const, titulo: `Deuda al día: ${d.acreedor}`, desc: d.fechaVence ? `Vence el ${formatFechaCorta(d.fechaVence)}` : "Sin fecha", monto: Number(d.montoTotal ?? d.monto)-Number(d.montoPagado) })),
   ]
 
+  const alertasCxc = [
+    ...cuentasVencidas.map(c => ({ id: c.id, tipo: "error" as const, titulo: `Vencida: ${c.cliente.nombre} ${c.cliente.apellido ?? ""}`.trim(), desc: `Venció el ${formatFechaCorta(c.fechaVence)}`, monto: Number(c.saldoPendiente) })),
+    ...cuentasProximas.map(c => {
+      const dias = diasEntreChile(hoy, new Date(c.fechaVence))
+      return { id: c.id, tipo: "warning" as const, titulo: `Por vencer: ${c.cliente.nombre} ${c.cliente.apellido ?? ""}`.trim(), desc: `Vence en ${dias} día${dias!==1?"s":""}`, monto: Number(c.saldoPendiente) }
+    }),
+  ]
+
   const iconoTipo = { error: "🔴", warning: "🟠", info: "🔵" }
   const colorTipo = { error: "bg-red-500/5 border-red-500/20 text-red-400", warning: "bg-orange-500/5 border-orange-500/20 text-orange-400", info: "bg-sky-500/5 border-sky-500/20 text-sky-400" }
+
+  const stats = [
+    { label: "Deudas vencidas",         val: vencidas.length,                                              color: "text-red-400",            bg: "border-red-500/20",   icon: "🔴" },
+    { label: "Deudas próximas",         val: proximas.length,                                              color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "🟠" },
+    { label: "Por cobrar vencido",      val: cuentasVencidas.length,                                       color: "text-red-400",            bg: "border-red-500/20",   icon: "💸" },
+    { label: "Por cobrar próximo",      val: cuentasProximas.length,                                       color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "🟡" },
+    { label: "Tareas vencidas",         val: tareasVencidas.length,                                        color: "text-red-400",            bg: "border-red-500/20",   icon: "📌" },
+    { label: "Sin stock",               val: agotados.length,                                              color: "text-red-400",            bg: "border-red-500/20",   icon: "📦" },
+    { label: "Stock bajo",              val: stockBajo.length,                                             color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "⚠️" },
+    { label: "Por vencer",              val: lotesConDias.length,                                          color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "🗓️" },
+    { label: "Costos fijos pendientes", val: costosPendientesAtrasados.length + costosGeneraMañana.length,  color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "🏠" },
+  ]
 
   return (
     <div className="space-y-5">
@@ -110,25 +146,96 @@ export default async function AlertasPage() {
         )}
       </div>
 
-      {/* Resumen cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "Deudas vencidas",        val: vencidas.length + cuentasVencidas.length, color: "text-red-400",    bg: "border-red-500/20",   icon: "🔴" },
-          { label: "Próximos pagos (7 días)", val: proximas.length + cuentasProximas.length, color: "text-[var(--c-warning)]",  bg: "border-amber-500/20", icon: "🟠" },
-          { label: "Sin stock",               val: agotados.length,  color: "text-red-400",    bg: "border-red-500/20",   icon: "📦" },
-          { label: "Stock bajo",              val: stockBajo.length, color: "text-[var(--c-warning)]",  bg: "border-amber-500/20", icon: "⚠️" },
-          { label: "Por vencer",              val: lotesConDias.length, color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "🗓️" },
-          { label: "Costos fijos pendientes", val: costosPendientesAtrasados.length + costosGeneraMañana.length, color: "text-[var(--c-warning)]", bg: "border-amber-500/20", icon: "🏠" },
-        ].map(c => (
-          <div key={c.label} className={`bg-[var(--c-card)] border ${c.bg} rounded-2xl p-4 text-center`}>
-            <p className="text-xl mb-1">{c.icon}</p>
-            <p className={`text-2xl font-bold ${c.color}`}>{c.val}</p>
-            <p className="text-[10px] text-[var(--c-text3)] mt-1">{c.label}</p>
+      {/* Resumen cards — 9 tarjetas: 3x3 en celular/tablet, una sola fila en
+          pc. Siempre un múltiplo de 3 (3, 3 o 9 columnas) para que nunca
+          quede una fila incompleta como pasaba antes con 6 tarjetas en una
+          grilla de 4. */}
+      <div className="grid grid-cols-3 lg:grid-cols-9 gap-3">
+        {stats.map(c => (
+          <div key={c.label} className={`bg-[var(--c-card)] border ${c.bg} rounded-2xl p-3 sm:p-4 text-center`}>
+            <p className="text-lg sm:text-xl mb-1">{c.icon}</p>
+            <p className={`text-xl sm:text-2xl font-bold ${c.color}`}>{c.val}</p>
+            <p className="text-[9px] sm:text-[10px] text-[var(--c-text3)] mt-1 leading-tight">{c.label}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Cuentas por cobrar — antes se contaban en la tarjeta resumen pero
+            nunca se mostraban acá, así que no había forma de saber a qué
+            cliente correspondían. */}
+        {alertasCxc.length > 0 && (
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
+              <h3 className="text-sm font-semibold text-[var(--c-text)]">💸 Cuentas por cobrar</h3>
+              <Link href="/dashboard/cuentas-cobrar" className="text-xs text-sky-400 hover:text-sky-300">Ver todas →</Link>
+            </div>
+            <div className="space-y-3 p-5">
+              {alertasCxc.map((a) => (
+                <div key={`${a.tipo}-${a.id}`} className={`border rounded-xl p-3.5 ${colorTipo[a.tipo]}`}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-lg flex-shrink-0">{iconoTipo[a.tipo]}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[var(--c-text)] truncate">{a.titulo}</p>
+                      <p className="text-xs mt-0.5 opacity-80">{a.desc}</p>
+                      <p className="text-xs font-bold text-[var(--c-text)] mt-1">{formatCLP(a.monto)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Deudas */}
+        {alertasDeuda.length > 0 && (
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
+              <h3 className="text-sm font-semibold text-[var(--c-text)]">💳 Alertas de deudas</h3>
+              <Link href="/dashboard/deudas" className="text-xs text-sky-400 hover:text-sky-300">Ver todas →</Link>
+            </div>
+            <div className="space-y-3 p-5">
+              {alertasDeuda.map((a) => (
+                <div key={`${a.tipo}-${a.id}`} className={`border rounded-xl p-3.5 ${colorTipo[a.tipo]}`}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-lg flex-shrink-0">{iconoTipo[a.tipo]}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[var(--c-text)]">{a.titulo}</p>
+                      <p className="text-xs mt-0.5 opacity-80">{a.desc}</p>
+                      <p className="text-xs font-bold text-[var(--c-text)] mt-1">{formatCLP(a.monto)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tareas vencidas — Calendario/Tareas es categoría de notificación
+            en Configuración pero nunca había tenido presencia acá. */}
+        {tareasVencidas.length > 0 && (
+          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
+              <h3 className="text-sm font-semibold text-[var(--c-text)]">📌 Tareas vencidas</h3>
+              <Link href="/dashboard/calendario" className="text-xs text-sky-400 hover:text-sky-300">Ver calendario →</Link>
+            </div>
+            <div className="divide-y divide-[var(--c-border2)]">
+              {tareasVencidas.map(t => {
+                const dias = diasEntreChile(new Date(t.fecha), hoy)
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-5 py-3.5">
+                    <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-sm flex-shrink-0">📌</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[var(--c-text)] truncate">{t.titulo}</p>
+                      <p className="text-xs text-[var(--c-text3)]">Venció hace {dias} día{dias!==1?"s":""} — {formatFechaCorta(t.fecha)}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Alertas inventario */}
         {(agotados.length > 0 || stockBajo.length > 0) && (
           <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
@@ -252,33 +359,9 @@ export default async function AlertasPage() {
           </div>
         )}
 
-        {/* Deudas */}
-        {alertasDeuda.length > 0 && (
-          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
-              <h3 className="text-sm font-semibold text-[var(--c-text)]">💳 Alertas de deudas</h3>
-              <Link href="/dashboard/deudas" className="text-xs text-sky-400 hover:text-sky-300">Ver todas →</Link>
-            </div>
-            <div className="space-y-3 p-5">
-              {alertasDeuda.map((a) => (
-                <div key={`${a.tipo}-${a.id}`} className={`border rounded-xl p-3.5 ${colorTipo[a.tipo]}`}>
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg flex-shrink-0">{iconoTipo[a.tipo]}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[var(--c-text)]">{a.titulo}</p>
-                      <p className="text-xs mt-0.5 opacity-80">{a.desc}</p>
-                      <p className="text-xs font-bold text-[var(--c-text)] mt-1">{formatCLP(a.monto)}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Sin alertas */}
         {totalAlertas === 0 && topProductos.length === 0 && (
-          <div className="lg:col-span-2 bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-12 text-center">
+          <div className="md:col-span-2 bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-12 text-center">
             <span className="text-4xl block mb-3">✅</span>
             <p className="text-sm font-semibold text-[var(--c-text)]">Todo en orden</p>
             <p className="text-xs text-[var(--c-text3)] mt-1">No tienes alertas pendientes</p>
