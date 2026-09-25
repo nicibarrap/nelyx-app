@@ -997,10 +997,16 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
     }
   }
 
-  if (generados > 0) {
-    revalidatePath("/dashboard/costos-fijos")
-    revalidatePath("/dashboard/alertas")
-  }
+  // Sin revalidatePath acá a propósito: esta función SOLO se llama desde el
+  // render de una page.tsx (Resumen, Costos Fijos), nunca desde una Server
+  // Action disparada por un click de usuario. Bajo Next.js 15,
+  // revalidatePath() durante un render está prohibido y tira un error no
+  // capturado que el navegador solo muestra como "Application error" — se
+  // veía cada vez que se generaba un costo por primera vez para un mes
+  // (ej. al entrar a Resumen el día que cae un costo fijo, o al navegar a
+  // un mes futuro nunca visitado). No hace falta de todos modos: ambas
+  // pages ya son dinámicas (dependen de auth()) y vuelven a consultar la
+  // BD en cada visita, así que el registro recién creado ya aparece solo.
   return generados
 }
 
