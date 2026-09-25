@@ -261,3 +261,18 @@ img.emoji-nelyx {
   vertical-align: -0.2em;
   display: inline-block;
 }
+
+/* ══════════════════════════════════════════
+   ACCESIBILIDAD — respeta "reducir movimiento" del
+   sistema operativo. Anula duración de animaciones y
+   transiciones en vez de removerlas: el contenido llega
+   igual a su estado final, solo sin el desplazamiento.
+══════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

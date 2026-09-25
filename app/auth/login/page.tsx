@@ -27,7 +27,7 @@ function MiniDashboard() {
   return (
     <div className="rounded-2xl border border-white/10 overflow-hidden" style={{background:"rgba(5,12,35,0.9)"}}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-white/8">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-white/70">Resumen general</span>
           <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
@@ -51,7 +51,7 @@ function MiniDashboard() {
           {label:"Utilidad neta", val:"$380.000", pct:"+12%", up:true, c:"#60a5fa", d:"M0,30 C20,24 40,20 60,14 C80,8 100,5 120,2"},
           {label:"Disponible", val:"$380.000", pct:"Efectivo disponible", up:null, c:"#3b82f6", d:""},
         ].map(({label,val,pct,up,c,d})=>(
-          <div key={label} className="p-3">
+          <div key={label} className="p-2">
             <p className="text-[10px] text-white/35 mb-1">{label}</p>
             <p className="text-sm font-bold text-white mb-0.5">{val}</p>
             {up !== null ? (
@@ -75,7 +75,7 @@ function MiniDashboard() {
       {/* Bottom row */}
       <div className="grid grid-cols-3 divide-x divide-white/8">
         {/* Bar chart */}
-        <div className="p-3 col-span-1">
+        <div className="p-2 col-span-1">
           <p className="text-[10px] text-white/35 mb-2">Evolución de ventas</p>
           <div className="flex items-end gap-px h-12">
             {[30,45,38,58,50,65,60,78,70,85,80,100].map((h,i)=>(
@@ -89,7 +89,7 @@ function MiniDashboard() {
           </div>
         </div>
         {/* Donut */}
-        <div className="p-3 col-span-1">
+        <div className="p-2 col-span-1">
           <p className="text-[10px] text-white/35 mb-2">Gastos por categoría</p>
           <div className="flex items-center gap-2">
             <svg width="40" height="40" viewBox="0 0 36 36" className="flex-shrink-0">
@@ -111,7 +111,7 @@ function MiniDashboard() {
           </div>
         </div>
         {/* Proximos vencimientos */}
-        <div className="p-3 col-span-1">
+        <div className="p-2 col-span-1">
           <p className="text-[10px] text-white/35 mb-2">Próximos vencimientos</p>
           <div className="space-y-1.5">
             {[{n:"Pago arriendo",f:"15 Jun",v:"$250.000"},{n:"Proveedor ABC",f:"18 Jun",v:"$120.000"},{n:"Luz",f:"20 Jun",v:"$80.000"}].map(({n,f,v})=>(
@@ -124,7 +124,10 @@ function MiniDashboard() {
               </div>
             ))}
           </div>
-          <button className="text-[9px] text-blue-400 mt-2 hover:text-blue-300">Ver todos</button>
+          {/* Texto, no botón: es una vista previa del dashboard real, no un
+              control — que pareciera clickeable sin hacer nada se sentía
+              roto. */}
+          <p className="text-[9px] text-blue-400/70 mt-2 cursor-default select-none">Ver todos →</p>
         </div>
       </div>
     </div>
@@ -185,14 +188,33 @@ export default function LoginPage() {
         {/* ════════════════════════════════
             DESKTOP — LEFT PANEL (62%)
             ════════════════════════════════ */}
-        <div className="hidden lg:flex flex-col w-[62%] px-14 py-12 min-h-screen" style={{background:"#030b1f"}}>
+        <div className="hidden lg:flex flex-col w-[62%] px-14 py-7 relative isolate" style={{background:"#030b1f"}}>
+
+          {/* Marca — motivo geométrico basado en la X de NELYX: dos líneas de
+              luz que se cruzan, como un eco abstracto del logo en vez de un
+              fondo genérico. z-[-1] + position:relative en el panel para
+              quedar detrás del contenido real, sin depender de la capa
+              decorativa de fondo (grid/glow de arriba) que en la práctica
+              nunca se llega a ver — los paneles tienen fondo sólido propio
+              y la tapan por completo. */}
+          <svg className="absolute -z-10 -top-16 -right-24 w-[65%] h-[55%] opacity-[0.22] pointer-events-none" viewBox="0 0 400 400" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="xbrand" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#60a5fa" stopOpacity="0"/>
+                <stop offset="50%" stopColor="#60a5fa" stopOpacity="1"/>
+                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="0" x2="400" y2="400" stroke="url(#xbrand)" strokeWidth="2"/>
+            <line x1="400" y1="0" x2="0" y2="400" stroke="url(#xbrand)" strokeWidth="2"/>
+          </svg>
 
           {/* Logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO_B64} alt="NELYX" className="animate-fade-up" style={{width:"220px",height:"auto",display:"block",objectFit:"contain"}}/>
+          <img src={LOGO_B64} alt="NELYX" className="animate-fade-up" style={{width:"190px",height:"auto",display:"block",objectFit:"contain"}}/>
 
           {/* Badge */}
-          <div className="mt-8 animate-fade-up" style={{animationDelay:"60ms",animationFillMode:"backwards"}}>
+          <div className="mt-5 animate-fade-up" style={{animationDelay:"60ms",animationFillMode:"backwards"}}>
             <span className="inline-flex items-center gap-2 border border-blue-500/30 rounded-full px-4 py-1.5 text-xs font-medium text-blue-400"
               style={{background:"rgba(59,130,246,0.08)"}}>
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -203,23 +225,23 @@ export default function LoginPage() {
           </div>
 
           {/* Headline */}
-          <div className="mt-6 animate-fade-up" style={{animationDelay:"120ms",animationFillMode:"backwards"}}>
-            <h1 className="text-[3rem] font-black text-white leading-[1.1] tracking-tight">
+          <div className="mt-4 animate-fade-up" style={{animationDelay:"120ms",animationFillMode:"backwards"}}>
+            <h1 className="text-[2.5rem] font-black text-white leading-[1.1] tracking-tight">
               Controla tu negocio<br/>
               con{" "}
               <span style={{background:"linear-gradient(90deg,#60a5fa,#3b82f6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
                 claridad.
               </span>
             </h1>
-            <p className="mt-4 text-[0.95rem] text-white/50 leading-relaxed max-w-lg">
+            <p className="mt-2 text-[0.95rem] text-white/50 leading-relaxed max-w-lg">
               Gestiona ventas, gastos, inventario, deudas y flujo de caja en una sola plataforma. Toma mejores decisiones y haz crecer tu negocio.
             </p>
           </div>
 
           {/* Feature pills */}
-          <div className="mt-6 flex flex-wrap gap-2 animate-fade-up" style={{animationDelay:"180ms",animationFillMode:"backwards"}}>
+          <div className="mt-4 flex flex-wrap gap-2 animate-fade-up" style={{animationDelay:"180ms",animationFillMode:"backwards"}}>
             {FEATURES.map(({icon,label})=>(
-              <div key={label} className="flex items-center gap-2 border border-white/12 rounded-xl px-3.5 py-2 transition-all duration-200 hover:border-blue-400/40 hover:-translate-y-0.5 cursor-default"
+              <div key={label} className="flex items-center gap-2 border border-white/12 rounded-xl px-3.5 py-1.5 transition-all duration-200 hover:border-blue-400/40 hover:-translate-y-0.5 cursor-default"
                 style={{background:"rgba(255,255,255,0.04)"}}>
                 <span className="text-sm">{icon}</span>
                 <span className="text-sm text-white/65 font-medium">{label}</span>
@@ -228,7 +250,7 @@ export default function LoginPage() {
           </div>
 
           {/* Mini Dashboard */}
-          <div className="mt-6 flex-1 animate-fade-up" style={{animationDelay:"240ms",animationFillMode:"backwards"}}>
+          <div className="mt-4 flex-1 animate-fade-up" style={{animationDelay:"240ms",animationFillMode:"backwards"}}>
             <MiniDashboard/>
           </div>
 
@@ -237,7 +259,7 @@ export default function LoginPage() {
         {/* ════════════════════════════════
             RIGHT PANEL — Form (38%)
             ════════════════════════════════ */}
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 min-h-screen lg:px-10" style={{background:"#080f23"}}>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 lg:px-10" style={{background:"#080f23"}}>
 
           {/* ── MOBILE ONLY branding ── */}
           <div className="lg:hidden w-full max-w-sm mb-8 animate-fade-up">
@@ -302,7 +324,7 @@ export default function LoginPage() {
       </div>
 
       {/* ── Single footer ── */}
-      <footer className="relative text-center py-4" style={{zIndex:1,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+      <footer className="relative text-center py-2.5" style={{zIndex:1,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
         <p style={{color:"rgba(255,255,255,0.25)"}} className="text-xs">© {year} Nelyx. Todos los derechos reservados.</p>
       </footer>
     </div>
