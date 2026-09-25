@@ -127,6 +127,14 @@ body {
   from { opacity: 0; transform: scale(0.95); }
   to   { opacity: 1; transform: scale(1); }
 }
+/* Logo del login — pensado para la app instalada (PWA): el splash nativo
+   del sistema (generado desde manifest.json, antes de que corra nuestro
+   JS) desaparece de golpe; este zoom-in en el logo, apenas la página toma
+   el control, se siente como una continuación fluida en vez de un corte. */
+@keyframes zoomFadeIn {
+  from { opacity: 0; transform: scale(0.82); }
+  to   { opacity: 1; transform: scale(1); }
+}
 
 .animate-fade-up     { animation: fadeInUp 0.28s ease forwards; }
 .animate-escaner-linea { animation: escanerLinea 1.6s ease-in-out infinite; }
@@ -134,6 +142,7 @@ body {
 .animate-pulse-soft  { animation: pulse-soft 2s ease-in-out infinite; }
 .animate-slide-right { animation: slideInRight 0.22s ease forwards; }
 .animate-scale-in    { animation: scaleIn 0.18s ease forwards; }
+.animate-zoom-in     { animation: zoomFadeIn 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
 
 /* ══════════════════════════════════════════
    CARD HOVER

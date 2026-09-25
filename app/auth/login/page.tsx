@@ -19,9 +19,12 @@ const TRUST = [
 ]
 
 const FEATURES = [
-  {icon:"🛒",label:"Ventas"},{icon:"📦",label:"Inventario"},
-  {icon:"🏷",label:"Costos fijos"},{icon:"👤",label:"Deudas"},{icon:"📋",label:"Cuentas por cobrar"},
-  {icon:"📊",label:"Reportes"},
+  {icon:"🛒",label:"Ventas",desc:"Registra tus ventas en segundos"},
+  {icon:"📦",label:"Inventario",desc:"Nunca te quedes sin stock"},
+  {icon:"🏷",label:"Costos fijos",desc:"Controla tus gastos recurrentes"},
+  {icon:"👤",label:"Deudas",desc:"Al día con tus pagos y cuotas"},
+  {icon:"📋",label:"Cuentas por cobrar",desc:"Cobra más rápido a tus clientes"},
+  {icon:"📊",label:"Reportes",desc:"Diagnóstico y oportunidades automáticas"},
 ]
 
 export default function LoginPage() {
@@ -62,7 +65,7 @@ export default function LoginPage() {
         {/* ════════════════════════════════
             DESKTOP — LEFT PANEL (62%)
             ════════════════════════════════ */}
-        <div className="hidden lg:flex flex-col w-[62%] px-14 py-7 relative isolate" style={{background:"#030b1f"}}>
+        <div className="hidden lg:flex flex-col w-[62%] px-14 py-6 relative isolate" style={{background:"#030b1f"}}>
 
           {/* Marca — motivo geométrico basado en la X de NELYX: dos líneas de
               luz que se cruzan, como un eco abstracto del logo en vez de un
@@ -85,7 +88,7 @@ export default function LoginPage() {
 
           {/* Logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO_B64} alt="NELYX" className="animate-fade-up" style={{width:"190px",height:"auto",display:"block",objectFit:"contain"}}/>
+          <img src={LOGO_B64} alt="NELYX" className="animate-zoom-in" style={{width:"190px",height:"auto",display:"block",objectFit:"contain"}}/>
 
           {/* Badge */}
           <div className="mt-5 animate-fade-up" style={{animationDelay:"60ms",animationFillMode:"backwards"}}>
@@ -112,13 +115,20 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Feature pills */}
+          {/* Feature pills — el detalle de valor aparece al pasar el mouse
+              (tooltip puramente CSS, group-hover), no agregado siempre
+              visible: así no le suma alto permanente al panel (el fold ya
+              se ajustó justo en un PR anterior) y de paso queda "vivo". */}
           <div className="mt-4 flex flex-wrap gap-2 animate-fade-up" style={{animationDelay:"180ms",animationFillMode:"backwards"}}>
-            {FEATURES.map(({icon,label})=>(
-              <div key={label} className="flex items-center gap-2 border border-white/12 rounded-xl px-3.5 py-1.5 transition-all duration-200 hover:border-blue-400/40 hover:-translate-y-0.5 cursor-default"
+            {FEATURES.map(({icon,label,desc})=>(
+              <div key={label} className="group relative flex items-center gap-2 border border-white/12 rounded-xl px-3.5 py-1.5 transition-all duration-200 hover:border-blue-400/40 hover:-translate-y-0.5 cursor-default"
                 style={{background:"rgba(255,255,255,0.04)"}}>
                 <span className="text-sm">{icon}</span>
                 <span className="text-sm text-white/65 font-medium">{label}</span>
+                <span className="pointer-events-none absolute left-0 top-full mt-2 w-48 rounded-lg border border-white/10 px-3 py-2 text-[11px] leading-snug text-white/70 opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100 z-30"
+                  style={{background:"#0b1730"}}>
+                  {desc}
+                </span>
               </div>
             ))}
           </div>
@@ -139,7 +149,7 @@ export default function LoginPage() {
           <div className="lg:hidden w-full max-w-sm mb-8 animate-fade-up">
             {/* Logo mobile — left aligned */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={LOGO_B64} alt="NELYX" style={{width:"65%",maxWidth:"260px",height:"auto",display:"block",objectFit:"contain",marginBottom:"20px"}}/>
+            <img src={LOGO_B64} alt="NELYX" className="animate-zoom-in" style={{width:"65%",maxWidth:"260px",height:"auto",display:"block",objectFit:"contain",marginBottom:"20px"}}/>
 
             {/* Badge */}
             <span className="inline-flex items-center gap-1.5 border border-blue-500/30 rounded-full px-3 py-1 text-[11px] text-blue-400 mb-6"
