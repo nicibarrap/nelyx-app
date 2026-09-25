@@ -1,14 +1,16 @@
 "use client"
 import { useState } from "react"
+import Link from "next/link"
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { formatCLP } from "@/lib/utils"
 
 type PuntoAnual = { mes: string; anio: number; ingresos: number; gastos: number; costosFijos: number; neto: number }
+type ItemReporte = { texto: string; href?: string; label?: string }
 
 type ReportData = {
   periodo: { inicio: string; fin: string }
-  diagnostico: string[]
-  oportunidades: string[]
+  diagnostico: ItemReporte[]
+  oportunidades: ItemReporte[]
   graficoAnual: PuntoAnual[]
   heatmapMonto: number[][] // [día 0-6][hora 0-23], día 0 = domingo — suma de $ vendidos
   heatmapCantidad: number[][] // mismo formato — cantidad de ventas (no monto)
@@ -17,7 +19,7 @@ type ReportData = {
   negocio: string
 }
 
-function ListaCard({ title, icon, color, items, emptyText }: { title: string; icon: string; color: string; items: string[]; emptyText: string }) {
+function ListaCard({ title, icon, color, items, emptyText }: { title: string; icon: string; color: string; items: ItemReporte[]; emptyText: string }) {
   return (
     <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-5 flex flex-col">
       <p className={`text-sm font-bold mb-3 flex items-center gap-2 ${color}`}>
@@ -27,10 +29,17 @@ function ListaCard({ title, icon, color, items, emptyText }: { title: string; ic
         <p className="text-xs text-[var(--c-text4)] flex-1">{emptyText}</p>
       ) : (
         <div className="space-y-2.5 flex-1">
-          {items.map((t, i) => (
+          {items.map((it, i) => (
             <div key={i} className="flex items-start gap-2">
               <span className={`text-xs mt-0.5 flex-shrink-0 ${color}`}>●</span>
-              <p className="text-xs text-[var(--c-text2)] leading-relaxed">{t}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--c-text2)] leading-relaxed">{it.texto}</p>
+                {it.href && (
+                  <Link href={it.href} className={`text-[11px] font-semibold hover:underline mt-0.5 inline-block ${color}`}>
+                    {it.label ?? "Ver más"} →
+                  </Link>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -44,7 +53,7 @@ function TooltipAnual({ active, payload }: any) {
   const d: PuntoAnual = payload[0]?.payload
   if (!d) return null
   return (
-    <div className="bg-[var(--c-card2)] border border-[#222] rounded-xl p-3 text-xs shadow-xl min-w-[170px]">
+    <div className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-3 text-xs shadow-xl min-w-[170px]">
       <p className="text-[var(--c-text)] font-semibold mb-2">{d.mes} {d.anio}</p>
       <div className="flex items-center justify-between gap-3 mb-1">
         <span className="flex items-center gap-1.5 text-[var(--c-text3)]"><span className="w-2 h-2 rounded-full bg-green-500" />Ingresos</span>
@@ -58,7 +67,7 @@ function TooltipAnual({ active, payload }: any) {
         <span className="flex items-center gap-1.5 text-[var(--c-text3)]"><span className="w-2 h-2 rounded-full bg-orange-500" />Costos fijos</span>
         <span className="text-[var(--c-text)] font-semibold">{formatCLP(d.costosFijos)}</span>
       </div>
-      <div className="flex items-center justify-between gap-3 border-t border-[#222] mt-1.5 pt-1.5">
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--c-border)] mt-1.5 pt-1.5">
         <span className="flex items-center gap-1.5 text-[var(--c-text3)]"><span className="w-2 h-2 rounded-full bg-sky-500" />Resultado neto</span>
         <span className={`font-semibold ${d.neto >= 0 ? "text-sky-400" : "text-red-400"}`}>{formatCLP(d.neto)}</span>
       </div>
@@ -76,10 +85,21 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
   const BLOQUES = [[6,7,8],[9,10,11],[12,13,14],[15,16,17],[18,19,20],[21,22,23]]
   const labelBloque = (b: number[]) => `${b[0]}-${b[b.length-1]+1}h`
 
-  function colorCelda(valor: number) {
-    if (valor <= 0) return "rgba(56,189,248,0.04)"
+  function alphaCelda(valor: number) {
+    if (valor <= 0) return 0.04
     const intensidad = Math.min(1, valor / max)
-    return `rgba(56,189,248,${0.12 + intensidad * 0.75})`
+    return 0.12 + intensidad * 0.75
+  }
+  function colorCelda(valor: number) {
+    return `rgba(56,189,248,${alphaCelda(valor)})`
+  }
+  // Con poca intensidad la celda es casi transparente — se ve el fondo real
+  // de la tarjeta (blanco en modo claro, oscuro en modo oscuro). Texto
+  // blanco fijo ahí queda invisible en modo claro. Solo con suficiente
+  // intensidad el celeste satura lo bastante como para que el blanco
+  // funcione en ambos modos.
+  function textoLegible(valor: number) {
+    return alphaCelda(valor) >= 0.45
   }
 
   function formatoCelda(valor: number) {
@@ -142,10 +162,11 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
                 <td className="text-[10px] text-[var(--c-text3)] pr-1 text-right">{DIAS_CORTO[dia]}</td>
                 {BLOQUES.map((b, i) => {
                   const valor = b.reduce((a, h) => a + heatmap[dia][h], 0)
+                  const legible = textoLegible(valor)
                   return (
                     <td key={i} className="rounded-lg h-10 text-center align-middle" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)}>
                       {valor > 0 && (
-                        <span className="text-[10px] font-semibold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] whitespace-nowrap">
+                        <span className={`text-[10px] font-semibold whitespace-nowrap ${legible ? "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" : "text-[var(--c-text)]"}`}>
                           <span className="sm:hidden">{formatoCompactoMovil(valor)}</span>
                           <span className="hidden sm:inline">{formatoCompletoEscritorio(valor)}</span>
                         </span>
@@ -197,7 +218,7 @@ export function ReportesClient({ data }: { data: ReportData }) {
       <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-5 print-section">
         <p className="text-sm font-semibold text-[var(--c-text)]">Evolución anual — todos los movimientos</p>
         <p className="text-[11px] text-[var(--c-text4)] mt-0.5 mb-4">Últimos 12 meses: ingresos, gastos, costos fijos y resultado neto, mes a mes.</p>
-        <div className="flex items-center gap-4 text-xs mb-3">
+        <div className="flex items-center flex-wrap gap-x-4 gap-y-1.5 text-xs mb-3">
           <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-[var(--c-text3)]">Ingresos</span></div>
           <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[var(--c-text3)]">Gastos</span></div>
           <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500" /><span className="text-[var(--c-text3)]">Costos fijos</span></div>
@@ -205,9 +226,9 @@ export function ReportesClient({ data }: { data: ReportData }) {
         </div>
         <ResponsiveContainer width="100%" height={340}>
           <ComposedChart data={data.graficoAnual} barGap={2} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#64748B" }} tickLine={false} axisLine={false} />
-            <YAxis yAxisId="barras" tick={{ fontSize: 10, fill: "#64748B" }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 || v <= -1000 ? `${(v/1000).toFixed(0)}k` : v} width={40} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--c-border)" vertical={false} />
+            <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "var(--c-text3)" }} tickLine={false} axisLine={false} />
+            <YAxis yAxisId="barras" tick={{ fontSize: 10, fill: "var(--c-text3)" }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 || v <= -1000 ? `${(v/1000).toFixed(0)}k` : v} width={40} />
             <YAxis yAxisId="neto" orientation="right" hide domain={["auto","auto"]} />
             <Tooltip content={<TooltipAnual />} cursor={{ fill: "rgba(255,255,255,0.02)" }} />
             <Bar yAxisId="barras" dataKey="ingresos" fill="#22c55e" radius={[3,3,0,0]} maxBarSize={22} />
