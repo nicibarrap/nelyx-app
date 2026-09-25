@@ -96,7 +96,18 @@ export function generarPlantillaDesdeEscaneo(items: ItemEscaneado[]): void {
 
 export type FilaRaw = Record<string, any>
 
+// Una planilla de productos real pesa unos pocos KB — 5MB ya es miles de
+// filas. El tope no es solo por rendimiento: la librería xlsx tiene
+// vulnerabilidades conocidas sin parche (ReDoS / prototype pollution) que
+// se activan al parsear un archivo — esto corre en el navegador de quien
+// sube su propio archivo, así que el límite reduce el peor caso a "se
+// traba mi pestaña", nunca afecta al servidor ni a otros usuarios.
+const TAMANO_MAXIMO_BYTES = 5 * 1024 * 1024
+
 export async function parseArchivoExcel(file: File): Promise<FilaRaw[]> {
+  if (file.size > TAMANO_MAXIMO_BYTES) {
+    throw new Error("El archivo es demasiado grande (máximo 5MB) — revisa que sea la planilla de productos y no otro archivo.")
+  }
   const buffer = await file.arrayBuffer()
   const wb = XLSX.read(buffer, { type: "array", cellDates: true })
   const hoja = wb.Sheets[wb.SheetNames[0]]

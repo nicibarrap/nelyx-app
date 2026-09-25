@@ -544,6 +544,11 @@ export async function importarProductosMasivo(productos: {
 }[]) {
   const session = await getSessionEscritura("productos")
   if (!productos || productos.length === 0) throw new Error("No hay productos para importar")
+  // Tope defensivo — un catálogo real cabe muy por debajo de esto. Sin
+  // límite, esta Server Action se puede llamar directo (sin pasar por la
+  // UI ni por el Excel) con un arreglo enorme, forzando miles de creates
+  // secuenciales en un solo request.
+  if (productos.length > 2000) throw new Error("Máximo 2000 productos por importación — divide tu archivo en partes más chicas")
 
   const errores: string[] = []
   let exitosos = 0
