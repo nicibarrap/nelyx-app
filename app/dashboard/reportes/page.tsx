@@ -185,45 +185,49 @@ export default async function ReportesPage() {
   // ══════════════════════════════════════════
   // DIAGNÓSTICO DEL NEGOCIO
   // ══════════════════════════════════════════
-  const diagnostico: string[] = []
+  // Cada item lleva un href opcional al módulo real que lo explica — antes
+  // el diagnóstico y las oportunidades eran texto suelto sin forma de ir a
+  // revisar el dato de origen (el producto, el cliente, la cuenta).
+  type ItemReporte = { texto: string; href?: string; label?: string }
+  const diagnostico: ItemReporte[] = []
   if (totalVentasAnt > 0) {
     const p = pct(utilidadNeta, utilidadNetaAnt)
-    if (utilidadNetaAnt !== 0) diagnostico.push(p >= 0 ? `Tu utilidad ${p === 0 ? "se mantuvo estable" : `aumentó un ${p}%`} respecto al mes anterior.` : `Tu utilidad bajó un ${Math.abs(p)}% respecto al mes anterior.`)
+    if (utilidadNetaAnt !== 0) diagnostico.push({ texto: p >= 0 ? `Tu utilidad ${p === 0 ? "se mantuvo estable" : `aumentó un ${p}%`} respecto al mes anterior.` : `Tu utilidad bajó un ${Math.abs(p)}% respecto al mes anterior.` })
   }
   if (pct(totalGastos, totalGastosAnt) > pct(totalVentas, totalVentasAnt) && totalGastosAnt > 0) {
-    diagnostico.push(`Tus gastos crecieron más rápido (${pct(totalGastos, totalGastosAnt)}%) que tus ventas (${pct(totalVentas, totalVentasAnt)}%).`)
+    diagnostico.push({ texto: `Tus gastos crecieron más rápido (${pct(totalGastos, totalGastosAnt)}%) que tus ventas (${pct(totalVentas, totalVentasAnt)}%).`, href: "/dashboard/movimientos", label: "Ver movimientos" })
   }
   if (pctRecuperacionCxc !== null) {
-    diagnostico.push(`Este mes recuperaste el ${pctRecuperacionCxc}% de las cuentas por cobrar que emitiste.`)
+    diagnostico.push({ texto: `Este mes recuperaste el ${pctRecuperacionCxc}% de las cuentas por cobrar que emitiste.`, href: "/dashboard/cuentas-cobrar", label: "Ver cuentas por cobrar" })
   }
   if (mejorDia && peorDia && mejorDia !== peorDia) {
-    diagnostico.push(`Tus ventas de los ${mejorDia}s son las más altas; los ${peorDia}s son las más bajas.`)
+    diagnostico.push({ texto: `Tus ventas de los ${mejorDia}s son las más altas; los ${peorDia}s son las más bajas.` })
   }
-  diagnostico.push(`Por cada $100 que vendes, te quedan $${Math.max(0, margenPor100)} de utilidad, después de costos y gastos.`)
-  if (diagnostico.length === 0) diagnostico.push("Aún no hay suficiente historial este mes para generar un diagnóstico detallado.")
+  diagnostico.push({ texto: `Por cada $100 que vendes, te quedan $${Math.max(0, margenPor100)} de utilidad, después de costos y gastos.` })
+  if (diagnostico.length === 0) diagnostico.push({ texto: "Aún no hay suficiente historial este mes para generar un diagnóstico detallado." })
 
   // ══════════════════════════════════════════
   // OPORTUNIDADES DETECTADAS
   // ══════════════════════════════════════════
-  const oportunidades: string[] = []
+  const oportunidades: ItemReporte[] = []
   if (productosRanking.length >= 1) {
     const top3 = productosRanking.slice(0, 3).map(p => p.nombre).join(", ")
-    oportunidades.push(`Puedes aumentar tu utilidad subiendo ~5% el precio de tus productos con mejor margen: ${top3}.`)
+    oportunidades.push({ texto: `Puedes aumentar tu utilidad subiendo ~5% el precio de tus productos con mejor margen: ${top3}.`, href: "/dashboard/productos", label: "Ver productos" })
   }
   if (productoBajoMargenAltoVolumen) {
-    oportunidades.push(`"${productoBajoMargenAltoVolumen.nombre}" se vende mucho pero tiene margen bajo — revisa su precio o su costo.`)
+    oportunidades.push({ texto: `"${productoBajoMargenAltoVolumen.nombre}" se vende mucho pero tiene margen bajo — revisa su precio o su costo.`, href: "/dashboard/productos", label: "Ver productos" })
   }
   if (concentracionTop3 > 0) {
-    oportunidades.push(`Tus 3 clientes más frecuentes representan el ${concentracionTop3}% de tus ingresos este mes.`)
+    oportunidades.push({ texto: `Tus 3 clientes más frecuentes representan el ${concentracionTop3}% de tus ingresos este mes.`, href: "/dashboard/clientes", label: "Ver clientes" })
   }
-  if (mejorDia) oportunidades.push(`Los ${mejorDia}s son tu mejor día para vender — considera promociones o mayor stock ese día.`)
+  if (mejorDia) oportunidades.push({ texto: `Los ${mejorDia}s son tu mejor día para vender — considera promociones o mayor stock ese día.` })
   if (productosSinMovimiento.length > 0) {
-    oportunidades.push(`${productosSinMovimiento.length} producto${productosSinMovimiento.length > 1 ? "s" : ""} sin ventas hace más de 45 días — evalúa una promoción o descontinuarlos.`)
+    oportunidades.push({ texto: `${productosSinMovimiento.length} producto${productosSinMovimiento.length > 1 ? "s" : ""} sin ventas hace más de 45 días — evalúa una promoción o descontinuarlos.`, href: "/dashboard/productos", label: "Ver productos" })
   }
   if (pctEfectivo !== null) {
-    oportunidades.push(`Aproximadamente el ${pctEfectivo}% de tus ventas (por clientes registrados) son en efectivo.`)
+    oportunidades.push({ texto: `Aproximadamente el ${pctEfectivo}% de tus ventas (por clientes registrados) son en efectivo.` })
   }
-  if (oportunidades.length === 0) oportunidades.push("Sigue registrando movimientos para que aparezcan oportunidades personalizadas.")
+  if (oportunidades.length === 0) oportunidades.push({ texto: "Sigue registrando movimientos para que aparezcan oportunidades personalizadas." })
 
   // ══════════════════════════════════════════
   // GRÁFICO GRANDE — últimos 12 meses, todos los movimientos desglosados
@@ -263,7 +267,7 @@ export default async function ReportesPage() {
   partes.push(utilidadNeta >= 0 ? `La utilidad se mantiene positiva, con ${Math.abs(margenPor100)}% de margen sobre las ventas.` : `La utilidad fue negativa este período — los gastos superaron a las ventas.`)
   if (productoMasRentable) partes.push(`El producto con mayor margen fue ${productoMasRentable}.`)
   if (clienteTop) partes.push(`El cliente más valioso fue ${clienteTop.nombre}, con ${formatearMonto(clienteTop.monto)} en compras.`)
-  partes.push(oportunidades[0] ?? "")
+  partes.push(oportunidades[0]?.texto ?? "")
   const resumenEjecutivo = partes.filter(Boolean).join(" ")
 
   function formatearMonto(n: number) { return `$${Math.round(n).toLocaleString("es-CL")}` }
