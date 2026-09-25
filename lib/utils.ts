@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -37,7 +38,11 @@ export function calcularEstadoDeuda(deuda: {
   fechaVence: Date | null | undefined
 }): EstadoDeuda {
   if (deuda.pagada) return "Pagada"
-  const hoy = new Date()
+  // hoyEnChile()/diasEntreChile() — un new Date() crudo compara la hora UTC
+  // del servidor contra la fecha de vencimiento (guardada como día de
+  // calendario), lo que marca deudas "Vencidas" antes de tiempo durante la
+  // noche en Chile.
+  const hoy = hoyEnChile()
   const montoPagado = Number(deuda.montoPagado)
   // El total real a cubrir es el que el usuario cargó desde su banco
   // (incluye interés/seguros/impuestos) si existe — comparar solo contra
@@ -45,8 +50,8 @@ export function calcularEstadoDeuda(deuda: {
   const monto = Number(deuda.montoTotal ?? deuda.monto)
   if (deuda.fechaVence) {
     const vence = new Date(deuda.fechaVence)
-    if (vence < hoy) return "Vencida"
-    const diffDias = Math.ceil((vence.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+    const diffDias = diasEntreChile(hoy, vence)
+    if (diffDias < 0) return "Vencida"
     if (diffDias <= 7) return "Próxima a vencer"
   }
   if (montoPagado > 0 && montoPagado < monto) return "Parcialmente pagada"
