@@ -14,6 +14,7 @@ const OPCIONES: { key: string; label: string; icono: string }[] = [
   { key: "reportes",         label: "Reportes",                    icono: "📊" },
   { key: "renovaciones",     label: "Renovaciones de suscripción", icono: "🔄" },
   { key: "alertasGenerales", label: "Alertas generales",           icono: "🔔" },
+  { key: "soporte",          label: "Soporte / chat en vivo",      icono: "💬" },
 ]
 
 type Cfg = Record<string, boolean>
