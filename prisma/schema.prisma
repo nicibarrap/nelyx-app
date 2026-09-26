@@ -49,6 +49,7 @@ model User {
   notificacionConfig    NotificacionConfig?
   conexionesPago        ConexionPago[]
   passwordResetTokens   PasswordResetToken[]
+  conversacionesSoporte ConversacionSoporte[]
   // Ambos apagados por defecto — recordatorios automáticos a CLIENTES (no
   // al dueño) solo deben salir si el dueño explícitamente los activa.
   recordatoriosCobranzaAutoActivo   Boolean @default(false)
@@ -519,8 +520,44 @@ model NotificacionConfig {
   reportes       Boolean @default(true)
   renovaciones   Boolean @default(true)
   alertasGenerales Boolean @default(true)
+  soporte        Boolean @default(true)
   permisoPedido  Boolean @default(false)
   updatedAt      DateTime @updatedAt
+}
+
+// ── Chat de soporte en vivo: comunicación directa entre una cuenta dueña
+// (o sus empleados) y Soporte Nelyx (staff con rol ADMIN). Una conversación
+// por cuenta dueña — todos los empleados de un mismo negocio comparten el
+// mismo hilo, cada mensaje queda marcado con quién lo escribió (autorNombre).
+model ConversacionSoporte {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  estado              String    @default("abierta") // abierta | resuelta
+  ultimoMensajeDe     String    @default("cliente")  // cliente | soporte | sistema
+  ultimoMensajeAt     DateTime  @default(now())
+  // Evita reenviar el recordatorio de "¿sigues ahí?" más de una vez por
+  // cada espera sin respuesta — se reinicia a false apenas cualquiera de
+  // las dos partes vuelve a escribir.
+  recordatorioEnviado Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  mensajes            MensajeSoporte[]
+  @@index([estado, ultimoMensajeAt])
+}
+
+model MensajeSoporte {
+  id             String   @id @default(cuid())
+  conversacionId String
+  conversacion   ConversacionSoporte @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  de             String   // cliente | soporte | sistema
+  autorNombre    String?
+  contenido      String
+  paginaOrigen   String?  // ruta desde la que se escribió — contexto para soporte
+  urgente        Boolean  @default(false) // auto-detectado por palabras clave
+  leidoCliente   Boolean  @default(false)
+  leidoSoporte   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  @@index([conversacionId, createdAt])
 }
 
 model Notificacion {
