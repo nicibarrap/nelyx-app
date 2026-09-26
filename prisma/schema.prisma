@@ -48,6 +48,7 @@ model User {
   notificaciones        Notificacion[]
   notificacionConfig    NotificacionConfig?
   conexionesPago        ConexionPago[]
+  passwordResetTokens   PasswordResetToken[]
   // Ambos apagados por defecto — recordatorios automáticos a CLIENTES (no
   // al dueño) solo deben salir si el dueño explícitamente los activa.
   recordatoriosCobranzaAutoActivo   Boolean @default(false)
@@ -471,6 +472,36 @@ model IntentoLoginFallido {
   createdAt DateTime @default(now())
   @@index([ip, createdAt])
   @@index([createdAt])
+}
+
+// "Olvidé mi contraseña" — el token real (32 bytes random) solo viaja en
+// el link del correo; acá se guarda hasheado (sha256, no bcrypt: es un
+// valor de alta entropía que se compara exacto, no una clave de baja
+// entropía que necesite resistir fuerza bruta offline sobre el hash).
+// Solo aplica a cuentas dueñas (login por contraseña) — los empleados
+// entran por PIN, no por este flujo.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  @@index([userId, createdAt])
+}
+
+// Cada solicitud de reset (exista o no la cuenta) se registra acá — es lo
+// único que permite frenar a alguien probando muchos correos inventados,
+// mismo patrón que IntentoLoginFallido pero también contado por email,
+// no solo por IP.
+model IntentoResetPassword {
+  id        String   @id @default(cuid())
+  ip        String
+  email     String
+  createdAt DateTime @default(now())
+  @@index([ip, createdAt])
+  @@index([email, createdAt])
 }
 
 model NotificacionConfig {

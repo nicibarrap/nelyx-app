@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { estaBloqueado, calcularNuevoEstadoTrasFallo, necesitaLimpiarEstado, ipDeRequest } from "@/lib/auth-logica"
+import { estaBloqueado, calcularNuevoEstadoTrasFallo, necesitaLimpiarEstado, ipDeRequest, tokenResetValido } from "@/lib/auth-logica"
 
 // Estos tests cubren exactamente la lógica que falló hoy en producción:
 // el contador de intentos fallidos y el cálculo del bloqueo de 15 minutos.
@@ -65,5 +65,29 @@ describe("ipDeRequest", () => {
 
   it("devuelve 'desconocida' sin ningún header ni request", () => {
     expect(ipDeRequest(undefined)).toBe("desconocida")
+  })
+})
+
+describe("tokenResetValido", () => {
+  it("es válido si no se usó y todavía no expira", () => {
+    const enUnaHora = new Date(Date.now() + 60 * 60 * 1000)
+    expect(tokenResetValido({ expiresAt: enUnaHora, usedAt: null })).toBe(true)
+  })
+
+  it("no es válido si ya se usó, aunque no haya expirado", () => {
+    const enUnaHora = new Date(Date.now() + 60 * 60 * 1000)
+    expect(tokenResetValido({ expiresAt: enUnaHora, usedAt: new Date() })).toBe(false)
+  })
+
+  it("no es válido si ya expiró, aunque no se haya usado", () => {
+    const haceUnaHora = new Date(Date.now() - 60 * 60 * 1000)
+    expect(tokenResetValido({ expiresAt: haceUnaHora, usedAt: null })).toBe(false)
+  })
+
+  it("respeta el 'ahora' explícito para la comparación de expiración", () => {
+    const ahora = new Date("2026-01-01T12:00:00Z")
+    const expira = new Date("2026-01-01T12:30:00Z")
+    expect(tokenResetValido({ expiresAt: expira, usedAt: null }, ahora)).toBe(true)
+    expect(tokenResetValido({ expiresAt: expira, usedAt: null }, new Date("2026-01-01T13:00:00Z"))).toBe(false)
   })
 })

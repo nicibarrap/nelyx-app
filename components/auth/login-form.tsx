@@ -91,7 +91,12 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
         </div>
       </div>
       <div>
-        <label className="text-xs font-semibold text-white/55 block mb-2">Contraseña</label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-semibold text-white/55">Contraseña</label>
+          <a href="/auth/recuperar" className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors">
+            ¿Olvidaste tu contraseña?
+          </a>
+        </div>
         <div className="relative">
           <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
