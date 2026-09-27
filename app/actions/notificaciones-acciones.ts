@@ -53,7 +53,7 @@ export async function obtenerConfigNotificaciones() {
 
 export async function actualizarConfigNotificaciones(formData: FormData) {
   const session = await getSession()
-  const campos = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales"] as const
+  const campos = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales","soporte"] as const
   const data: Record<string, boolean> = {}
   for (const c of campos) data[c] = formData.get(c) === "on"
   await db.notificacionConfig.upsert({

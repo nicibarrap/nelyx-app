@@ -479,9 +479,14 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
 
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <Link href="/dashboard/resumen" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
-          ← Volver al Dashboard
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/dashboard/resumen" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
+            ← Volver al Dashboard
+          </Link>
+          <Link href="/admin/soporte" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
+            💬 Soporte NELYX →
+          </Link>
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-[var(--c-text)] tracking-tight">Clientes NELYX</h1>

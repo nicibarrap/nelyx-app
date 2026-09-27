@@ -5,6 +5,7 @@ import { Header } from "@/components/dashboard/header"
 import { PermisoNotificacionesModal } from "@/components/notificaciones/permiso-modal"
 import { AutoReparadorPush } from "@/components/notificaciones/auto-reparador-push"
 import { AutoLogoutEmpleado } from "@/components/dashboard/auto-logout-empleado"
+import { ChatSoporteWidget } from "@/components/soporte/chat-widget"
 import { db } from "@/lib/db"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <PermisoNotificacionesModal yaPedido={notifCfg?.permisoPedido ?? false} />
       <AutoReparadorPush />
       <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />
+      {session.user.role !== "ADMIN" && <ChatSoporteWidget />}
     </div>
   )
 }

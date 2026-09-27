@@ -43,3 +43,10 @@ export function ipDeRequest(request: Request | undefined): string {
   if (xff) return xff.split(",")[0].trim()
   return request?.headers.get("x-real-ip")?.trim() || "desconocida"
 }
+
+/** ¿Sigue siendo válido este token de "olvidé mi contraseña"? Un solo
+ * uso (usedAt) y con expiración — misma idea que estaBloqueado, separada
+ * para poder probarla sin tocar la DB. */
+export function tokenResetValido(token: { expiresAt: Date; usedAt: Date | null }, ahora: Date = new Date()): boolean {
+  return token.usedAt === null && token.expiresAt > ahora
+}

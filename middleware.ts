@@ -16,7 +16,7 @@ export default auth(async (req) => {
   const { pathname } = req.nextUrl
   const session = req.auth
 
-  if (pathname === "/auth/login" || pathname === "/auth/forzar-salida") {
+  if (pathname === "/auth/login" || pathname === "/auth/forzar-salida" || pathname === "/auth/recuperar" || pathname === "/auth/restablecer") {
     // Una Server Action invocada DESDE /auth/login (p. ej. obtenerEmpleadosDeMiCuenta,
     // que se llama justo después de iniciar sesión, antes de salir de esta pantalla)
     // también le llega al middleware como POST a esta misma ruta. Si se redirige

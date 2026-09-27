@@ -3,7 +3,7 @@ import { enviarPushAUsuario } from "@/lib/push"
 
 export type CategoriaNotif =
   | "calendario" | "tareas" | "deudas" | "costosFijos" | "cuentasCobrar"
-  | "clientes" | "inventario" | "reportes" | "renovaciones" | "alertasGenerales"
+  | "clientes" | "inventario" | "reportes" | "renovaciones" | "alertasGenerales" | "soporte"
 
 export const PRIORIDAD_CFG: Record<string, { label: string; color: string; icono: string }> = {
   alta:  { label: "Alta",  color: "red",    icono: "🔴" },
