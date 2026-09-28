@@ -13,7 +13,7 @@ import { SeccionColapsable } from "@/components/configuracion/seccion-colapsable
 export const metadata: Metadata = { title: "Configuración" }
 export const dynamic = "force-dynamic"
 
-const CAMPOS = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales"] as const
+const CAMPOS = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales","soporte"] as const
 
 export default async function ConfiguracionPage() {
   const [cfgRaw, plantillas, conexionesPago, proyectosTarea] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerProyectosTarea()])
