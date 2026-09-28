@@ -32,4 +32,4 @@ export const MENSAJE_AUTO_RESPUESTA =
   "¡Gracias por escribirnos! Un miembro de Soporte Nelyx va a responderte en breve. Mientras tanto, cuéntanos con el mayor detalle posible qué necesitas — así podemos ayudarte más rápido."
 
 export const MENSAJE_RECORDATORIO =
-  "Seguimos por acá — si todavía necesitas ayuda, cuéntanos y te respondemos apenas podamos 🙂"
+  "Esperamos haber solucionado tu problema 🙂 Si tienes cualquier otra duda, quedamos atentos."

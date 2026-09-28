@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition } from "react"
 import { usePathname } from "next/navigation"
 import { toast } from "sonner"
 import {
-  obtenerOCrearConversacion, obtenerMensajesCliente, enviarMensajeCliente, contarNoLeidosCliente,
+  crearNuevaConversacion, obtenerMensajesCliente, enviarMensajeCliente, contarNoLeidosCliente,
   obtenerConversacionesCliente,
 } from "@/app/actions/soporte-acciones"
 
@@ -93,13 +93,15 @@ export function ChatSoporteWidget() {
   function irAMensajes() { setVista("mensajes") }
   function irAInicio() { setVista("inicio") }
 
+  // "Enviános un mensaje" desde Inicio siempre arranca un hilo aparte —
+  // no reutiliza uno ya existente aunque siga abierto. Recién se crea en
+  // la base de datos al mandar el primer mensaje (abajo en enviar()), así
+  // que un clic sin escribir nada no deja conversaciones vacías fantasma.
   function abrirConversacionActiva() {
-    start(async () => {
-      const { id } = await obtenerOCrearConversacion()
-      setConversacionId(id)
-      setOrigenHilo("inicio")
-      setVista("hilo")
-    })
+    setConversacionId(null)
+    setMensajes([])
+    setOrigenHilo("inicio")
+    setVista("hilo")
   }
 
   function abrirHilo(id: string) {
@@ -117,12 +119,20 @@ export function ChatSoporteWidget() {
   function enviar(e: React.FormEvent) {
     e.preventDefault()
     const contenido = texto.trim()
-    if (!contenido || !conversacionId) return
+    if (!contenido) return
     setTexto("")
     start(async () => {
       try {
-        await enviarMensajeCliente(conversacionId, contenido, pathname)
-        await cargarMensajes(conversacionId)
+        // Si venimos de "Enviános un mensaje" sin conversación creada aún
+        // (conversacionId null), este primer envío la crea recién ahora.
+        let id = conversacionId
+        if (!id) {
+          const nueva = await crearNuevaConversacion()
+          id = nueva.id
+          setConversacionId(id)
+        }
+        await enviarMensajeCliente(id, contenido, pathname)
+        await cargarMensajes(id)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "No se pudo enviar el mensaje")
       }
