@@ -157,6 +157,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
             <SectionLabel label="Administración" collapsed={!isMobile && collapsed} />
             {[
               { href: "/admin/clientes", icon: "👥", label: "Clientes NELYX" },
+              { href: "/admin/soporte", icon: "💬", label: "Soporte NELYX" },
             ].map(item => (
               <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
