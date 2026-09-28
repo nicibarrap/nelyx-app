@@ -18,7 +18,10 @@ export default async function ClientesAdminPage() {
   const hoy = new Date()
 
   const usuarios = await db.user.findMany({
-    where: { rol: "USER" },
+    // cuentaPrincipalId: null excluye a los empleados — son sub-cuentas de
+    // una cuenta dueña, no clientes propios, y no deben aparecer como fila
+    // aparte en este panel (se cuentan como "Equipo" de su cuenta dueña).
+    where: { rol: "USER", cuentaPrincipalId: null },
     orderBy: { createdAt: "desc" },
     include: {
       suscripcionNelyx: {
@@ -27,7 +30,7 @@ export default async function ClientesAdminPage() {
           cobros: { orderBy: { createdAt: "desc" }, take: 15 },
         },
       },
-      _count: { select: { movimientos: true, productos: true, clientes: true } },
+      _count: { select: { movimientos: true, productos: true, clientes: true, empleados: true } },
     },
     // Tope defensivo: a medida que crezca la base de negocios suscritos a
     // Nelyx, esto evita que este panel se vuelva lento o pesadísimo — se
@@ -93,6 +96,7 @@ export default async function ClientesAdminPage() {
       movimientos: u._count.movimientos,
       productos: u._count.productos,
       clientesCount: u._count.clientes,
+      equipo: u._count.empleados,
       ventas,
       cobroPendiente: cobroPendiente ? {
         id: cobroPendiente.id,

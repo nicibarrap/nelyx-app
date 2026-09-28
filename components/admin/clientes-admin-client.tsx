@@ -23,7 +23,7 @@ type Cliente = {
   fechaInicio: string; fechaFinPrueba: string | null; fechaProximoCobro: string | null
   precioPlan: number; renovacionAutomatica: boolean
   ultimoAcceso: string | null; diasSinAcceso: number | null; notas: string | null
-  salud: number; movimientos: number; productos: number; clientesCount: number; ventas: number
+  salud: number; movimientos: number; productos: number; clientesCount: number; ventas: number; equipo: number
   cobroPendiente: Cobro | null; historialCobros: Cobro[]; pagos: Pago[]
 }
 type Metricas = {
@@ -387,6 +387,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
               ["Productos", c.productos],
               ["Clientes", c.clientesCount],
               ["Ventas registradas", c.ventas],
+              ["Equipo (usuarios)", c.equipo],
             ].map(([k, v]) => (
               <div key={k as string} className="bg-[var(--c-card2)] rounded-lg p-2">
                 <p className="text-[var(--c-text4)]">{k}</p>
@@ -537,14 +538,14 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[var(--c-border2)]">
-                  {["Cliente", "Estado", "Plan", "Inicio", "Próximo cobro", "Monto", "Salud", "Último acceso", ""].map(h => (
+                  {["Cliente", "Estado", "Plan", "Inicio", "Próximo cobro", "Monto", "Equipo", "Salud", "Último acceso", ""].map(h => (
                     <th key={h} className="text-left text-[var(--c-text4)] font-semibold px-4 py-2.5 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--c-border2)]">
                 {filtrados.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-10 text-[var(--c-text4)]">Sin clientes</td></tr>
+                  <tr><td colSpan={10} className="text-center py-10 text-[var(--c-text4)]">Sin clientes</td></tr>
                 ) : filtrados.map(c => {
                   const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.al_dia
                   const isSelected = selectedUpdated?.id === c.id
@@ -575,6 +576,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
                         </p>
                       </td>
                       <td className="px-4 py-3 text-[var(--c-text2)] whitespace-nowrap">{c.precioPlan > 0 ? formatCLP(c.precioPlan) : "Gratis"}</td>
+                      <td className="px-4 py-3 text-[var(--c-text2)] whitespace-nowrap">{c.equipo > 0 ? `👤 ${c.equipo}` : "—"}</td>
                       <td className="px-4 py-3"><SaludBar value={c.salud} /></td>
                       <td className="px-4 py-3 text-[var(--c-text2)] whitespace-nowrap">
                         {c.diasSinAcceso === null ? "Nunca" : c.diasSinAcceso === 0 ? "Hoy" : c.diasSinAcceso === 1 ? "Hace 1 día" : `Hace ${c.diasSinAcceso} días`}

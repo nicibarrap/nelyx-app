@@ -4,9 +4,12 @@ import { usePathname } from "next/navigation"
 import { toast } from "sonner"
 import {
   obtenerOCrearConversacion, obtenerMensajesCliente, enviarMensajeCliente, contarNoLeidosCliente,
+  obtenerConversacionesCliente,
 } from "@/app/actions/soporte-acciones"
 
 type Mensaje = { id: string; de: string; autorNombre: string | null; contenido: string; createdAt: string }
+type Conversacion = { id: string; estado: string; titulo: string; ultimoMensaje: string; ultimoMensajeAt: string; noLeidos: number }
+type Vista = "inicio" | "mensajes" | "hilo"
 
 function tiempoRelativo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime()
@@ -20,8 +23,11 @@ function tiempoRelativo(iso: string) {
 
 export function ChatSoporteWidget() {
   const [open, setOpen] = useState(false)
+  const [vista, setVista] = useState<Vista>("inicio")
+  const [origenHilo, setOrigenHilo] = useState<Vista>("inicio")
   const [conversacionId, setConversacionId] = useState<string | null>(null)
   const [mensajes, setMensajes] = useState<Mensaje[]>([])
+  const [conversaciones, setConversaciones] = useState<Conversacion[]>([])
   const [texto, setTexto] = useState("")
   const [noLeidos, setNoLeidos] = useState(0)
   const [pending, start] = useTransition()
@@ -41,34 +47,72 @@ export function ChatSoporteWidget() {
     return () => { activo = false; clearInterval(interval) }
   }, [])
 
+  // Al abrir el panel: siempre parte en Inicio.
+  useEffect(() => {
+    if (open) setVista("inicio")
+  }, [open])
+
+  async function cargarConversaciones() {
+    const data = await obtenerConversacionesCliente().catch(() => [])
+    setConversaciones(data as Conversacion[])
+  }
+
+  // Pestaña "Mensajes": carga la lista + refresca mientras siga abierta.
+  useEffect(() => {
+    if (!open || vista !== "mensajes") return
+    cargarConversaciones()
+    const interval = setInterval(cargarConversaciones, 8000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, vista])
+
   async function cargarMensajes(id: string) {
     const data = await obtenerMensajesCliente(id)
     setMensajes(data as Mensaje[])
-    setNoLeidos(0)
+    // obtenerMensajesCliente ya marcó como leídos los mensajes de este
+    // hilo — se recalcula el total (puede haber no leídos en otros hilos).
+    const n = await contarNoLeidosCliente().catch(() => 0)
+    setNoLeidos(n)
   }
 
-  // Al abrir: obtiene (o crea) la conversación una sola vez.
+  // Un hilo abierto: carga inicial + polling. Efecto separado del de arriba
+  // para que el intervalo cierre sobre el conversacionId correcto (no uno
+  // viejo por stale closure).
   useEffect(() => {
-    if (!open) return
-    let activo = true
-    obtenerOCrearConversacion().then(({ id }) => { if (activo) setConversacionId(id) })
-    return () => { activo = false }
-  }, [open])
-
-  // Con la conversación ya conocida: carga inicial + polling mientras el
-  // panel siga abierto. Efecto separado del anterior para que el
-  // intervalo cierre sobre el conversacionId correcto (no uno viejo).
-  useEffect(() => {
-    if (!open || !conversacionId) return
+    if (!open || vista !== "hilo" || !conversacionId) return
     cargarMensajes(conversacionId)
     const interval = setInterval(() => cargarMensajes(conversacionId), 4000)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, conversacionId])
+  }, [open, vista, conversacionId])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [mensajes])
+
+  function irAMensajes() { setVista("mensajes") }
+  function irAInicio() { setVista("inicio") }
+
+  function abrirConversacionActiva() {
+    start(async () => {
+      const { id } = await obtenerOCrearConversacion()
+      setConversacionId(id)
+      setOrigenHilo("inicio")
+      setVista("hilo")
+    })
+  }
+
+  function abrirHilo(id: string) {
+    setConversacionId(id)
+    setOrigenHilo("mensajes")
+    setVista("hilo")
+  }
+
+  function volverDeHilo() {
+    setVista(origenHilo)
+    setConversacionId(null)
+    setMensajes([])
+  }
 
   function enviar(e: React.FormEvent) {
     e.preventDefault()
@@ -85,17 +129,60 @@ export function ChatSoporteWidget() {
     })
   }
 
-  const contenidoPanel = (
-    <>
-      <div className="px-4 py-3 border-b border-[var(--c-border2)] flex items-center gap-2.5 flex-shrink-0">
-        <span className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0" style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}>💬</span>
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-[var(--c-text)]">Soporte Nelyx</p>
-          <p className="text-[10px] text-[var(--c-text4)]">Normalmente responde en minutos</p>
-        </div>
-        <button onClick={() => setOpen(false)} className="ml-auto w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-[var(--c-text4)]">✕</button>
-      </div>
+  const vistaInicio = (
+    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <p className="text-base font-bold text-[var(--c-text)]">¿Cómo podemos ayudarte? 👋</p>
+      <p className="text-xs text-[var(--c-text3)] leading-relaxed">
+        Escríbenos tu duda o el problema que tengas con la plataforma — normalmente respondemos en minutos.
+      </p>
+      <button onClick={abrirConversacionActiva} disabled={pending}
+        className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--c-border2)] bg-[var(--c-hover)] px-3.5 py-3 text-left transition-all hover:border-blue-400/40 disabled:opacity-60">
+        <span className="text-xs font-semibold text-[var(--c-text)]">Envíanos un mensaje</span>
+        <span className="text-blue-400">➤</span>
+      </button>
+      {noLeidos > 0 && (
+        <button onClick={irAMensajes} className="w-full text-left rounded-xl border border-blue-400/30 bg-blue-500/5 px-3.5 py-3 transition-all hover:bg-blue-500/10">
+          <span className="text-xs font-semibold text-blue-400">Tienes respuestas nuevas — ver Mensajes →</span>
+        </button>
+      )}
+    </div>
+  )
 
+  const vistaMensajes = (
+    <div className="flex-1 overflow-y-auto">
+      {conversaciones.length === 0 ? (
+        <p className="text-center text-xs text-[var(--c-text4)] py-10 px-4">
+          Aún no tienes conversaciones. Escríbenos tu primera duda desde Inicio.
+        </p>
+      ) : (
+        <div className="divide-y divide-[var(--c-border2)]">
+          {conversaciones.map(c => (
+            <button key={c.id} onClick={() => abrirHilo(c.id)}
+              className="w-full text-left px-4 py-3 flex items-start gap-2.5 transition-all hover:bg-[var(--c-hover)]">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-[var(--c-text)] truncate">{c.titulo}</p>
+                  {c.estado === "resuelta" && <span className="text-[9px] text-emerald-400 flex-shrink-0">✓ Resuelta</span>}
+                </div>
+                <p className="text-[11px] text-[var(--c-text4)] truncate mt-0.5">{c.ultimoMensaje}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <span className="text-[10px] text-[var(--c-text4)] whitespace-nowrap">{tiempoRelativo(c.ultimoMensajeAt)}</span>
+                {c.noLeidos > 0 && (
+                  <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                    {c.noLeidos > 9 ? "9+" : c.noLeidos}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  const vistaHilo = (
+    <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
         {mensajes.length === 0 ? (
           <p className="text-center text-xs text-[var(--c-text4)] py-8">
@@ -130,6 +217,43 @@ export function ChatSoporteWidget() {
           {pending ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "➤"}
         </button>
       </form>
+    </>
+  )
+
+  const contenidoPanel = (
+    <>
+      <div className="px-4 py-3 border-b border-[var(--c-border2)] flex items-center gap-2.5 flex-shrink-0">
+        {vista === "hilo" ? (
+          <button onClick={volverDeHilo} className="w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-[var(--c-text3)] flex-shrink-0">←</button>
+        ) : (
+          <span className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0" style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}>💬</span>
+        )}
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-[var(--c-text)]">Soporte Nelyx</p>
+          <p className="text-[10px] text-[var(--c-text4)]">Normalmente responde en minutos</p>
+        </div>
+        <button onClick={() => setOpen(false)} className="ml-auto w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-[var(--c-text4)]">✕</button>
+      </div>
+
+      {vista === "inicio" && vistaInicio}
+      {vista === "mensajes" && vistaMensajes}
+      {vista === "hilo" && vistaHilo}
+
+      {vista !== "hilo" && (
+        <div className="flex items-center border-t border-[var(--c-border2)] flex-shrink-0">
+          <button onClick={irAInicio} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-all ${vista === "inicio" ? "text-blue-400" : "text-[var(--c-text4)]"}`}>
+            <span className="text-sm">🏠</span>Inicio
+          </button>
+          <button onClick={irAMensajes} className={`relative flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-all ${vista === "mensajes" ? "text-blue-400" : "text-[var(--c-text4)]"}`}>
+            <span className="text-sm">💬</span>Mensajes
+            {noLeidos > 0 && (
+              <span className="absolute top-1 right-[calc(50%-20px)] min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {noLeidos > 9 ? "9+" : noLeidos}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
     </>
   )
 

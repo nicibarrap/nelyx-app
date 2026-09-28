@@ -40,13 +40,56 @@ export async function obtenerOCrearConversacion() {
 }
 
 /** Solo cuenta, sin marcar como leído — para el badge del botón flotante
- * mientras el panel del chat sigue cerrado. */
+ * mientras el panel del chat sigue cerrado. Suma no leídos de TODAS las
+ * conversaciones de la cuenta, no solo la abierta — una respuesta tardía
+ * en un hilo ya resuelto también debe notificarse. */
 export async function contarNoLeidosCliente() {
   const session = await getSession()
   if (session.user.role === "ADMIN" && !session.user.esEmpleado) return 0
-  const conv = await db.conversacionSoporte.findFirst({ where: { userId: session.user.id, estado: "abierta" }, select: { id: true } })
-  if (!conv) return 0
-  return db.mensajeSoporte.count({ where: { conversacionId: conv.id, de: { in: ["soporte", "sistema"] }, leidoCliente: false } })
+  return db.mensajeSoporte.count({
+    where: { de: { in: ["soporte", "sistema"] }, leidoCliente: false, conversacion: { userId: session.user.id } },
+  })
+}
+
+/** Lista de conversaciones de la cuenta (abiertas y resueltas), más
+ * reciente primero — para la pestaña "Mensajes" del widget de soporte,
+ * al estilo de un listado de hilos con título + fecha. */
+export async function obtenerConversacionesCliente() {
+  const session = await getSession()
+  if (session.user.role === "ADMIN" && !session.user.esEmpleado) return []
+
+  const convs = await db.conversacionSoporte.findMany({
+    where: { userId: session.user.id },
+    orderBy: { ultimoMensajeAt: "desc" },
+    take: 50,
+  })
+  if (convs.length === 0) return []
+  const ids = convs.map(c => c.id)
+
+  // Tres consultas agregadas (no una por conversación): el primer mensaje
+  // del cliente da el "título" del hilo, el último mensaje (de quien sea)
+  // da la vista previa, y el conteo agrupado da los no leídos por hilo.
+  const [primeros, ultimos, noLeidosPorConv] = await Promise.all([
+    db.mensajeSoporte.findMany({ where: { conversacionId: { in: ids }, de: "cliente" }, orderBy: { createdAt: "asc" }, distinct: ["conversacionId"] }),
+    db.mensajeSoporte.findMany({ where: { conversacionId: { in: ids } }, orderBy: { createdAt: "desc" }, distinct: ["conversacionId"] }),
+    db.mensajeSoporte.groupBy({ by: ["conversacionId"], where: { conversacionId: { in: ids }, de: { in: ["soporte", "sistema"] }, leidoCliente: false }, _count: { id: true } }),
+  ])
+  const tituloPorConv = new Map(primeros.map(m => [m.conversacionId, m.contenido]))
+  const ultimoPorConv = new Map(ultimos.map(m => [m.conversacionId, m]))
+  const noLeidosMap = new Map(noLeidosPorConv.map(g => [g.conversacionId, g._count.id]))
+
+  return convs.map(c => {
+    const titulo = tituloPorConv.get(c.id) ?? "Nueva conversación"
+    const ultimo = ultimoPorConv.get(c.id)
+    return {
+      id: c.id,
+      estado: c.estado,
+      titulo: titulo.length > 48 ? titulo.slice(0, 48) + "…" : titulo,
+      ultimoMensaje: ultimo?.contenido ?? "",
+      ultimoMensajeAt: c.ultimoMensajeAt.toISOString(),
+      noLeidos: noLeidosMap.get(c.id) ?? 0,
+    }
+  })
 }
 
 export async function obtenerMensajesCliente(conversacionId: string) {
