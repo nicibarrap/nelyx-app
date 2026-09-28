@@ -25,13 +25,13 @@ describe("necesitaRecordatorio", () => {
     expect(necesitaRecordatorio({ ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: true }, ahora)).toBe(false)
   })
 
-  it("no hace falta si todavía no pasan 10 minutos", () => {
-    const ahora = new Date("2026-01-01T12:05:00Z")
+  it("no hace falta si todavía no pasan 4 minutos", () => {
+    const ahora = new Date("2026-01-01T12:03:00Z")
     expect(necesitaRecordatorio({ ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: false }, ahora)).toBe(false)
   })
 
-  it("hace falta apenas pasan 10 minutos sin respuesta de soporte", () => {
-    const ahora = new Date("2026-01-01T12:10:00Z")
+  it("hace falta apenas pasan 4 minutos sin respuesta de soporte", () => {
+    const ahora = new Date("2026-01-01T12:04:00Z")
     expect(necesitaRecordatorio({ ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: false }, ahora)).toBe(true)
   })
 })

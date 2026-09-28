@@ -1,7 +1,7 @@
 // Piezas puras del chat de soporte — separadas para poder probarlas sin
 // tocar la DB, mismo patrón que lib/auth-logica.ts.
 
-const MINUTOS_RECORDATORIO = 10
+const MINUTOS_RECORDATORIO = 4
 
 const PALABRAS_URGENTES = [
   "error", "no funciona", "no anda", "no puedo", "no me deja", "caído", "caido",
