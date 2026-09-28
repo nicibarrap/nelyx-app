@@ -88,7 +88,11 @@ export function SoporteAdminClient({ conversacionInicialId }: { conversacionInic
     })
   }
 
-  const lista = conversaciones.filter(c => !soloAbiertas || c.estado === "abierta")
+  // La conversación seleccionada nunca se saca de la lista, aunque se
+  // marque resuelta con el filtro "Solo abiertas" activo — si no, al
+  // marcarla resuelta el hilo abierto en pantalla parecía "borrarse" de
+  // golpe de la lista de la izquierda.
+  const lista = conversaciones.filter(c => !soloAbiertas || c.estado === "abierta" || c.id === seleccionada)
   const conv = conversaciones.find(c => c.id === seleccionada)
 
   return (

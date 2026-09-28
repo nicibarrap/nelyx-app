@@ -22,20 +22,15 @@ function nombreAutor(session: Awaited<ReturnType<typeof getSession>>) {
   return session.user.name || (session.user.esEmpleado ? "Empleado" : "Dueño de cuenta")
 }
 
-/** Trae (o crea si no existe) la conversación abierta de la cuenta actual.
- * Una sola conversación "viva" por cuenta dueña — dueño y empleados
- * comparten el mismo hilo con Soporte Nelyx. */
-export async function obtenerOCrearConversacion() {
+/** Crea un hilo de conversación nuevo, aparte de cualquier otro que ya
+ * exista (abierto o resuelto) — "Enviános un mensaje" en Inicio siempre
+ * arranca una conversación aparte; para seguir una ya existente, el
+ * cliente la abre desde la pestaña Mensajes. Dueño y empleados de una
+ * misma cuenta comparten los mismos hilos con Soporte Nelyx. */
+export async function crearNuevaConversacion() {
   const session = await getSession()
   if (session.user.role === "ADMIN" && !session.user.esEmpleado) throw new Error("No disponible para cuentas de soporte")
-
-  let conv = await db.conversacionSoporte.findFirst({
-    where: { userId: session.user.id, estado: "abierta" },
-    orderBy: { createdAt: "desc" },
-  })
-  if (!conv) {
-    conv = await db.conversacionSoporte.create({ data: { userId: session.user.id } })
-  }
+  const conv = await db.conversacionSoporte.create({ data: { userId: session.user.id } })
   return { id: conv.id }
 }
 
