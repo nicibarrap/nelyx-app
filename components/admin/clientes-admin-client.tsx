@@ -7,6 +7,7 @@ import {
   registrarPagoCobro, actualizarNotaCliente, crearSuscripcionParaUsuario, crearClienteNelyx,
   actualizarSuscripcion, cambiarEstadoCliente,
 } from "@/app/actions/admin-acciones"
+import { enviarInvitacionCliente } from "@/app/actions/password-reset-acciones"
 
 const PLANES_UI: Record<string, { label: string; precio: number; meses: number }> = {
   mensual:    { label: "Mensual",    precio: 20000,  meses: 1 },
@@ -171,39 +172,65 @@ function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void
   )
 }
 
+function hoyISO() { return new Date().toISOString().slice(0, 10) }
+
 function FormNuevoCliente({ onClose }: { onClose: () => void }) {
   const [pending, start] = useTransition()
-  const [plan, setPlan] = useState("prueba_gratuita")
-  const [passwordGenerada, setPasswordGenerada] = useState<string | null>(null)
+  const [plan, setPlan] = useState("mensual")
+  const [creado, setCreado] = useState<{ id: string } | null>(null)
+  const [invitando, setInvitando] = useState(false)
+  const [invitada, setInvitada] = useState(false)
+
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     start(async () => {
       const resultado = await crearClienteNelyx(fd)
       toast.success("✅ Cliente creado")
-      // Si no se escribió una contraseña, se generó una al azar — hay que
-      // mostrarla ahora porque es la única vez que se puede ver (queda
-      // guardada solo como hash). Si se cierra el modal sin copiarla, se
-      // pierde y hay que restablecerla a mano después.
-      if (resultado?.passwordGenerada) setPasswordGenerada(resultado.passwordGenerada)
-      else onClose()
+      setCreado(resultado)
     })
   }
+
+  function invitar() {
+    if (!creado) return
+    setInvitando(true)
+    start(async () => {
+      try {
+        await enviarInvitacionCliente(creado.id)
+        setInvitada(true)
+        toast.success("Invitación enviada")
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo enviar la invitación")
+      } finally {
+        setInvitando(false)
+      }
+    })
+  }
+
   const inp = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
   const sel = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
 
-  if (passwordGenerada) {
+  if (creado) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(0,0,0,0.7)"}}>
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6 w-full max-w-md space-y-3">
-          <p className="text-sm font-bold text-[var(--c-text)]">✅ Cliente creado — copia su contraseña</p>
-          <p className="text-xs text-[var(--c-text3)]">No escribiste una contraseña, así que se generó una al azar. Cópiala y pásasela al cliente ahora — no se puede volver a ver después.</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 h-10 flex items-center px-3 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl text-sm text-[var(--c-text)] select-all">{passwordGenerada}</code>
-            <button type="button" onClick={() => { navigator.clipboard.writeText(passwordGenerada).catch(() => {}); toast.success("Copiada") }}
-              className="h-10 px-3 text-xs bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl">Copiar</button>
+          <p className="text-sm font-bold text-[var(--c-text)]">✅ Cliente creado</p>
+          {invitada ? (
+            <p className="text-xs text-emerald-400">Le mandamos un correo con un link para que cree su propia contraseña.</p>
+          ) : (
+            <p className="text-xs text-[var(--c-text3)]">Todavía no tiene contraseña — mándale una invitación por correo para que cree la suya, o hazlo más tarde desde su ficha.</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 h-10 text-sm border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">
+              {invitada ? "Listo" : "Más tarde"}
+            </button>
+            {!invitada && (
+              <button type="button" onClick={invitar} disabled={invitando}
+                className="flex-1 h-10 text-sm bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl disabled:opacity-50">
+                {invitando ? "Enviando..." : "✉️ Enviar invitación"}
+              </button>
+            )}
           </div>
-          <button type="button" onClick={onClose} className="w-full h-10 text-sm border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Listo</button>
         </div>
       </div>
     )
@@ -219,20 +246,20 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
         <input name="nombre" required placeholder="Nombre completo *" className={inp} />
         <input name="email" type="email" required placeholder="Email *" className={inp} />
         <input name="negocio" placeholder="Nombre del negocio" className={inp} />
-        <input name="password" type="password" placeholder="Contraseña (vacío = generar una al azar)" className={inp} />
+        <div>
+          <label className="text-[10px] text-[var(--c-text4)]">Fecha de inicio</label>
+          <input name="fechaInicio" type="date" defaultValue={hoyISO()} className={inp} />
+        </div>
         <div>
           <label className="text-[10px] text-[var(--c-text4)]">Plan</label>
           <select name="plan" value={plan} onChange={e => setPlan(e.target.value)} className={sel}>
-            <option value="prueba_gratuita">🎁 Prueba gratuita (1 mes)</option>
             {Object.entries(PLANES_UI).map(([key, p]) => (
               <option key={key} value={key}>{p.label} — {formatCLP(p.precio)}</option>
             ))}
           </select>
-          {plan === "prueba_gratuita" ? (
-            <p className="text-[10px] text-blue-400 mt-1">No se generará ningún cobro durante el mes de prueba.</p>
-          ) : (
-            <p className="text-[10px] text-[var(--c-warning)] mt-1">Se generará un cobro pendiente de {formatCLP(PLANES_UI[plan].precio)} de inmediato.</p>
-          )}
+          <p className="text-[10px] text-blue-400 mt-1">
+            El primer mes es gratis — recién después se empieza a cobrar {formatCLP(PLANES_UI[plan].precio)} cada {PLANES_UI[plan].meses === 1 ? "mes" : `${PLANES_UI[plan].meses} meses`}.
+          </p>
         </div>
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onClose} className="flex-1 h-10 text-sm border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
@@ -268,6 +295,16 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
     if (!c.suscripcionId) return
     if (!confirm("¿Cancelar definitivamente esta suscripción?")) return
     start(async () => { await cambiarEstadoCliente(c.suscripcionId!, "cancelado"); toast.success("Suscripción cancelada") })
+  }
+  function invitar() {
+    start(async () => {
+      try {
+        await enviarInvitacionCliente(c.id)
+        toast.success("Invitación enviada por correo")
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo enviar la invitación")
+      }
+    })
   }
 
   const diasRestantesPrueba = c.estado === "prueba_gratuita" ? diasHasta(c.fechaFinPrueba) : null
@@ -413,6 +450,11 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
                 <span className="text-[9px] font-semibold text-center text-emerald-400">Registrar pago</span>
               </button>
             )}
+            <button onClick={invitar} disabled={pending}
+              className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
+              <span className="text-lg">✉️</span>
+              <span className="text-[9px] font-semibold text-center text-sky-400">Invitación</span>
+            </button>
             <button onClick={toggleSuspender} disabled={pending}
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
               <span className="text-lg">🚫</span>

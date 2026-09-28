@@ -3,8 +3,15 @@ import crypto from "crypto"
 import bcrypt from "bcryptjs"
 import { headers } from "next/headers"
 import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
 import { enviarEmail } from "@/lib/email"
 import { tokenResetValido } from "@/lib/auth-logica"
+
+async function getAdminSession() {
+  const session = await auth()
+  if (!session || session.user.role !== "ADMIN" || session.user.esEmpleado) throw new Error("No autorizado")
+  return session
+}
 
 // Límites — mismo espíritu que el rate limit de login (SUPABASE_SQL_RATE_LIMIT_LOGIN),
 // pero acá se cuenta tanto por IP (alguien probando muchos correos
@@ -112,6 +119,46 @@ export async function resetearPassword(tokenPlano: string, nuevaPassword: string
       data: { usedAt: new Date() },
     }),
   ])
+
+  return { ok: true }
+}
+
+// ── Invitación de cuenta (admin) ─────────────────────────────────────
+// El admin crea al cliente sin contraseña (ver crearClienteNelyx) — esta
+// acción reutiliza el mismo mecanismo de "restablecer contraseña" para
+// que el cliente defina la suya propia: un link de token sirve igual de
+// bien para poner la primera contraseña que para cambiar una existente,
+// así que no hace falta un flujo ni una página aparte.
+const EXPIRA_INVITACION_DIAS = 7
+
+export async function enviarInvitacionCliente(userId: string): Promise<{ ok: boolean }> {
+  await getAdminSession()
+  const user = await db.user.findFirst({ where: { id: userId, rol: "USER", cuentaPrincipalId: null } })
+  if (!user) throw new Error("Cliente no encontrado")
+
+  // Invalida cualquier invitación anterior sin usar antes de mandar una
+  // nueva — que no queden varios links viejos activos a la vez.
+  await db.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: new Date() },
+  })
+
+  const tokenPlano = crypto.randomBytes(32).toString("hex")
+  await db.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(tokenPlano),
+      expiresAt: new Date(Date.now() + EXPIRA_INVITACION_DIAS * 24 * 60 * 60 * 1000),
+    },
+  })
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  const link = `${baseUrl}/auth/restablecer?token=${tokenPlano}`
+  await enviarEmail({
+    to: user.email,
+    subject: "Bienvenido a Nelyx — activa tu cuenta",
+    text: `Hola ${user.nombre},\n\nTu cuenta en Nelyx ya está lista. Para activarla, crea tu contraseña en este link (válido por ${EXPIRA_INVITACION_DIAS} días):\n\n${link}\n\nUna vez que la crees, vas a poder ingresar con tu correo y esa contraseña.`,
+  })
 
   return { ok: true }
 }

@@ -20,22 +20,25 @@ function generarPasswordAleatoria(): string {
 }
 
 // ── Crear cliente ──────────────────────────────────────────────────────
+// Todo cliente nuevo arranca con el primer mes gratis, sea cual sea el
+// plan elegido — el plan real recién se cobra cuando termina la prueba
+// (ver aplicarTransicion en lib/suscripciones.ts). El dueño de la cuenta
+// nunca ve ni define una contraseña acá: la define él mismo desde el link
+// de invitación (ver enviarInvitacionCliente en password-reset-acciones.ts).
 export async function crearClienteNelyx(formData: FormData) {
   await getAdminSession()
   const nombre = formData.get("nombre") as string
   const email = formData.get("email") as string
-  const passwordIngresada = (formData.get("password") as string)?.trim()
   const negocio = formData.get("negocio") as string | null
-  const planSeleccionado = (formData.get("plan") as string) || "prueba_gratuita"
+  const planSeleccionado = (formData.get("plan") as string) || "mensual"
+  const fechaInicioInput = formData.get("fechaInicio") as string | null
 
-  // Antes, dejar la contraseña en blanco le ponía la MISMA clave fija
-  // ("nelyx2024") a cualquier cuenta creada así — cualquiera que conociera
-  // ese valor podía entrar a cualquier cliente que no la hubiera cambiado
-  // todavía. Ahora se genera una aleatoria distinta por cuenta, y se
-  // devuelve una sola vez para que el dueño se la pase al cliente.
-  const passwordGenerada = passwordIngresada ? null : generarPasswordAleatoria()
-  const hashed = await bcrypt.hash(passwordIngresada || passwordGenerada!, 10)
-  const fechaInicio = new Date()
+  const plan: PlanKey = esPlanValido(planSeleccionado) ? planSeleccionado : "mensual"
+  const fechaInicio = fechaInicioInput ? new Date(fechaInicioInput) : new Date()
+
+  // Contraseña al azar que nadie conoce — solo para llenar la columna NOT
+  // NULL hasta que el cliente cree la suya propia vía invitación.
+  const hashed = await bcrypt.hash(generarPasswordAleatoria(), 10)
 
   const user = await db.user.create({
     data: {
@@ -48,54 +51,21 @@ export async function crearClienteNelyx(formData: FormData) {
     },
   })
 
-  if (planSeleccionado === "prueba_gratuita") {
-    const fechaFinPrueba = new Date(fechaInicio)
-    fechaFinPrueba.setDate(fechaFinPrueba.getDate() + DIAS_PRUEBA_GRATUITA)
-    await db.suscripcionNelyx.create({
-      data: {
-        userId: user.id,
-        plan: "mensual", // plan al que convertirá cuando termine la prueba
-        estado: "prueba_gratuita",
-        fechaInicio,
-        fechaFinPrueba,
-        precioPlan: 0,
-      },
-    })
-  } else {
-    const plan: PlanKey = esPlanValido(planSeleccionado) ? planSeleccionado : "mensual"
-    const monto = precioDePlan(plan)
-    const fechaProximoCobro = sumarMeses(fechaInicio, PLANES[plan].meses)
-    await db.$transaction([
-      db.suscripcionNelyx.create({
-        data: {
-          userId: user.id,
-          plan,
-          estado: "pendiente", // el primer cobro queda pendiente desde ya
-          fechaInicio,
-          fechaProximoCobro,
-          precioPlan: monto,
-        },
-      }),
-    ])
-    const nuevaSus = await db.suscripcionNelyx.findUnique({ where: { userId: user.id } })
-    if (nuevaSus) {
-      const fechaVencimiento = new Date()
-      fechaVencimiento.setDate(fechaVencimiento.getDate() + DIAS_GRACIA_PAGO)
-      await db.cobroNelyx.create({
-        data: {
-          suscripcionId: nuevaSus.id,
-          plan,
-          monto,
-          fechaEmision: fechaInicio,
-          fechaVencimiento,
-          estado: "pendiente",
-        },
-      })
-    }
-  }
+  const fechaFinPrueba = new Date(fechaInicio)
+  fechaFinPrueba.setDate(fechaFinPrueba.getDate() + DIAS_PRUEBA_GRATUITA)
+  await db.suscripcionNelyx.create({
+    data: {
+      userId: user.id,
+      plan,
+      estado: "prueba_gratuita",
+      fechaInicio,
+      fechaFinPrueba,
+      precioPlan: 0,
+    },
+  })
 
   revalidatePath("/admin/clientes")
-  return { passwordGenerada }
+  return { id: user.id }
 }
 
 /**
