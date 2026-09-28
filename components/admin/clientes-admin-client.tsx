@@ -185,9 +185,13 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     start(async () => {
-      const resultado = await crearClienteNelyx(fd)
-      toast.success("✅ Cliente creado")
-      setCreado(resultado)
+      try {
+        const resultado = await crearClienteNelyx(fd)
+        toast.success("✅ Cliente creado")
+        setCreado(resultado)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo crear el cliente")
+      }
     })
   }
 

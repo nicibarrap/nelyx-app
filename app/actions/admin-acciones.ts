@@ -40,16 +40,24 @@ export async function crearClienteNelyx(formData: FormData) {
   // NULL hasta que el cliente cree la suya propia vía invitación.
   const hashed = await bcrypt.hash(generarPasswordAleatoria(), 10)
 
-  const user = await db.user.create({
-    data: {
-      nombre: nombre.trim(),
-      email: email.trim().toLowerCase(),
-      password: hashed,
-      negocio: negocio?.trim() || null,
-      activo: true,
-      rol: "USER",
-    },
-  })
+  let user
+  try {
+    user = await db.user.create({
+      data: {
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        password: hashed,
+        negocio: negocio?.trim() || null,
+        activo: true,
+        rol: "USER",
+      },
+    })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new Error("Ya existe una cuenta con ese email.")
+    }
+    throw err
+  }
 
   const fechaFinPrueba = new Date(fechaInicio)
   fechaFinPrueba.setDate(fechaFinPrueba.getDate() + DIAS_PRUEBA_GRATUITA)
