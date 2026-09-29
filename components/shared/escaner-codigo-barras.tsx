@@ -18,6 +18,23 @@ const FORMATOS_PRODUCTO = [
   BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
 ]
 
+// Mismos formatos, en la nomenclatura de la BarcodeDetector API nativa del
+// navegador (Chrome/Android) — que corre sobre el motor de reconocimiento de
+// códigos del propio sistema operativo (ML Kit en Android), mucho más
+// tolerante a desenfoque, ángulo y poca luz que decodificar cuadro a cuadro
+// en JS puro. Se usa cuando el navegador la soporta; si no (Safari/iOS,
+// navegadores viejos), se cae automáticamente al decodificador de
+// @zxing/library de siempre — ningún dispositivo pierde la función, solo
+// que en unos queda más preciso que en otros.
+const FORMATOS_NATIVOS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"]
+
+type DetectorNativo = { detect: (fuente: CanvasImageSource) => Promise<{ rawValue: string }[]> }
+declare global {
+  interface Window {
+    BarcodeDetector?: new (opciones?: { formats?: string[] }) => DetectorNativo
+  }
+}
+
 export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear código" }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -59,23 +76,45 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
     const reader = new MultiFormatReader()
     reader.setHints(hints)
 
-    let cancelado = false
+    let detectorNativo: DetectorNativo | null = null
+    if (typeof window !== "undefined" && window.BarcodeDetector) {
+      try { detectorNativo = new window.BarcodeDetector({ formats: FORMATOS_NATIVOS }) } catch { detectorNativo = null }
+    }
 
-    // Paso 1: pedir el stream con la resolución forzada de verdad — "min" y
-    // "max" además de "ideal", para que el navegador no pueda entregar algo
-    // muy por debajo sin que lo notemos.
-    navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { min: 1280, ideal: 1920, max: 2560 },
-        height: { min: 720, ideal: 1080, max: 1440 },
-      },
-    }).then(async stream => {
+    let cancelado = false
+    let intervaloReenfoque: ReturnType<typeof setInterval> | null = null
+
+    // Algunos celulares de gama baja no pueden cumplir el mínimo de
+    // 1280×720 y el navegador rechaza el pedido entero con
+    // OverconstrainedError — sin este respaldo, eso se veía igual que un
+    // problema de permisos ("No se pudo acceder a la cámara"). Se reintenta
+    // una vez sin el mínimo forzado antes de darlo por perdido.
+    async function pedirCamara(): Promise<MediaStream> {
+      const constraintsEstrictas: MediaStreamConstraints = {
+        video: {
+          facingMode: "environment",
+          width: { min: 1280, ideal: 1920, max: 2560 },
+          height: { min: 720, ideal: 1080, max: 1440 },
+        },
+      }
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraintsEstrictas)
+      } catch (err) {
+        if (err instanceof Error && err.name === "OverconstrainedError") {
+          return await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+          })
+        }
+        throw err
+      }
+    }
+
+    pedirCamara().then(async stream => {
       if (cancelado) { stream.getTracks().forEach(t => t.stop()); return }
       streamRef.current = stream
       const track = stream.getVideoTracks()[0]
 
-      // Paso 2: recién CON el stream ya andando, se piden por separado las
+      // Recién CON el stream ya andando, se piden por separado las
       // capacidades avanzadas (enfoque continuo). Pedirlo junto con la
       // resolución en la misma llamada inicial hace que algunos celulares
       // rechacen o ignoren silenciosamente todo el bloque "advanced".
@@ -101,22 +140,41 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
       if (settings?.width && settings?.height) setResolucion(`${settings.width}×${settings.height}`)
 
       setListo(true)
-      iniciarLoopDecodificacion(reader)
+      iniciarLoopDecodificacion(reader, detectorNativo)
+
+      // Si pasan varios segundos sin detectar nada, se fuerza un reenfoque
+      // solo — en algunos celulares el enfoque continuo se "traba" mirando
+      // a un punto borroso y no vuelve a ajustar por su cuenta, sobre todo
+      // apuntando de cerca a un código de barras. Mismo truco que el toque
+      // manual (handleTapEnfoque), pero automático mientras no hay lectura.
+      if (capacidades?.focusMode?.includes?.("continuous")) {
+        intervaloReenfoque = setInterval(() => {
+          if (cancelado || detectadoRef.current) return
+          track.applyConstraints({ advanced: [{ focusMode: "manual" } as any] })
+            .then(() => track.applyConstraints({ advanced: [{ focusMode: "continuous" } as any] }))
+            .catch(() => {})
+        }, 3500)
+      }
     }).catch(() => {
       if (!cancelado) setError("No se pudo acceder a la cámara. Revisa los permisos del navegador.")
     })
 
-    function iniciarLoopDecodificacion(reader: MultiFormatReader) {
+    function iniciarLoopDecodificacion(reader: MultiFormatReader, detectorNativo: DetectorNativo | null) {
       const video = videoRef.current
       const canvas = canvasRef.current
       if (!video || !canvas) return
       const ctx = canvas.getContext("2d", { willReadFrequently: true })
       if (!ctx) return
       let ultimoIntento = 0
+      let procesando = false
+      // El detector nativo corre sobre el motor del sistema operativo —
+      // mucho más liviano que decodificar en JS, así que puede intentarlo
+      // más seguido sin recargar el celular.
+      const intervaloMs = detectorNativo ? 66 : 100
 
       function procesarFrame(ahora: number) {
         if (cancelado || detectadoRef.current) return
-        if (ahora - ultimoIntento >= 100) {
+        if (!procesando && ahora - ultimoIntento >= intervaloMs) {
           ultimoIntento = ahora
           if (video!.readyState === video!.HAVE_ENOUGH_DATA) {
             const vw = video!.videoWidth, vh = video!.videoHeight
@@ -130,13 +188,21 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
               canvas.height = altoRecorte
               ctx.drawImage(video!, x, y, anchoRecorte, altoRecorte, 0, 0, anchoRecorte, altoRecorte)
 
-              try {
-                const luminancia = new HTMLCanvasElementLuminanceSource(canvas)
-                const bitmap = new BinaryBitmap(new HybridBinarizer(luminancia))
-                const resultado = reader.decode(bitmap)
-                if (resultado) reportarDetectado(resultado.getText())
-              } catch (e) {
-                if (!(e instanceof NotFoundException)) { /* se reintenta en el próximo cuadro */ }
+              if (detectorNativo) {
+                procesando = true
+                detectorNativo.detect(canvas)
+                  .then(resultados => { if (resultados.length > 0) reportarDetectado(resultados[0].rawValue) })
+                  .catch(() => { /* se reintenta en el próximo cuadro */ })
+                  .finally(() => { procesando = false })
+              } else {
+                try {
+                  const luminancia = new HTMLCanvasElementLuminanceSource(canvas)
+                  const bitmap = new BinaryBitmap(new HybridBinarizer(luminancia))
+                  const resultado = reader.decode(bitmap)
+                  if (resultado) reportarDetectado(resultado.getText())
+                } catch (e) {
+                  if (!(e instanceof NotFoundException)) { /* se reintenta en el próximo cuadro */ }
+                }
               }
             }
           }
@@ -149,6 +215,7 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
     return () => {
       cancelado = true
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (intervaloReenfoque) clearInterval(intervaloReenfoque)
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
