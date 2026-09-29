@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs"
 import { headers } from "next/headers"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { enviarEmail } from "@/lib/email"
+import { enviarEmail, correoInvitacion, correoRecuperarPassword } from "@/lib/email"
 import { tokenResetValido } from "@/lib/auth-logica"
 
 async function getAdminSession() {
@@ -84,11 +84,8 @@ export async function solicitarResetPassword(emailInput: string): Promise<{ ok: 
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
   const link = `${baseUrl}/auth/restablecer?token=${tokenPlano}`
-  await enviarEmail({
-    to: user.email,
-    subject: "Restablece tu contraseña — Nelyx",
-    text: `Hola ${user.nombre},\n\nRecibimos una solicitud para restablecer tu contraseña de Nelyx. Este link es válido por ${EXPIRA_EN_MINUTOS} minutos:\n\n${link}\n\nSi no fuiste vos quien lo pidió, ignora este correo — tu contraseña actual sigue funcionando.`,
-  })
+  const { text, html } = correoRecuperarPassword({ nombre: user.nombre, link, minutosValidez: EXPIRA_EN_MINUTOS })
+  await enviarEmail({ to: user.email, subject: "Restablece tu contraseña — Nelyx", text, html })
 
   return { ok: true, mensaje: MENSAJE_GENERICO }
 }
@@ -154,11 +151,8 @@ export async function enviarInvitacionCliente(userId: string): Promise<{ ok: boo
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
   const link = `${baseUrl}/auth/restablecer?token=${tokenPlano}`
-  await enviarEmail({
-    to: user.email,
-    subject: "Bienvenido a Nelyx — activa tu cuenta",
-    text: `Hola ${user.nombre},\n\nTu cuenta en Nelyx ya está lista. Para activarla, crea tu contraseña en este link (válido por ${EXPIRA_INVITACION_DIAS} días):\n\n${link}\n\nUna vez que la crees, vas a poder ingresar con tu correo y esa contraseña.`,
-  })
+  const { text, html } = correoInvitacion({ nombre: user.nombre, link, diasValidez: EXPIRA_INVITACION_DIAS })
+  await enviarEmail({ to: user.email, subject: "Bienvenido a Nelyx — activa tu cuenta", text, html })
 
   return { ok: true }
 }

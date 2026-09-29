@@ -45,6 +45,22 @@ export default async function ClientesAdminPage() {
   })
   const ventasMap = new Map(ventasCounts.map(v => [v.userId, v._count.id]))
 
+  // Estado de acceso: no hace falta una columna nueva — se deriva de si
+  // hay algún PasswordResetToken para la cuenta (se le mandó invitación o
+  // pidió recuperar su clave) y si alguno ya se usó (ya definió su propia
+  // contraseña, sea por invitación o por "olvidé mi contraseña").
+  const tokens = await db.passwordResetToken.findMany({
+    where: { userId: { in: usuarios.map(u => u.id) } },
+    select: { userId: true, usedAt: true },
+  })
+  const accesoPorUsuario = new Map<string, { invitado: boolean; activada: boolean }>()
+  for (const t of tokens) {
+    const actual = accesoPorUsuario.get(t.userId) ?? { invitado: false, activada: false }
+    actual.invitado = true
+    if (t.usedAt) actual.activada = true
+    accesoPorUsuario.set(t.userId, actual)
+  }
+
   function calcularSalud(ultimoAcceso: Date | null | undefined, movimientos: number): number {
     let score = 100
     if (!ultimoAcceso) { score -= 40 }
@@ -72,6 +88,8 @@ export default async function ClientesAdminPage() {
     const cobroPendiente = sus?.cobros.find(c => c.estado === "pendiente" || c.estado === "vencido") ?? null
 
     const planLabel = sus && esPlanValido(sus.plan) ? PLANES[sus.plan].label : "Mensual"
+    const acceso = accesoPorUsuario.get(u.id)
+    const cuentaAcceso: "activa" | "pendiente" | "sin_invitar" = acceso?.activada ? "activa" : acceso?.invitado ? "pendiente" : "sin_invitar"
 
     return {
       id: u.id,
@@ -97,6 +115,7 @@ export default async function ClientesAdminPage() {
       productos: u._count.productos,
       clientesCount: u._count.clientes,
       equipo: u._count.empleados,
+      cuentaAcceso,
       ventas,
       cobroPendiente: cobroPendiente ? {
         id: cobroPendiente.id,

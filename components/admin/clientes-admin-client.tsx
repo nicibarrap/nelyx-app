@@ -25,6 +25,7 @@ type Cliente = {
   precioPlan: number; renovacionAutomatica: boolean
   ultimoAcceso: string | null; diasSinAcceso: number | null; notas: string | null
   salud: number; movimientos: number; productos: number; clientesCount: number; ventas: number; equipo: number
+  cuentaAcceso: "activa" | "pendiente" | "sin_invitar"
   cobroPendiente: Cobro | null; historialCobros: Cobro[]; pagos: Pago[]
 }
 type Metricas = {
@@ -44,6 +45,12 @@ const ESTADO_CFG: Record<string, { label: string; cls: string; dot: string }> = 
   vencido:         { label: "Vencido",          cls: "bg-red-500/10 text-red-400 border-red-500/20",          dot: "bg-red-400" },
   suspendido:      { label: "Suspendido",       cls: "bg-slate-500/10 text-slate-400 border-slate-500/20",    dot: "bg-slate-400" },
   cancelado:       { label: "Cancelado",        cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",       dot: "bg-zinc-400" },
+}
+
+const ACCESO_CFG: Record<Cliente["cuentaAcceso"], { label: string; cls: string }> = {
+  activa:       { label: "Activa",                cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  pendiente:    { label: "Invitación pendiente",  cls: "bg-amber-500/10 text-[var(--c-warning)] border-amber-500/20" },
+  sin_invitar:  { label: "Sin invitar",           cls: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
 }
 
 function initials(name: string) { return name.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase() }
@@ -345,6 +352,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
       <div className="flex gap-2 px-5 py-3 border-b border-[var(--c-border)] flex-shrink-0">
         <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${cfg.cls}`}>{cfg.label}</span>
         <span className="text-xs px-2.5 py-1 rounded-full border border-[var(--c-border)] text-[var(--c-text3)]">{c.planLabel}</span>
+        <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${ACCESO_CFG[c.cuentaAcceso].cls}`}>{ACCESO_CFG[c.cuentaAcceso].label}</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
@@ -457,7 +465,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
             <button onClick={invitar} disabled={pending}
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
               <span className="text-lg">✉️</span>
-              <span className="text-[9px] font-semibold text-center text-sky-400">Invitación</span>
+              <span className="text-[9px] font-semibold text-center text-sky-400">{c.cuentaAcceso === "sin_invitar" ? "Enviar invitación" : "Reenviar invitación"}</span>
             </button>
             <button onClick={toggleSuspender} disabled={pending}
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
@@ -526,14 +534,9 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
 
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <Link href="/dashboard/resumen" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
-            ← Volver al Dashboard
-          </Link>
-          <Link href="/admin/soporte" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
-            💬 Soporte NELYX →
-          </Link>
-        </div>
+        <Link href="/dashboard/resumen" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
+          ← Volver al Dashboard
+        </Link>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-[var(--c-text)] tracking-tight">Clientes NELYX</h1>
@@ -584,14 +587,14 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[var(--c-border2)]">
-                  {["Cliente", "Estado", "Plan", "Inicio", "Próximo cobro", "Monto", "Equipo", "Salud", "Último acceso", ""].map(h => (
+                  {["Cliente", "Estado", "Cuenta", "Plan", "Inicio", "Próximo cobro", "Monto", "Equipo", "Salud", "Último acceso", ""].map(h => (
                     <th key={h} className="text-left text-[var(--c-text4)] font-semibold px-4 py-2.5 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--c-border2)]">
                 {filtrados.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-10 text-[var(--c-text4)]">Sin clientes</td></tr>
+                  <tr><td colSpan={11} className="text-center py-10 text-[var(--c-text4)]">Sin clientes</td></tr>
                 ) : filtrados.map(c => {
                   const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.al_dia
                   const isSelected = selectedUpdated?.id === c.id
@@ -613,6 +616,9 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${cfg.cls}`}>{cfg.label}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${ACCESO_CFG[c.cuentaAcceso].cls}`}>{ACCESO_CFG[c.cuentaAcceso].label}</span>
                       </td>
                       <td className="px-4 py-3 text-[var(--c-text2)] whitespace-nowrap">{c.planLabel}</td>
                       <td className="px-4 py-3 text-[var(--c-text2)] whitespace-nowrap">{fmtDate(c.fechaInicio)}</td>
