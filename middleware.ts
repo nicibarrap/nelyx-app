@@ -130,6 +130,14 @@ export default auth(async (req) => {
   return respuesta
 })
 
+// La lista anterior excluía archivos públicos uno por uno (favicon.ico,
+// logo.webp, icon.webp) — cualquier archivo público nuevo (manifest.json,
+// sw.js, los íconos de /icons, el logo usado en los correos) quedaba
+// desprotegido del olvido: sin sesión, el middleware lo redirigía a
+// /auth/login, y quien lo pedía (el navegador armando el manifest del PWA,
+// Gmail cargando el logo del correo) recibía HTML en vez del archivo real.
+// Ahora se excluye cualquier ruta cuyo último segmento tenga extensión
+// (un archivo real de /public) en vez de mantener una lista a mano.
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|logo.webp|icon.webp).*)"]
+  matcher: ["/((?!api|_next/static|_next/image|.*\\.[\\w]+$).*)"]
 }
