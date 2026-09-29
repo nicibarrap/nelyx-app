@@ -66,7 +66,17 @@ export default auth(async (req) => {
       modulosFrescos = cache.modulosPermitidos
     } else {
       try {
-        const checkUrl = new URL("/api/check-session", req.url)
+        // Se arma con VERCEL_URL (la URL fija de este despliegue, provista
+        // por la plataforma) en vez de con req.url — si se arma con el
+        // dominio que el usuario usó para entrar, y ese dominio tiene un
+        // redirect a otro (ej. el dominio viejo redirigiendo al nuevo tras
+        // conectar un dominio propio), este fetch interno cae en ese
+        // redirect entre dominios, pierde la cookie de sesión en el camino,
+        // y esta ruta responde "no hay sesión" — lo que fuerza un cierre de
+        // sesión real para cuentas que sí están activas. VERCEL_URL nunca
+        // pasa por reglas de redirect de dominio custom.
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : req.url
+        const checkUrl = new URL("/api/check-session", baseUrl)
         const res = await fetch(checkUrl.toString(), {
           headers: { cookie: req.headers.get("cookie") ?? "" },
         })
