@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { ClientesClient } from "@/components/clientes/clientes-client"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
 import { hoyEnChile } from "@/lib/timezone"
-import { calcularIntervaloPromedioDias, calcularDebioVolver, calcularSegmento, calcularUmbralValioso } from "@/lib/cliente-insights"
+import { calcularIntervaloPromedioDias, calcularDebioVolver, calcularSegmento, calcularUmbralValioso, calcularMetodoPagoHabitual, calcularFrecuenciaLabel } from "@/lib/cliente-insights"
 
 export const metadata: Metadata = { title: "Clientes" }
 
@@ -20,7 +20,7 @@ export default async function ClientesPage() {
     db.cliente.findMany({
       where: { userId: session!.user.id },
       include: {
-        movimientos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }], take: 100, select: { monto: true, fecha: true, tipo: true, descripcion: true } },
+        movimientos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }], take: 100, select: { monto: true, fecha: true, tipo: true, descripcion: true, metodoPago: true } },
         notas: { orderBy: { createdAt: "desc" } },
         cuentasPorCobrar: {
           orderBy: { fechaVenta: "desc" },
@@ -74,6 +74,14 @@ export default async function ClientesPage() {
       ...ventasContado.map(m => new Date(m.fecha)),
       ...ventasCredito.map(cc => new Date(cc.fechaVenta)),
     ])
+    // Reemplaza los campos "Frecuencia compra"/"Método pago" que antes
+    // había que adivinar a mano al crear el cliente — se calculan solos a
+    // partir de su historial real, y quedan null hasta que exista.
+    const frecuenciaCompraAuto = calcularFrecuenciaLabel(intervaloPromedioDias)
+    const metodoPagoAuto = calcularMetodoPagoHabitual([
+      ...ventasContado.map(m => m.metodoPago),
+      ...ventasCredito.map(() => "Crédito"),
+    ])
 
     return {
       id: c.id,
@@ -85,8 +93,8 @@ export default async function ClientesPage() {
       direccion: c.direccion,
       ciudad: c.ciudad,
       tipoCliente: c.tipoCliente,
-      frecuenciaCompra: c.frecuenciaCompra,
-      metodoPago: c.metodoPago,
+      frecuenciaCompraAuto,
+      metodoPagoAuto,
       diasPago: c.diasPago,
       esFrecuente: c.esFrecuente,
       esVip: c.esVip,
