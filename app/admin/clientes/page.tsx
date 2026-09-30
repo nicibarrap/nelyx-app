@@ -61,7 +61,7 @@ export default async function ClientesAdminPage() {
     accesoPorUsuario.set(t.userId, actual)
   }
 
-  function calcularSalud(ultimoAcceso: Date | null | undefined, movimientos: number): number {
+  function calcularSalud(ultimoAcceso: Date | null | undefined, movimientos: number, fechaInicio: Date): number {
     let score = 100
     if (!ultimoAcceso) { score -= 40 }
     else {
@@ -71,9 +71,16 @@ export default async function ClientesAdminPage() {
       else if (days > 7) score -= 15
       else if (days > 3) score -= 5
     }
-    if (movimientos === 0) score -= 30
-    else if (movimientos < 5) score -= 15
-    else if (movimientos < 20) score -= 5
+    // Una cuenta recién creada (primera semana) con 0 movimientos es lo
+    // esperable, no una señal de alerta — todavía no tuvo tiempo real de
+    // usar la plataforma. Penalizarla acá solo genera una salud "baja"
+    // falsa en cuentas nuevas que ni siquiera han empezado a operar.
+    const diasDesdeInicio = (hoy.getTime() - fechaInicio.getTime()) / 86400000
+    if (diasDesdeInicio > 7) {
+      if (movimientos === 0) score -= 30
+      else if (movimientos < 5) score -= 15
+      else if (movimientos < 20) score -= 5
+    }
     return Math.max(0, Math.min(100, score))
   }
 
@@ -84,7 +91,7 @@ export default async function ClientesAdminPage() {
       ? Math.round((hoy.getTime() - sus.ultimoAcceso.getTime()) / 86400000)
       : null
     const ventas = ventasMap.get(u.id) ?? 0
-    const salud = calcularSalud(sus?.ultimoAcceso, u._count.movimientos)
+    const salud = calcularSalud(sus?.ultimoAcceso, u._count.movimientos, sus?.fechaInicio ?? u.createdAt)
     const cobroPendiente = sus?.cobros.find(c => c.estado === "pendiente" || c.estado === "vencido") ?? null
 
     const planLabel = sus && esPlanValido(sus.plan) ? PLANES[sus.plan].label : "Mensual"
