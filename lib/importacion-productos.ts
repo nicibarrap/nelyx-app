@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx"
+import { sugerirCategoria } from "./sugerencias-producto"
 
 // Plantilla simplificada (10 columnas) — Peso siempre en Kg, Volumen no se
 // ofrece (igual que el wizard de creación normal, para que ambos caminos
@@ -231,7 +232,10 @@ export function validarFilas(filas: FilaRaw[], productosExistentes: { sku: strin
       mensajes,
       datos: {
         nombre,
-        categoria: String(fila["Categoría"] ?? "").trim() || null,
+        // Si el usuario dejó la celda de Categoría vacía (muy común cuando
+        // se completa a mano una planilla de 80+ filas), se sugiere una a
+        // partir del nombre en vez de dejar el producto sin categoría.
+        categoria: String(fila["Categoría"] ?? "").trim() || sugerirCategoria(nombre).categoria,
         sku, codigoBarras,
         precio, costo,
         formaVenta,
