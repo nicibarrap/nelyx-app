@@ -35,7 +35,7 @@ type Producto = {
   codigoBarras: string | null
   stock: number | null; stockMinimo: number | null; activo: boolean
   unidadMedida: string; unidadPersonalizada: string | null; formaVenta: string
-  controlaInventario: boolean; imagenBase64: string | null
+  controlaInventario: boolean
   unidadVentaCantidad: number | null; unidadVentaTipo: string | null
   ventaMinima: number | null
   createdAt: Date; ventasCount: number; ingresosTotal: number
