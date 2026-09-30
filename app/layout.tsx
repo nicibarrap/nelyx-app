@@ -35,6 +35,38 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }
           } catch (e) {}
         `}} />
+        {/* Después de cada despliegue, el navegador de alguien que ya tenía
+            la app abierta puede quedar apuntando a archivos .js viejos que
+            ya no existen en el servidor — se veía en Sentry como
+            "Cannot read properties of undefined (reading 'call')" en
+            páginas al azar. En vez de que la persona vea un error sin
+            sentido, se detecta ese patrón puntual y se recarga una sola vez
+            (con guarda de 10s para nunca entrar en loop). */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var KEY = 'nelyx-chunk-reload-ts';
+              function esErrorDeChunk(msg) {
+                if (!msg) return false;
+                return /Loading chunk [\\d]+ failed|ChunkLoadError|Cannot read properties of undefined \\(reading 'call'\\)|Importing a module script failed/i.test(msg);
+              }
+              function intentarRecargar(msg) {
+                if (!esErrorDeChunk(msg)) return;
+                var ultimo = Number(sessionStorage.getItem(KEY) || 0);
+                var ahora = Date.now();
+                if (ahora - ultimo > 10000) {
+                  sessionStorage.setItem(KEY, String(ahora));
+                  window.location.reload();
+                }
+              }
+              window.addEventListener('error', function(e){ intentarRecargar(e && e.message); });
+              window.addEventListener('unhandledrejection', function(e){
+                var msg = e && e.reason && (e.reason.message || String(e.reason));
+                intentarRecargar(msg);
+              });
+            } catch (e) {}
+          })();
+        ` }} />
         {/* PWA */}
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
