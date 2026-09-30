@@ -25,11 +25,13 @@ export default async function ReportesPage() {
   const mesAnteriorRef = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)
   const { inicio: inicioMesAnt, fin: finMesAnt } = rangoMes(mesAnteriorRef)
   const inicio12Meses = new Date(hoy.getFullYear(), hoy.getMonth() - 11, 1)
+  const hace45d = new Date(hoy.getTime() - 45 * 86400000)
 
   const [
     movMesActual, movMesAnterior, mov12Meses,
     deudas, cuentasPorCobrar, costosFijos,
     productos, clientesAgg, clientesTodos,
+    cxcEmitidasMes, ventasRecientesRaw,
   ] = await Promise.all([
     db.movimiento.findMany({
       where: { userId, fecha: { gte: inicioMes, lt: finMes } },
@@ -63,6 +65,14 @@ export default async function ReportesPage() {
     // el caso extremo de una cartera de clientes muy grande, sin afectar a
     // ningún negocio real hoy.
     db.cliente.findMany({ where: { userId }, select: { id: true, nombre: true, apellido: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 3000 }),
+    // Estas dos no dependen de ningún otro resultado de este batch — solo de
+    // userId y fechas ya calculadas — así que entran al mismo Promise.all en
+    // vez de esperar secuencialmente después de que termine el batch.
+    db.cuentaPorCobrar.findMany({ where: { userId, fechaVenta: { gte: inicioMes, lt: finMes } }, select: { montoOriginal: true, saldoPendiente: true } }),
+    db.movimiento.findMany({
+      where: { userId, tipo: "VENTA", fecha: { gte: hace45d }, productoId: { not: null } },
+      select: { productoId: true },
+    }),
   ])
 
   // ── Base: mes actual ──
@@ -82,7 +92,6 @@ export default async function ReportesPage() {
   const pct = calcularVariacionPct
 
   // ── Cuentas por cobrar (para diagnóstico) ──
-  const cxcEmitidasMes = await db.cuentaPorCobrar.findMany({ where: { userId, fechaVenta: { gte: inicioMes, lt: finMes } }, select: { montoOriginal: true, saldoPendiente: true } })
   const totalEmitidoMes = cxcEmitidasMes.reduce((a, c) => a + Number(c.montoOriginal), 0)
   const totalCobradoDeEmitidoMes = cxcEmitidasMes.reduce((a, c) => a + (Number(c.montoOriginal) - Number(c.saldoPendiente)), 0)
   const pctRecuperacionCxc = totalEmitidoMes > 0 ? Math.round((totalCobradoDeEmitidoMes / totalEmitidoMes) * 100) : null
@@ -121,13 +130,7 @@ export default async function ReportesPage() {
     .filter(p => p.unidades >= 5 && p.ingresos > 0 && (p.margen / p.ingresos) < 0.2)
     .sort((a, b) => b.unidades - a.unidades)[0] ?? null
 
-  const hace45d = new Date(hoy.getTime() - 45 * 86400000)
-  const ventadosRecientes = new Set(
-    (await db.movimiento.findMany({
-      where: { userId, tipo: "VENTA", fecha: { gte: hace45d }, productoId: { not: null } },
-      select: { productoId: true },
-    })).map(m => m.productoId)
-  )
+  const ventadosRecientes = new Set(ventasRecientesRaw.map(m => m.productoId))
   const productosSinMovimiento = productos.filter(p => !ventadosRecientes.has(p.id))
 
   // ── Clientes: usados solo para el Resumen ejecutivo — el ranking completo

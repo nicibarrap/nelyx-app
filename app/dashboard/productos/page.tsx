@@ -9,16 +9,35 @@ export const metadata: Metadata = { title: "Productos" }
 export default async function ProductosPage() {
   const session = await auth()
 
-  const [productosRaw, movimientos, vencimientos] = await Promise.all([
+  const [productosRaw, movimientos, vencimientos, categoriasPersonalizadas, unidadesPersonalizadas] = await Promise.all([
     db.producto.findMany({
       where: { userId: session!.user.id },
       orderBy: { createdAt: "desc" },
+      // select explícito: la lista nunca muestra imagenBase64 (confirmado -
+      // no se usa en ningún lado del componente), y esa cadena puede pesar
+      // bastante por cada producto, así que no tiene sentido traerla aquí.
+      select: {
+        id: true, nombre: true, precio: true, costo: true, descripcion: true,
+        categoria: true, sku: true, codigoBarras: true, stock: true, stockMinimo: true,
+        unidadMedida: true, unidadPersonalizada: true, formaVenta: true, controlaInventario: true,
+        unidadVentaCantidad: true, unidadVentaTipo: true, ventaMinima: true, activo: true, createdAt: true,
+      },
     }),
     db.movimiento.findMany({
       where: { userId: session!.user.id, tipo: "VENTA", productoId: { not: null } },
       select: { productoId: true, monto: true },
     }),
     calcularProximoVencimientoPorProducto(session!.user.id),
+    db.categoriaPersonalizada.findMany({
+      where: { userId: session!.user.id, tipo: "PRODUCTO" },
+      select: { nombre: true },
+      orderBy: { nombre: "asc" }
+    }),
+    db.categoriaPersonalizada.findMany({
+      where: { userId: session!.user.id, tipo: "UNIDAD_MEDIDA" },
+      select: { nombre: true },
+      orderBy: { nombre: "asc" }
+    }),
   ])
 
   // Calcular ventas e ingresos por producto
@@ -45,7 +64,6 @@ export default async function ProductosPage() {
     unidadPersonalizada: p.unidadPersonalizada,
     formaVenta: p.formaVenta,
     controlaInventario: p.controlaInventario,
-    imagenBase64: p.imagenBase64,
     unidadVentaCantidad: p.unidadVentaCantidad,
     unidadVentaTipo: p.unidadVentaTipo,
     ventaMinima: p.ventaMinima,
@@ -56,18 +74,7 @@ export default async function ProductosPage() {
     proximoVencimiento: vencimientos.get(p.id) ?? null,
   }))
 
-  const categoriasPersonalizadas = await db.categoriaPersonalizada.findMany({
-    where: { userId: session!.user.id, tipo: "PRODUCTO" },
-    select: { nombre: true },
-    orderBy: { nombre: "asc" }
-  })
   const customCategorias = categoriasPersonalizadas.map(c => c.nombre)
-
-  const unidadesPersonalizadas = await db.categoriaPersonalizada.findMany({
-    where: { userId: session!.user.id, tipo: "UNIDAD_MEDIDA" },
-    select: { nombre: true },
-    orderBy: { nombre: "asc" }
-  })
   const customUnidades = unidadesPersonalizadas.map(u => u.nombre)
 
   return <ProductosClient productosData={productosData} customCategorias={customCategorias} customUnidades={customUnidades} />

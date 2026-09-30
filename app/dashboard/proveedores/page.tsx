@@ -37,7 +37,10 @@ export default async function ProveedoresPage() {
         },
         notas: { orderBy: { createdAt: "desc" } }
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: { updatedAt: "desc" },
+      // Mismo tope defensivo que Clientes/Deudas/Cuentas por cobrar — protege
+      // el caso extremo de una cartera de proveedores muy grande.
+      take: 3000,
     }),
     db.movimiento.aggregate({
       where: { userId: session!.user.id, tipo: "GASTO", fecha: { gte: inicioMes }, proveedorId: { not: null } },
