@@ -24,6 +24,7 @@ type ItemReposicion = {
   unidadPersonalizada: string | null
   costoUnitario: string // string para el input, se parsea al confirmar
   fechaVencimiento: string // opcional — este lote específico de reposición
+  observacion: string // opcional — ej. el número que el dueño anotó en la caja física, para ubicar el lote después en el Kardex
 }
 
 const inp = "w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
@@ -53,6 +54,7 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
         formaVenta: prod.formaVenta, unidadMedida: prod.unidadMedida, unidadPersonalizada: prod.unidadPersonalizada,
         costoUnitario: prod.costo ? String(prod.costo) : "",
         fechaVencimiento: "",
+        observacion: "",
       }]
     })
     toast.success(`${prod.nombre} — cantidad sumada`)
@@ -80,6 +82,9 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
   function setFechaVencimiento(productoId: string, fechaVencimiento: string) {
     setItems(prev => prev.map(it => it.productoId === productoId ? { ...it, fechaVencimiento } : it))
   }
+  function setObservacion(productoId: string, observacion: string) {
+    setItems(prev => prev.map(it => it.productoId === productoId ? { ...it, observacion } : it))
+  }
   function quitarItem(productoId: string) {
     setItems(prev => prev.filter(it => it.productoId !== productoId))
   }
@@ -95,6 +100,7 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
             productoId: it.productoId, nombre: it.nombre, cantidad: it.cantidad,
             costoUnitario: it.costoUnitario ? parseFloat(it.costoUnitario) : undefined,
             fechaVencimiento: it.fechaVencimiento || undefined,
+            observacion: it.observacion || undefined,
           })),
           proveedorId || undefined
         )
@@ -171,11 +177,17 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="text-xs text-[var(--c-text4)]">🗓️ Vence (opcional):</span>
                     <input type="date" value={it.fechaVencimiento}
                       onChange={e => setFechaVencimiento(it.productoId, e.target.value)}
                       className="h-8 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-[var(--c-text4)]">🏷️ Referencia del lote (opcional):</span>
+                    <input type="text" value={it.observacion} placeholder='ej. "Caja 3"'
+                      onChange={e => setObservacion(it.productoId, e.target.value)}
+                      className="flex-1 min-w-0 h-8 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
                   </div>
                 </div>
               )
