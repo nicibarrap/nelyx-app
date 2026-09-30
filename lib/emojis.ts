@@ -52,6 +52,7 @@ const REGLAS_EMOJI: [string[], string][] = [
   [["arroz"], "🍚"],
   [["fideo", "tallarin", "tallarín", "pasta", "spaghetti", "espagueti"], "🍝"],
   [["porotos", "poroto", "lenteja", "garbanzo", "legumbre"], "🫘"],
+  [["mani", "maní", "cacahuate", "cacahuete", "nuez", "nueces", "almendra", "avellana", "castaña", "pistacho", "maravilla", "pipas", "semillas"], "🥜"],
   [["harina"], "🌾"],
   [["azucar", "azúcar"], "🧂"],
   [["sal "], "🧂"],

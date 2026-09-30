@@ -811,8 +811,13 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
             </p>
           </div>
           <button onClick={toggleInventario}
-            className={`relative w-11 h-6 rounded-full transition-all flex-shrink-0 ${inventarioActivo ? "bg-sky-500" : "bg-[#1E2D45]"}`}>
-            <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${inventarioActivo ? "left-5.5 translate-x-0.5" : "left-0.5"}`} />
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${inventarioActivo ? "bg-sky-500" : "bg-[#1E2D45]"}`}>
+            {/* "left-5.5" no es una clase real de Tailwind (el espaciado
+                no llega a 5.5) — quedaba silenciosamente ignorada, así que
+                el círculo casi no se movía al activar. Con translate-x
+                fijo desde la misma posición base (left-0.5) el recorrido
+                es siempre el mismo y anima suave en cualquier dispositivo. */}
+            <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${inventarioActivo ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
 

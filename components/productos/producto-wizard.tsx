@@ -391,7 +391,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
                       ))}
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Cuánto compraste? *</label>
                       <input type="number" min="0" step="any" value={cantidadComprada} onChange={e => setCantidadComprada(e.target.value === "" ? "" : parseFloat(e.target.value))}
@@ -427,7 +427,9 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
           {paso === 5 && (
             <div className="space-y-3.5">
               <h3 className="text-base font-bold text-[var(--c-text)] mb-1">¿Cómo venderás este producto?</h3>
-              <p className="text-xs text-[var(--c-text3)] mb-3">Define la presentación y el precio de venta.</p>
+              <p className="text-xs text-[var(--c-text3)] mb-3">
+                {esPesoOVolumen && controlaInventario ? "Define la presentación y el precio de venta." : "Define el precio de venta."}
+              </p>
 
               {esPesoOVolumen && controlaInventario && (
                 <div>
@@ -447,7 +449,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
                       {["bolsa","paquete","botella","caja","frasco"].map(u => <option key={u} value={u}>En {u}s</option>)}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Cuánto pesa cada {unidadVentaTipo}?</label>
                       <div className="relative">
