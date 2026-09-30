@@ -2,12 +2,13 @@ import type { Metadata } from "next"
 import { obtenerConfigNotificaciones } from "@/app/actions/notificaciones-acciones"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
 import { obtenerConexionesPago } from "@/app/actions/pagos-acciones"
-import { obtenerProyectosTarea } from "@/app/actions/acciones"
+import { obtenerProyectosTarea, obtenerTodasCategoriasPersonalizadas } from "@/app/actions/acciones"
 import { ConfigNotificacionesClient } from "@/components/configuracion/config-notificaciones-client"
 import { DiagnosticoPushClient } from "@/components/configuracion/diagnostico-push-client"
 import { PlantillasCobranzaClient } from "@/components/configuracion/plantillas-cobranza-client"
 import { ConexionMaquinaPagoClient } from "@/components/configuracion/conexion-maquina-pago-client"
 import { ProyectosTareaClient } from "@/components/configuracion/proyectos-tarea-client"
+import { CategoriasConfigClient } from "@/components/configuracion/categorias-config-client"
 import { SeccionColapsable } from "@/components/configuracion/seccion-colapsable"
 
 export const metadata: Metadata = { title: "Configuración" }
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic"
 const CAMPOS = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales","soporte"] as const
 
 export default async function ConfiguracionPage() {
-  const [cfgRaw, plantillas, conexionesPago, proyectosTarea] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerProyectosTarea()])
+  const [cfgRaw, plantillas, conexionesPago, proyectosTarea, categorias] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerProyectosTarea(), obtenerTodasCategoriasPersonalizadas()])
   const cfg: Record<string, boolean> = {}
   for (const campo of CAMPOS) cfg[campo] = cfgRaw[campo]
 
@@ -61,6 +62,9 @@ export default async function ConfiguracionPage() {
         </SeccionColapsable>
         <SeccionColapsable icon="🗂️" titulo="Tareas">
           <ProyectosTareaClient proyectos={proyectosTarea} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="🏷️" titulo="Categorías">
+          <CategoriasConfigClient categorias={categorias} />
         </SeccionColapsable>
         <SeccionColapsable icon="🔧" titulo="Diagnóstico técnico">
           <DiagnosticoPushClient />

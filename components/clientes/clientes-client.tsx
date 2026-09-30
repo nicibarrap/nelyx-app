@@ -8,6 +8,7 @@ import { formatCLP } from "@/lib/utils"
 import { CentroCobranza } from "@/components/cuentas-cobrar/centro-cobranza"
 import type { NivelCobranza } from "@/lib/cobranza"
 import { sugerirLimiteCredito, SEGMENTOS_CFG, type SegmentoCliente } from "@/lib/cliente-insights"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const TIPOS = ["Minorista","Mayorista","Empresa","Distribuidor","Particular"]
 const FRECUENCIAS = ["Diaria","Semanal","Quincenal","Mensual","Eventual"]
@@ -149,7 +150,7 @@ function FormCliente({ cliente, onClose, onSuccess }: { cliente?: Cliente | null
               </div>
               <div>
                 <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Cumpleaños</label>
-                <input name="cumpleanos" type="date" defaultValue={cliente?.cumpleanos ? cliente.cumpleanos.slice(0, 10) : ""} className={inp} />
+                <CampoFecha name="cumpleanos" defaultValue={cliente?.cumpleanos ? cliente.cumpleanos.slice(0, 10) : ""} className={inp} />
               </div>
             </div>
           </div>

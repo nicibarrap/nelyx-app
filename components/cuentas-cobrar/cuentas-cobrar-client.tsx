@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { crearCuentaPorCobrar, registrarPagoCuenta, eliminarCuentaPorCobrar, registrarVenta } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
 import { CentroCobranza } from "@/components/cuentas-cobrar/centro-cobranza"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
 const METODOS_PAGO = ["Efectivo","Transferencia","Débito","Crédito","Cheque","Otro"]
@@ -196,7 +197,7 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
             </div>
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha venta *</label>
-              <input ref={fechaVentaRef} name="fechaVenta" type="date" required defaultValue={localToday()} className={inp} />
+              <CampoFecha ref={fechaVentaRef} name="fechaVenta" required defaultValue={localToday()} className={inp} />
             </div>
           </div>
           <div>
@@ -204,7 +205,7 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
               <label className="text-[11px] text-[var(--c-text3)] font-semibold">Fecha vencimiento</label>
               {vencVacio && <button type="button" onClick={usar30Dias} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Usar 30 días →</button>}
             </div>
-            <input ref={fechaVenceRef} name="fechaVence" type="date" onChange={e => setVencVacio(!e.target.value)} className={inp} />
+            <CampoFecha ref={fechaVenceRef} name="fechaVence" onChange={e => setVencVacio(!e.target.value)} className={inp} />
             {vencVacio && <p className="text-[10px] text-[var(--c-text4)] mt-1">Sin fecha, esta cuenta nunca se marcará como vencida.</p>}
           </div>
           <div>
@@ -267,7 +268,7 @@ function FormPago({ cuenta, onClose, onSuccess }: { cuenta: Cuenta; onClose: () 
             </div>
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha *</label>
-              <input name="fecha" type="date" required defaultValue={localToday()} className={inp} />
+              <CampoFecha name="fecha" required defaultValue={localToday()} className={inp} />
             </div>
           </div>
           <div>

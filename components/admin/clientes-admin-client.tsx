@@ -8,6 +8,7 @@ import {
   actualizarSuscripcion, cambiarEstadoCliente,
 } from "@/app/actions/admin-acciones"
 import { enviarInvitacionCliente } from "@/app/actions/password-reset-acciones"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const PLANES_UI: Record<string, { label: string; precio: number; meses: number }> = {
   mensual:    { label: "Mensual",    precio: 20000,  meses: 1 },
@@ -161,7 +162,7 @@ function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void
       </div>
       <div>
         <label className="text-[10px] text-[var(--c-text4)]">Fecha próximo cobro</label>
-        <input name="fechaProximoCobro" type="date" defaultValue={proximoCobroDefault} className={inp} />
+        <CampoFecha name="fechaProximoCobro" defaultValue={proximoCobroDefault} className={inp} />
       </div>
       <label className="flex items-center gap-2 text-xs text-[var(--c-text2)]">
         <input name="renovacionAutomatica" type="checkbox" defaultChecked={c.renovacionAutomatica} className="accent-sky-500" />
@@ -259,7 +260,7 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
         <input name="negocio" placeholder="Nombre del negocio" className={inp} />
         <div>
           <label className="text-[10px] text-[var(--c-text4)]">Fecha de inicio</label>
-          <input name="fechaInicio" type="date" defaultValue={hoyISO()} className={inp} />
+          <CampoFecha name="fechaInicio" defaultValue={hoyISO()} className={inp} />
         </div>
         <div>
           <label className="text-[10px] text-[var(--c-text4)]">Plan</label>

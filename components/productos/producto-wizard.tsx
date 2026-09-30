@@ -6,6 +6,7 @@ import { formatCLP } from "@/lib/utils"
 import { aInterno, type FormaVenta } from "@/lib/unidades"
 import { calcularMargenPorcentual } from "@/lib/financial-engine"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 import { getColorCategoria } from "@/lib/categorias"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
 
@@ -391,7 +392,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
                       ))}
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Cuánto compraste? *</label>
                       <input type="number" min="0" step="any" value={cantidadComprada} onChange={e => setCantidadComprada(e.target.value === "" ? "" : parseFloat(e.target.value))}
@@ -415,7 +416,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
                   )}
                   <div>
                     <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Este producto vence? (opcional)</label>
-                    <input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className={inp} />
+                    <CampoFecha value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className={inp} />
                     <p className="text-[10px] text-[var(--c-text4)] mt-1">Si lo dejas vacío, no te avisaremos de vencimiento para este lote. Podrás agregarlo después, cada vez que repongas stock.</p>
                   </div>
                 </>
@@ -427,7 +428,9 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
           {paso === 5 && (
             <div className="space-y-3.5">
               <h3 className="text-base font-bold text-[var(--c-text)] mb-1">¿Cómo venderás este producto?</h3>
-              <p className="text-xs text-[var(--c-text3)] mb-3">Define la presentación y el precio de venta.</p>
+              <p className="text-xs text-[var(--c-text3)] mb-3">
+                {esPesoOVolumen && controlaInventario ? "Define la presentación y el precio de venta." : "Define el precio de venta."}
+              </p>
 
               {esPesoOVolumen && controlaInventario && (
                 <div>
@@ -447,7 +450,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
                       {["bolsa","paquete","botella","caja","frasco"].map(u => <option key={u} value={u}>En {u}s</option>)}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Cuánto pesa cada {unidadVentaTipo}?</label>
                       <div className="relative">

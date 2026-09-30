@@ -431,6 +431,21 @@ export async function obtenerCategorias(tipo: string) {
   return cats.map(c => c.nombre)
 }
 
+/** Guarda una categoría como sugerencia reutilizable la primera vez que se
+ * usa al crear un producto — así, si todavía no existe ninguna categoría
+ * guardada, con solo escribir el nombre de un producto (que la sugiere
+ * localmente por palabras clave) queda disponible para el siguiente
+ * producto y aparece en Configuración, sin que el usuario tenga que ir a
+ * crearla a mano aparte. No lanza error si ya existe (mismo patrón que
+ * crearCategoriaPersonalizada) ni si la creación falla por cualquier otro
+ * motivo — es un efecto secundario, nunca debe hacer fallar la creación
+ * del producto en sí. */
+async function asegurarCategoriaPersonalizada(userId: string, nombre: string) {
+  await db.categoriaPersonalizada.create({
+    data: { nombre, tipo: "PRODUCTO", userId },
+  }).catch(() => {})
+}
+
 /** Todas las categorías personalizadas del usuario, agrupadas por tipo —
  * para mostrarlas juntas en Configuración con opción de eliminar. */
 export async function obtenerTodasCategoriasPersonalizadas() {
@@ -456,6 +471,30 @@ export async function eliminarCategoriaPersonalizada(id: string) {
   revalidatePath("/dashboard/movimientos/nuevo")
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/configuracion")
+}
+
+/** Renombra una categoría de la lista de sugerencias — igual que eliminar,
+ * no toca a ningún producto/movimiento que ya tenga asignado el nombre
+ * anterior (el campo es texto libre), solo cambia cómo aparece de ahí en
+ * adelante como opción rápida al crear algo nuevo. */
+export async function renombrarCategoriaPersonalizada(id: string, nuevoNombre: string) {
+  const session = await getSession()
+  const nombreLimpio = nuevoNombre.trim()
+  if (!nombreLimpio) throw new Error("El nombre no puede quedar vacío")
+  const cat = await db.categoriaPersonalizada.findFirst({ where: { id, userId: session.user.id } })
+  if (!cat) throw new Error("Categoría no encontrada")
+  try {
+    await db.categoriaPersonalizada.update({ where: { id }, data: { nombre: nombreLimpio } })
+  } catch (err: any) {
+    if (err?.code === "P2002") throw new Error(`Ya tienes una categoría llamada "${nombreLimpio}"`)
+    throw err
+  }
+  revalidatePath("/dashboard/productos")
+  revalidatePath("/dashboard/movimientos")
+  revalidatePath("/dashboard/movimientos/nuevo")
+  revalidatePath("/dashboard/costos-fijos")
+  revalidatePath("/dashboard/configuracion")
+  return nombreLimpio
 }
 
 // ── PRODUCTOS ──────────────────────────────────────────────
@@ -530,6 +569,7 @@ export async function crearProducto(formData: FormData) {
     }
     throw err
   }
+  if (producto.categoria) await asegurarCategoriaPersonalizada(session.user.id, producto.categoria)
 
   if (controlaInventario && stock !== null && stock > 0) {
     const fechaVencVal = formData.get("fechaVencimiento") as string | null
@@ -619,6 +659,13 @@ export async function importarProductosMasivo(productos: {
     }
   }
 
+  // Una vez por categoría distinta usada en el archivo, no una vez por
+  // fila — con 2000 productos y pocas categorías repetidas, evita cientos
+  // de escrituras redundantes que de todas formas terminarían ignoradas
+  // por el constraint único.
+  const categoriasUsadas = new Set(productos.map(p => p.categoria).filter((c): c is string => !!c))
+  for (const categoria of categoriasUsadas) await asegurarCategoriaPersonalizada(session.user.id, categoria)
+
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
   return { exitosos, total: productos.length, errores }
@@ -681,6 +728,8 @@ export async function actualizarProducto(id: string, formData: FormData) {
     }
     throw err
   }
+  const categoriaEditada = (formData.get("categoria") as string)?.trim()
+  if (categoriaEditada) await asegurarCategoriaPersonalizada(session.user.id, categoriaEditada)
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
 }

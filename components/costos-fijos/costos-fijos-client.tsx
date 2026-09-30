@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { crearCostoRecurrente, crearCostoUnico, actualizarEstadoCosto, eliminarCostoRecurrente, marcarCostoPagado, crearCategoriaPersonalizada } from "@/app/actions/acciones"
 import { formatCLP, formatFechaCorta } from "@/lib/utils"
 import { getColorCategoria } from "@/lib/categorias"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const CATEGORIAS = ["Arriendo","Internet","Agua","Luz","Gas","Software","Teléfono","Transporte","Seguro","Publicidad","Sueldos","Contador","Otros"]
 
@@ -211,7 +212,7 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
           {!esRecurrente && (
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Fecha del gasto *</label>
-              <input name="fecha" type="date" required defaultValue={localToday()} className={inp} />
+              <CampoFecha name="fecha" required defaultValue={localToday()} className={inp} />
             </div>
           )}
           <div>
@@ -249,14 +250,14 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
                 Fecha de inicio *
                 <InfoTip text="El día del mes de esta fecha es el día en que se repetirá siempre (ej: si eliges el 5, se repite cada día 5)." />
               </label>
-              <input type="date" required value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className={`${inp} mt-1`} />
+              <CampoFecha required value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className={`${inp} mt-1`} />
             </div>
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center">
                 Fecha de término
                 <InfoTip text="Opcional — si la dejas vacía, este costo se repite indefinidamente hasta que lo pauses o elimines." />
               </label>
-              <input type="date" value={fechaTermino} min={fechaInicio} onChange={e => setFechaTermino(e.target.value)} className={`${inp} mt-1`} />
+              <CampoFecha value={fechaTermino} min={fechaInicio} onChange={e => setFechaTermino(e.target.value)} className={`${inp} mt-1`} />
               <p className="text-[10px] text-[var(--c-text4)] mt-1">Opcional — déjalo vacío si no tiene fecha de fin</p>
             </div>
           </div>
@@ -319,7 +320,7 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
         </div>
         <div>
           <label className="text-[10px] text-[var(--c-text3)] block mb-1">Fecha de pago</label>
-          <input name="fecha" type="date" required defaultValue={localToday()} className={`${inp} h-9 text-xs`} />
+          <CampoFecha name="fecha" required defaultValue={localToday()} className={`${inp} h-9 text-xs`} />
         </div>
       </div>
       <div className="flex gap-2">

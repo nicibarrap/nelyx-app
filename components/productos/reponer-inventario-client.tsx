@@ -7,6 +7,7 @@ import { AvisoCambioCostoModal, type AvisoCosto } from "@/components/productos/a
 import { formatCLP } from "@/lib/utils"
 import { labelUnidad, formatearStock } from "@/lib/unidades"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 interface ProductoOpt {
   id: string; nombre: string; sku: string | null; codigoBarras: string | null
@@ -179,7 +180,7 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="text-xs text-[var(--c-text4)]">🗓️ Vence (opcional):</span>
-                    <input type="date" value={it.fechaVencimiento}
+                    <CampoFecha value={it.fechaVencimiento}
                       onChange={e => setFechaVencimiento(it.productoId, e.target.value)}
                       className="h-8 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
                   </div>
