@@ -17,7 +17,7 @@ async function getSession() {
  * se informan los que sí y los que no, en vez de perder toda la reposición.
  */
 export async function confirmarReposicionMasiva(
-  items: { productoId: string; nombre: string; cantidad: number; costoUnitario?: number; fechaVencimiento?: string }[],
+  items: { productoId: string; nombre: string; cantidad: number; costoUnitario?: number; fechaVencimiento?: string; observacion?: string }[],
   proveedorId?: string
 ) {
   await getSession() // valida sesión antes de procesar cualquier ítem
@@ -33,6 +33,7 @@ export async function confirmarReposicionMasiva(
         proveedorId: proveedorId || undefined,
         costoUnitario: item.costoUnitario,
         fechaVencimiento: item.fechaVencimiento,
+        observacion: item.observacion,
       })
       if (resultado?.avisoCosto) avisosCosto.push(resultado.avisoCosto)
       exitosos++
