@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect } from "react"
 import { toast } from "sonner"
 import { crearDeuda, editarDeuda } from "@/app/actions/acciones"
 import { formatCLP, formatMoneyInput, parseMoney } from "@/lib/utils"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const TIPOS_DEUDA = ["Crédito bancario","Tarjeta de crédito","Préstamo personal","Crédito hipotecario","Crédito automotriz","Deuda proveedor","Préstamo familiar","Otros"]
 
@@ -221,15 +222,15 @@ export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Prop
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha de la deuda</label>
-                    <input type="date" value={fechaDeuda} onChange={e => setFechaDeuda(e.target.value)} className={inp} />
+                    <CampoFecha value={fechaDeuda} onChange={e => setFechaDeuda(e.target.value)} className={inp} />
                   </div>
                   <div>
                     <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha primer pago</label>
-                    <input type="date" value={fechaPrimerPago} onChange={e => setFechaPrimerPago(e.target.value)} className={inp} />
+                    <CampoFecha value={fechaPrimerPago} onChange={e => setFechaPrimerPago(e.target.value)} className={inp} />
                   </div>
                   <div>
                     <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Fecha último pago</label>
-                    <input type="date" value={fechaVence} onChange={e => setFechaVence(e.target.value)} className={inp} />
+                    <CampoFecha value={fechaVence} onChange={e => setFechaVence(e.target.value)} className={inp} />
                     {fechaPrimerPago && cuotasNum > 0 && <p className="text-[10px] text-sky-400 mt-1">Auto-calculada ✓</p>}
                   </div>
                 </div>

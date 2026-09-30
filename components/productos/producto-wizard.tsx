@@ -6,6 +6,7 @@ import { formatCLP } from "@/lib/utils"
 import { aInterno, type FormaVenta } from "@/lib/unidades"
 import { calcularMargenPorcentual } from "@/lib/financial-engine"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 import { getColorCategoria } from "@/lib/categorias"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
 
@@ -415,7 +416,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
                   )}
                   <div>
                     <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Este producto vence? (opcional)</label>
-                    <input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className={inp} />
+                    <CampoFecha value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} className={inp} />
                     <p className="text-[10px] text-[var(--c-text4)] mt-1">Si lo dejas vacío, no te avisaremos de vencimiento para este lote. Podrás agregarlo después, cada vez que repongas stock.</p>
                   </div>
                 </>

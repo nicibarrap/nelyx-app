@@ -10,6 +10,7 @@ import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
 import { unidadesEntradaVenta, convertirValor, formatearStock, labelUnidad } from "@/lib/unidades"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const inp = "w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-4 h-11 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
 
@@ -379,7 +380,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             <p className="text-xs text-[var(--c-text3)] flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
               <span className="relative inline-flex items-center gap-1 hover:text-[var(--c-text2)] transition-colors cursor-pointer">
                 📅
-                <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
+                <CampoFecha value={fechaVenta} onChange={e => setFechaVenta(e.target.value)}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full" title="Cambiar fecha de la venta" />
                 {fechaVenta.split("-").reverse().join("-")}
               </span>
@@ -695,7 +696,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
                   }} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Usar 30 días →</button>
                 )}
               </div>
-              <input type="date" value={fechaVence} onChange={e => setFechaVence(e.target.value)} className={inp} />
+              <CampoFecha value={fechaVence} onChange={e => setFechaVence(e.target.value)} className={inp} />
               {/* Sin fecha de vencimiento, esta cuenta nunca se va a marcar
                   "vencida" ni va a subir de Nivel 1 en el Centro de
                   cobranza (ambos se calculan solo a partir de esta fecha) —

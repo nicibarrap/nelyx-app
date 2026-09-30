@@ -5,6 +5,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import { ingresarMovimiento, crearCategoriaPersonalizada } from "@/app/actions/acciones"
 import { getCategoriasBase } from "@/lib/categorias"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const TIPOS = [
   { value: "GASTO",         label: "🛒 Gasto",         desc: "Pagaste algo",        a: "bg-red-500/20 border-red-500/50 text-red-300",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-red-900" },
@@ -205,7 +206,7 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
                 </div>
                 <div>
                   <label className="text-xs text-[var(--c-text2)] block mb-1.5">Fecha *</label>
-                  <input name="fecha" type="date" defaultValue={localToday()} required className={`${inp} h-11`} />
+                  <CampoFecha name="fecha" defaultValue={localToday()} required className={`${inp} h-11`} />
                 </div>
                 <div>
                   <label className="text-xs text-[var(--c-text2)] block mb-1.5">Descripción (opcional)</label>

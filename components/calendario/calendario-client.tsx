@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { crearEventoCalendario, actualizarEventoCalendario, eliminarEventoCalendario, actualizarEstadoEventoCalendario, moverEventoCalendario } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
 import { COLORES_PROYECTO } from "@/components/configuracion/proyectos-tarea-client"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const inp2 = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
 const sel2 = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
@@ -528,7 +529,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Fecha *</label>
-            <input type="date" required value={fecha} onChange={e=>setFecha(e.target.value)} className={inp2}/>
+            <CampoFecha required value={fecha} onChange={e=>setFecha(e.target.value)} className={inp2}/>
           </div>
           <div>
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Hora {tipo==="tarea"?"(opcional)":""}</label>
@@ -579,7 +580,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
             {frecuencia!=="ninguna"&&(
               <div>
                 <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Repetir hasta (opcional)</label>
-                <input type="date" value={fechaFinSerie} onChange={e=>setFechaFinSerie(e.target.value)} min={fecha} className={inp2}/>
+                <CampoFecha value={fechaFinSerie} onChange={e=>setFechaFinSerie(e.target.value)} min={fecha} className={inp2}/>
               </div>
             )}
           </div>

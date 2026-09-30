@@ -9,6 +9,7 @@ import { formatCLP } from "@/lib/utils"
 import { unidadesParaForma, formatearStock, deInterno, labelUnidad, type FormaVenta } from "@/lib/unidades"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 import { ProductoWizard } from "@/components/productos/producto-wizard"
 import { type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
@@ -578,7 +579,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
                   <input type="number" min="0" value={costoAjuste} onChange={e => setCostoAjuste(e.target.value === "" ? "" : parseFloat(e.target.value))}
                     className="w-24 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 h-7 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
                   <span className="text-xs text-[var(--c-text2)]">🗓️ Vence (opcional):</span>
-                  <input type="date" value={fechaVencimientoAjuste} onChange={e => setFechaVencimientoAjuste(e.target.value)}
+                  <CampoFecha value={fechaVencimientoAjuste} onChange={e => setFechaVencimientoAjuste(e.target.value)}
                     className="bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 h-7 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
                 </div>
               )}

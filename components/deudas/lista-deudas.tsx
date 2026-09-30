@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { formatCLP, formatFechaCorta, ESTADO_CONFIG, EstadoDeuda } from "@/lib/utils"
 import { eliminarDeuda, registrarPago } from "@/app/actions/acciones"
+import { CampoFecha } from "@/components/shared/campo-fecha"
 
 interface Deuda {
   id: string
@@ -361,7 +362,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
                     </div>
                     <div>
                       <label className="text-[10px] text-[var(--c-text3)] block mb-1">Fecha *</label>
-                      <input name="fecha" type="date" required defaultValue={localToday()} className={inp} />
+                      <CampoFecha name="fecha" required defaultValue={localToday()} className={inp} />
                     </div>
                     <div className="col-span-2">
                       <label className="text-[10px] text-[var(--c-text3)] block mb-1">Descripción (opcional)</label>
