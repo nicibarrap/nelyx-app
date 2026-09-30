@@ -5,6 +5,7 @@ import { buscarEnOpenFoodFacts } from "@/app/actions/openfoodfacts-acciones"
 import { generarPlantillaDesdeEscaneo, type ItemEscaneado } from "@/lib/importacion-productos"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
+import { sugerirCategoria } from "@/lib/sugerencias-producto"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
 
 interface ProductoExistente { sku: string | null; codigoBarras: string | null }
@@ -54,9 +55,14 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
     setBuscando(false)
 
     if (resultado) {
+      // Open Food Facts a veces reconoce el producto pero no trae una
+      // categoría mapeable — en ese caso, igual que cuando no lo reconoce
+      // en absoluto, se usa la sugerencia local por palabras clave del
+      // nombre en vez de dejarlo sin categoría.
+      const categoria = resultado.categoria ?? sugerirCategoria(resultado.nombre).categoria
       const nuevo: ItemLista = {
         id: crypto.randomUUID(), codigoBarras: codigo,
-        nombre: resultado.nombre, categoria: resultado.categoria,
+        nombre: resultado.nombre, categoria,
         origen: "openfoodfacts", editando: false,
       }
       setItems(prev => [...prev, nuevo])
@@ -78,9 +84,12 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   function confirmarNombreManual() {
     const nombre = nombreManualInput.trim()
     if (!nombre) { toast.error("Escribe un nombre para continuar"); return }
+    // Open Food Facts no reconoció el código, pero el nombre que el usuario
+    // acaba de escribir sí puede alcanzar para sugerir la categoría — mismo
+    // mecanismo local (sin red) que ya usa el asistente de creación manual.
     const nuevo: ItemLista = {
       id: crypto.randomUUID(), codigoBarras: pendienteNombre!,
-      nombre, categoria: null, origen: "manual", editando: false,
+      nombre, categoria: sugerirCategoria(nombre).categoria, origen: "manual", editando: false,
     }
     setItems(prev => [...prev, nuevo])
     setPendienteNombre(null)
