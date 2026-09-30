@@ -11,14 +11,12 @@ import { sugerirLimiteCredito, SEGMENTOS_CFG, type SegmentoCliente } from "@/lib
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const TIPOS = ["Minorista","Mayorista","Empresa","Distribuidor","Particular"]
-const FRECUENCIAS = ["Diaria","Semanal","Quincenal","Mensual","Eventual"]
-const METODOS_PAGO = ["Efectivo","Transferencia","Débito","Crédito","Mixto"]
 const AVATAR_COLORS = ["bg-sky-500","bg-emerald-500","bg-violet-500","bg-amber-500","bg-red-500","bg-pink-500","bg-teal-500","bg-orange-500"]
 
 type Cliente = {
   id: string; nombre: string; apellido: string | null; empresa: string | null
   telefono: string | null; email: string | null; direccion: string | null; ciudad: string | null
-  tipoCliente: string | null; frecuenciaCompra: string | null; metodoPago: string | null
+  tipoCliente: string | null; frecuenciaCompraAuto: string | null; metodoPagoAuto: string | null
   diasPago: number | null; esFrecuente: boolean; esVip: boolean; permiteCredito: boolean
   limiteCredito: number | null; cumpleanos: string | null
   activo: boolean; observaciones: string | null; createdAt: string
@@ -111,10 +109,14 @@ function FormCliente({ cliente, onClose, onSuccess }: { cliente?: Cliente | null
           </div>
           <div>
             <p className="text-xs font-bold text-[var(--c-text3)] uppercase tracking-wider mb-3">Datos comerciales</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Tipo cliente</label><select name="tipoCliente" defaultValue={cliente?.tipoCliente ?? "Minorista"} className={sel}>{TIPOS.map(t=><option key={t}>{t}</option>)}</select></div>
-              <div><label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Frecuencia compra</label><select name="frecuenciaCompra" defaultValue={cliente?.frecuenciaCompra ?? ""} className={sel}><option value="">Sin definir</option>{FRECUENCIAS.map(f=><option key={f}>{f}</option>)}</select></div>
-              <div><label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Método pago habitual</label><select name="metodoPago" defaultValue={cliente?.metodoPago ?? "Efectivo"} className={sel}>{METODOS_PAGO.map(m=><option key={m}>{m}</option>)}</select></div>
+            {/* La frecuencia de compra y el método de pago habitual se
+                sacaron de acá — antes había que adivinarlos a mano justo
+                cuando el cliente todavía no tenía ninguna compra en la que
+                basarse. Ahora se calculan solos a partir del historial real
+                una vez que existe, y se muestran en su ficha. */}
+            <div className="max-w-xs">
+              <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Tipo cliente</label>
+              <select name="tipoCliente" defaultValue={cliente?.tipoCliente ?? "Minorista"} className={sel}>{TIPOS.map(t=><option key={t}>{t}</option>)}</select>
             </div>
           </div>
           <div>
@@ -295,15 +297,15 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
                 </p>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wider mb-2">Información general</p>
                 <div className="space-y-2 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-4">
                   {[
                     { label: "Tipo cliente", val: cliente.tipoCliente ?? "—" },
                     { label: "Cliente desde", val: new Date(cliente.createdAt).toLocaleDateString("es-CL") },
-                    { label: "Frecuencia compra", val: cliente.frecuenciaCompra ?? "—" },
-                    { label: "Método pago", val: cliente.metodoPago ?? "—" },
+                    { label: "Frecuencia compra (automático)", val: cliente.frecuenciaCompraAuto ?? "Sin datos aún" },
+                    { label: "Método pago (automático)", val: cliente.metodoPagoAuto ?? "Sin datos aún" },
                     { label: "Días promedio pago", val: cliente.diasPago ? `${cliente.diasPago} días` : "—" },
                     { label: "Cumpleaños", val: cliente.cumpleanos ? new Date(cliente.cumpleanos).toLocaleDateString("es-CL", { day: "numeric", month: "long", timeZone: "UTC" }) : "—" },
                     { label: "Límite de crédito", val: cliente.limiteCredito ? formatCLP(cliente.limiteCredito) : "Sin límite" },

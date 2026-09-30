@@ -76,3 +76,30 @@ export function sugerirLimiteCredito(ticketPromedio: number, compras: number): n
   const bruto = ticketPromedio * 3
   return Math.max(10000, Math.round(bruto / 10000) * 10000)
 }
+
+/** Método de pago más usado por el cliente, a partir de su historial real
+ * (ventas al contado con su medio de pago informado, más una entrada
+ * "Crédito" por cada venta a crédito) — reemplaza el campo que antes había
+ * que adivinar a mano al crear el cliente, sin ninguna compra todavía en
+ * la que basarse. */
+export function calcularMetodoPagoHabitual(metodos: (string | null)[]): string | null {
+  const conteo = new Map<string, number>()
+  for (const m of metodos) {
+    if (!m) continue
+    conteo.set(m, (conteo.get(m) ?? 0) + 1)
+  }
+  if (conteo.size === 0) return null
+  return [...conteo.entries()].sort((a, b) => b[1] - a[1])[0][0]
+}
+
+/** Frecuencia de compra en una etiqueta legible (mismas categorías que
+ * antes se elegían a mano: Diaria/Semanal/Quincenal/Mensual/Eventual),
+ * calculada a partir del intervalo promedio real entre compras. */
+export function calcularFrecuenciaLabel(intervaloPromedioDias: number | null): string | null {
+  if (intervaloPromedioDias === null) return null
+  if (intervaloPromedioDias < 2) return "Diaria"
+  if (intervaloPromedioDias < 10) return "Semanal"
+  if (intervaloPromedioDias < 20) return "Quincenal"
+  if (intervaloPromedioDias < 45) return "Mensual"
+  return "Eventual"
+}
