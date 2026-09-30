@@ -114,10 +114,29 @@ async function ingresarMovimientoInterno(formData: FormData) {
   const fecha = new Date(formData.get("fecha") as string)
   const descripcion = (formData.get("descripcion") as string)?.trim() || null
   const productoId = (formData.get("productoId") as string) || null
+  const clienteId = (formData.get("clienteId") as string) || null
+  const proveedorId = (formData.get("proveedorId") as string) || null
   const categoria = (formData.get("categoria") as string)?.trim() || null
   const cantidad = parseInt(formData.get("cantidad") as string) || 1
 
   if (!tipo || isNaN(monto) || monto <= 0) throw new Error("Datos inválidos")
+
+  // Un producto, cliente o proveedor de OTRA cuenta nunca debe poder quedar
+  // asociado a un movimiento propio — sin esto, cualquier cuenta podía
+  // pasar el id (adivinado o filtrado) de un producto/cliente/proveedor
+  // ajeno y ese nombre terminaba mostrándose dentro de su propio panel.
+  const prodParaCosto = productoId
+    ? await db.producto.findFirst({ where: { id: productoId, userId: session.user.id }, select: { costo: true, nombre: true } })
+    : null
+  if (productoId && !prodParaCosto) throw new Error("Producto no encontrado")
+  if (clienteId) {
+    const clientePropio = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id }, select: { id: true } })
+    if (!clientePropio) throw new Error("Cliente no encontrado")
+  }
+  if (proveedorId) {
+    const proveedorPropio = await db.proveedor.findFirst({ where: { id: proveedorId, userId: session.user.id }, select: { id: true } })
+    if (!proveedorPropio) throw new Error("Proveedor no encontrado")
+  }
 
   // Snapshot financiero: el costo del producto AL MOMENTO de la venta, para
   // que el historial no cambie si el costo promedio del producto cambia después.
@@ -125,10 +144,9 @@ async function ingresarMovimientoInterno(formData: FormData) {
   let utilidadSnap: number | null = null
   let margenSnap: number | null = null
   let nombreProductoVenta: string | null = null
-  if (productoId && tipo === "VENTA") {
-    const prodParaCosto = await db.producto.findFirst({ where: { id: productoId, userId: session.user.id }, select: { costo: true, nombre: true } })
-    nombreProductoVenta = prodParaCosto?.nombre ?? null
-    if (prodParaCosto?.costo != null) {
+  if (prodParaCosto && tipo === "VENTA") {
+    nombreProductoVenta = prodParaCosto.nombre
+    if (prodParaCosto.costo != null) {
       costoUnitarioSnap = Number(prodParaCosto.costo)
       const { utilidad, margen } = calcularUtilidadVenta(monto, costoUnitarioSnap, cantidad)
       utilidadSnap = utilidad
@@ -147,9 +165,9 @@ async function ingresarMovimientoInterno(formData: FormData) {
         fecha,
         descripcion,
         categoria,
-        productoId: productoId || null,
-        clienteId: (formData.get("clienteId") as string) || null,
-        proveedorId: (formData.get("proveedorId") as string) || null,
+        productoId,
+        clienteId,
+        proveedorId,
         costoUnitario: costoUnitarioSnap,
         utilidad: utilidadSnap,
         margen: margenSnap,
@@ -180,11 +198,10 @@ async function ingresarMovimientoInterno(formData: FormData) {
 
   // Auto-create CuentaPorCobrar si venta a crédito con cliente
   const tipoPagoIngr = formData.get("tipoPago") as string
-  const clienteIdIngr = formData.get("clienteId") as string
-  if (tipo === "VENTA" && tipoPagoIngr === "credito" && clienteIdIngr) {
+  if (tipo === "VENTA" && tipoPagoIngr === "credito" && clienteId) {
     const fechaVenceIngr = formData.get("fechaVence") as string
     await crearCuentaPorCobrarConNumero(session.user.id, {
-      clienteId: clienteIdIngr,
+      clienteId,
       montoOriginal: monto,
       saldoPendiente: monto,
       fechaVenta: new Date(fecha),
@@ -252,15 +269,28 @@ async function registrarVentaInterno(items: Array<{
   const session = await getSession()
   if (!items || items.length === 0) throw new Error("Agrega al menos un producto")
 
+  // Un cliente de OTRA cuenta nunca debe poder quedar asociado a esta
+  // venta — sin esto, cualquier cuenta podía pasar el id (adivinado o
+  // filtrado) del cliente de otro negocio y su nombre/empresa/contacto
+  // terminaban mostrándose dentro del propio panel de Movimientos/CxC.
+  if (clienteId) {
+    const clientePropio = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id }, select: { id: true } })
+    if (!clientePropio) throw new Error("Cliente no encontrado")
+  }
+
   // Validar stock y venta mínima (usa la cantidad interna en gramos/ml cuando el producto es por peso/volumen)
+  // — y de paso, que cada producto sea realmente de esta cuenta: antes, si
+  // el id no calzaba con userId, `prod` quedaba null y el chequeo se
+  // saltaba en silencio, dejando crear la venta igual con ese id ajeno.
   for (const item of items) {
     if (item.productoId) {
       const prod = await db.producto.findFirst({ where: { id: item.productoId, userId: session.user.id } })
+      if (!prod) throw new Error("Producto no encontrado")
       const cantidadDescuento = item.cantidadInterna ?? item.cantidad
-      if (prod && prod.stock !== null && prod.stock < cantidadDescuento) {
+      if (prod.stock !== null && prod.stock < cantidadDescuento) {
         throw new Error(`Stock insuficiente para "${prod.nombre}". Disponible: ${formatearStock(prod.stock, prod.formaVenta, prod.unidadMedida, prod.unidadPersonalizada)}`)
       }
-      if (prod && prod.ventaMinima != null && cantidadDescuento < prod.ventaMinima) {
+      if (prod.ventaMinima != null && cantidadDescuento < prod.ventaMinima) {
         throw new Error(`La venta mínima de "${prod.nombre}" es ${formatearStock(prod.ventaMinima, prod.formaVenta, prod.unidadMedida, prod.unidadPersonalizada)}`)
       }
     }
@@ -276,7 +306,7 @@ async function registrarVentaInterno(items: Array<{
   // descuenta inventario, un rechazo por límite de crédito dejaría el
   // stock ya descontado sin ninguna venta ni cuenta que lo respalde.
   if (tipoPago === "credito" && clienteId) {
-    await verificarLimiteCredito(clienteId, subtotal - descuentoTotal)
+    await verificarLimiteCredito(clienteId, session.user.id, subtotal - descuentoTotal)
   }
 
   let costoTotalCarrito = 0
@@ -1265,11 +1295,17 @@ export async function eliminarNotaProveedor(id: string) {
  * dejando entrar crédito ilimitado por esa puerta aunque el cliente
  * tuviera uno configurado.
  */
-async function verificarLimiteCredito(clienteId: string, montoNuevo: number) {
-  const cliente = await db.cliente.findUnique({ where: { id: clienteId }, select: { limiteCredito: true, nombre: true } })
+// clienteId ya se valida como propio de userId en cada punto de entrada
+// (registrarVentaInterno, ingresarMovimientoInterno, crearCuentaPorCobrar)
+// antes de llegar acá — pero esta función también consulta la DB por su
+// cuenta, así que se filtra por userId igual: defensa en profundidad, para
+// que nunca pueda leer ni sumar deuda de un cliente de otra cuenta aunque
+// alguna llamada futura se salte esa validación previa.
+async function verificarLimiteCredito(clienteId: string, userId: string, montoNuevo: number) {
+  const cliente = await db.cliente.findFirst({ where: { id: clienteId, userId }, select: { limiteCredito: true, nombre: true } })
   if (!cliente?.limiteCredito) return
   const deudaActual = await db.cuentaPorCobrar.aggregate({
-    where: { clienteId, estado: { in: ["pendiente","parcial","vencida"] } },
+    where: { clienteId, userId, estado: { in: ["pendiente","parcial","vencida"] } },
     _sum: { saldoPendiente: true }
   })
   const totalDeuda = Number(deudaActual._sum.saldoPendiente ?? 0)
@@ -1285,8 +1321,13 @@ export async function crearCuentaPorCobrar(formData: FormData) {
   const monto = parseFloat(formData.get("monto") as string)
   if (!monto || monto <= 0) throw new Error("Monto inválido")
 
-  await verificarLimiteCredito(clienteId, monto)
+  // Antes esta búsqueda solo se usaba para el título de la notificación —
+  // si el cliente no era de esta cuenta, `cliente` quedaba null pero la
+  // cuenta por cobrar se creaba igual, apuntando al cliente ajeno.
   const cliente = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id }, select: { nombre: true } })
+  if (!cliente) throw new Error("Cliente no encontrado")
+
+  await verificarLimiteCredito(clienteId, session.user.id, monto)
 
   const nuevaCuenta = await crearCuentaPorCobrarConNumero(session.user.id, {
     clienteId,
