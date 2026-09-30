@@ -25,13 +25,16 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   const mesAnt = mes === 1 ? 12 : mes - 1
   const anioAnt = mes === 1 ? anio - 1 : anio
 
-  // Auto-generar costos fijos recurrentes del mes
-  await generarCostosDelMes(session!.user.id, mes, anio)
-
   const [
-    movimientos, deudas, todosMovimientos, costosFijosRecurrentes, cuentasPorCobrar,
+    , movimientos, deudas, todosMovimientos, costosFijosRecurrentes, cuentasPorCobrar,
     movimientosMesAnterior, cxcVencidasCount, cxcCreadasHoyCount, productosAlerta,
   ] = await Promise.all([
+    // Auto-generar costos fijos recurrentes del mes — corre en paralelo con
+    // el resto: esta página solo lee los campos propios de
+    // CostoFijoRecurrente (nombre/monto/fechas), nunca sus `generaciones`,
+    // así que no depende de que esta escritura termine primero (a
+    // diferencia de /dashboard/costos-fijos, que sí lo necesita).
+    generarCostosDelMes(session!.user.id, mes, anio),
     db.movimiento.findMany({
       where: { userId: session!.user.id, fecha: { gte: new Date(anio,mes-1,1), lt: new Date(anio,mes,1) } },
       include: { producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } } },
