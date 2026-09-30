@@ -35,8 +35,8 @@ function plantillaCorreo(bodyHtml: string): string {
               <td style="padding:32px 32px 20px;text-align:center;">
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
                   <tr>
-                    <td style="background:#0a0e14;border-radius:14px;padding:12px;">
-                      <img src="${LOGO_URL}" width="32" height="32" alt="Nelyx" style="display:block;" />
+                    <td style="background:#0a0e14;border-radius:16px;padding:14px;">
+                      <img src="${LOGO_URL}" width="44" height="44" alt="Nelyx" style="display:block;" />
                     </td>
                   </tr>
                 </table>
