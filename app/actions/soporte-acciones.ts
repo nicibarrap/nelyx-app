@@ -46,6 +46,16 @@ export async function contarNoLeidosCliente() {
   })
 }
 
+/** Solo cuenta, sin marcar como leído — para el número en el ítem "Soporte
+ * NELYX" del menú lateral del panel admin, mientras esa sección sigue
+ * cerrada. Cuenta mensajes de clientes sin leer de TODAS las
+ * conversaciones, no solo la que esté abierta en ese momento. */
+export async function contarNoLeidosAdmin() {
+  const session = await getSession()
+  if (session.user.role !== "ADMIN" || session.user.esEmpleado) return 0
+  return db.mensajeSoporte.count({ where: { de: "cliente", leidoSoporte: false } })
+}
+
 /** Lista de conversaciones de la cuenta (abiertas y resueltas), más
  * reciente primero — para la pestaña "Mensajes" del widget de soporte,
  * al estilo de un listado de hilos con título + fecha. */
