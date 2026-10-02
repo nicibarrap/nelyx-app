@@ -121,6 +121,15 @@ export function ChatSoporteWidget() {
     const contenido = texto.trim()
     if (!contenido) return
     setTexto("")
+
+    // Burbuja optimista: aparece al tiro en vez de esperar la ida y vuelta
+    // al servidor (creación de conversación + envío + recarga), que antes
+    // se sentía lenta aunque el envío en sí fuera rápido. cargarMensajes()
+    // más abajo reemplaza la lista completa con la versión real del
+    // servidor, así que esta queda pisada naturalmente.
+    const idOptimista = `optimista-${Date.now()}`
+    setMensajes(prev => [...prev, { id: idOptimista, de: "cliente", autorNombre: null, contenido, createdAt: new Date().toISOString() }])
+
     start(async () => {
       try {
         // Si venimos de "Enviános un mensaje" sin conversación creada aún
@@ -134,6 +143,8 @@ export function ChatSoporteWidget() {
         await enviarMensajeCliente(id, contenido, pathname)
         await cargarMensajes(id)
       } catch (err) {
+        setMensajes(prev => prev.filter(m => m.id !== idOptimista))
+        setTexto(contenido)
         toast.error(err instanceof Error ? err.message : "No se pudo enviar el mensaje")
       }
     })

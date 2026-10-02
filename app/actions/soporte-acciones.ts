@@ -1,6 +1,7 @@
 "use server"
 import { revalidatePath } from "next/cache"
 import { after } from "next/server"
+import * as Sentry from "@sentry/nextjs"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
@@ -156,25 +157,36 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
   const previa = texto.length > 140 ? texto.slice(0, 140) + "…" : texto
   const nombre = nombreAutor(session)
   after(async () => {
-    const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
-    await Promise.all(admins.map(async (admin) => {
-      await notificar({
-        userId: admin.id,
-        categoria: "soporte",
-        prioridad: urgente ? "alta" : "media",
-        titulo: `${urgente ? "🔴 " : ""}Nuevo mensaje de ${negocio}`,
-        mensaje: previa,
-        accionUrl: `/admin/soporte?c=${conversacionId}`,
-        claveUnica: `soporte-${conversacionId}-${Date.now()}`,
-      })
-      if (admin.email) {
-        await enviarEmail({
-          to: admin.email,
-          subject: `${urgente ? "[URGENTE] " : ""}Nuevo mensaje de soporte — ${negocio}`,
-          text: `${nombre} (${negocio}) escribió:\n\n"${texto}"\n\nResponder: ${process.env.NEXT_PUBLIC_APP_URL || ""}/admin/soporte?c=${conversacionId}`,
-        })
-      }
-    }))
+    try {
+      const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
+      await Promise.all(admins.map(async (admin) => {
+        // Separados: si notificar() (in-app + push) falla para un admin, no
+        // debe impedir que igual le llegue el correo — antes un error acá
+        // cortaba la cadena antes de intentar el envío de email.
+        await notificar({
+          userId: admin.id,
+          categoria: "soporte",
+          prioridad: urgente ? "alta" : "media",
+          titulo: `${urgente ? "🔴 " : ""}Nuevo mensaje de ${negocio}`,
+          mensaje: previa,
+          accionUrl: `/admin/soporte?c=${conversacionId}`,
+          claveUnica: `soporte-${conversacionId}-${Date.now()}`,
+        }).catch((err) => Sentry.captureException(err, { extra: { conversacionId, adminId: admin.id, etapa: "notificar" } }))
+
+        if (admin.email) {
+          await enviarEmail({
+            to: admin.email,
+            subject: `${urgente ? "[URGENTE] " : ""}Nuevo mensaje de soporte — ${negocio}`,
+            text: `${nombre} (${negocio}) escribió:\n\n"${texto}"\n\nResponder: ${process.env.NEXT_PUBLIC_APP_URL || ""}/admin/soporte?c=${conversacionId}`,
+          })
+        }
+      }))
+    } catch (err) {
+      // Red de seguridad: un after() que lanza una excepción no capturada
+      // puede no quedar registrado en ningún lado — con esto, sí.
+      console.error("Error notificando mensaje de soporte a admins:", err)
+      Sentry.captureException(err, { extra: { conversacionId } })
+    }
   })
 }
 
