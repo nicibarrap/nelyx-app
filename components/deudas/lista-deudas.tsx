@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { formatCLP, formatFechaCorta, ESTADO_CONFIG, EstadoDeuda } from "@/lib/utils"
 import { eliminarDeuda, registrarPago } from "@/app/actions/acciones"
+import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
 interface Deuda {
@@ -98,11 +99,11 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
     if (!deudaDetalle || !pagoWarning) return
     startTransition(async () => {
       try {
-        await registrarPago(deudaDetalle.id, pagoWarning.fd)
+        await conTimeout(registrarPago(deudaDetalle.id, pagoWarning.fd))
         toast.success("Pago registrado correctamente")
         setPagoWarning(null)
         setShowPago(false)
-      } catch (err: any) { toast.error(err?.message ?? "Error") }
+      } catch (err) { toast.error(mensajeErrorAccion(err, "el pago se registró"), { duration: 8000 }) }
     })
   }
 
@@ -127,11 +128,11 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
     const form2 = form
     startTransition(async () => {
       try {
-        await registrarPago(deudaDetalle.id, fd)
+        await conTimeout(registrarPago(deudaDetalle.id, fd))
         toast.success("Pago registrado correctamente")
         form2.reset()
         setShowPago(false)
-      } catch (err: any) { toast.error(err?.message ?? "Error") }
+      } catch (err) { toast.error(mensajeErrorAccion(err, "el pago se registró"), { duration: 8000 }) }
     })
   }
 

@@ -13,6 +13,7 @@ import { CampoFecha } from "@/components/shared/campo-fecha"
 import { ProductoWizard } from "@/components/productos/producto-wizard"
 import { type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
+import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { LotesProducto } from "@/components/productos/lotes-producto"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
 
@@ -435,11 +436,11 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
     const unidadLabel = labelUnidad(producto.unidadMedida, producto.unidadPersonalizada)
     start(async () => {
       try {
-        const resultado = await ajustarStock(producto.id, cantidadNum, tipo, motivoAjuste, {
+        const resultado = await conTimeout(ajustarStock(producto.id, cantidadNum, tipo, motivoAjuste, {
           observacion: observacionAjuste || undefined,
           costoUnitario: typeof costoAjuste === "number" ? costoAjuste : undefined,
           fechaVencimiento: fechaVencimientoAjuste || undefined,
-        })
+        }))
         toast.success(tipo === "agregar" ? `+${cantidadNum} ${unidadLabel} agregado(s)` : `-${cantidadNum} ${unidadLabel} reducido(s)`)
         setAjustando(false)
         setObservacionAjuste("")
@@ -447,7 +448,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
         setFechaVencimientoAjuste("")
         setCantidadAjuste("1")
         if (resultado?.avisoCosto) setAvisoCosto(resultado.avisoCosto)
-      } catch (err: any) { toast.error(err?.message ?? "Error al ajustar stock") }
+      } catch (err) { toast.error(mensajeErrorAccion(err, "el ajuste de stock se guardó"), { duration: 8000 }) }
     })
   }
 
