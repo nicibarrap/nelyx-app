@@ -28,7 +28,7 @@ export default async function ReportesPage() {
   const hace45d = new Date(hoy.getTime() - 45 * 86400000)
 
   const [
-    movMesActual, movMesAnterior, mov12Meses,
+    movMesActual, movMesAnterior, heatmapAgg, rangoAgg, rollupMensual,
     deudas, cuentasPorCobrar, costosFijos,
     productos, clientesAgg, clientesTodos,
     cxcEmitidasMes, ventasRecientesRaw,
@@ -41,10 +41,48 @@ export default async function ReportesPage() {
       where: { userId, fecha: { gte: inicioMesAnt, lt: finMesAnt } },
       include: { cliente: { select: { id: true } } },
     }),
-    db.movimiento.findMany({
-      where: { userId, fecha: { gte: inicio12Meses, lt: finMes }, tipo: { in: ["VENTA", "GASTO", "COSTO_FIJO", "INGRESO_EXTRA", "RETIRO"] } },
-      select: { tipo: true, monto: true, fecha: true, createdAt: true, clienteId: true, productoId: true },
-    }),
+    // Mapa de calor día×hora agregado en la base de datos — antes se traían
+    // TODOS los movimientos de los últimos 12 meses (podían ser decenas de
+    // miles en un negocio con harto volumen) solo para sumarlos en JS. Acá
+    // la consulta nunca devuelve más de 7×24=168 filas.
+    db.$queryRaw<{ dow: number; hora: number; monto: number; cantidad: number }[]>`
+      SELECT
+        EXTRACT(DOW FROM fecha)::int AS dow,
+        EXTRACT(HOUR FROM "createdAt")::int AS hora,
+        SUM(monto)::float8 AS monto,
+        COUNT(*)::int AS cantidad
+      FROM "Movimiento"
+      WHERE "userId" = ${userId}
+        AND fecha >= ${inicio12Meses}
+        AND fecha < ${finMes}
+        AND tipo::text IN ('VENTA', 'INGRESO_EXTRA')
+      GROUP BY dow, hora
+    `,
+    // Rango real de datos usado para el mapa de calor (mismo filtro) — para
+    // "semanasDeDatos" sin tener que traer cada fila.
+    db.$queryRaw<{ min_fecha: Date | null; total: number }[]>`
+      SELECT MIN(fecha) AS min_fecha, COUNT(*)::int AS total
+      FROM "Movimiento"
+      WHERE "userId" = ${userId}
+        AND fecha >= ${inicio12Meses}
+        AND fecha < ${finMes}
+        AND tipo::text IN ('VENTA', 'INGRESO_EXTRA')
+    `,
+    // Mismo motivo: el gráfico anual solo necesita un total por mes/tipo,
+    // no cada movimiento individual.
+    db.$queryRaw<{ anio: number; mes: number; tipo: string; total: number }[]>`
+      SELECT
+        EXTRACT(YEAR FROM fecha)::int AS anio,
+        EXTRACT(MONTH FROM fecha)::int AS mes,
+        tipo::text AS tipo,
+        SUM(monto)::float8 AS total
+      FROM "Movimiento"
+      WHERE "userId" = ${userId}
+        AND fecha >= ${inicio12Meses}
+        AND fecha < ${finMes}
+        AND tipo::text IN ('VENTA', 'GASTO', 'COSTO_FIJO', 'INGRESO_EXTRA', 'RETIRO')
+      GROUP BY anio, mes, tipo
+    `,
     db.deuda.findMany({ where: { userId, pagada: false } }),
     db.cuentaPorCobrar.findMany({
       where: { userId, estado: { in: ["pendiente", "parcial", "vencida"] } },
@@ -151,28 +189,26 @@ export default async function ReportesPage() {
   })()
 
   // ── Día/hora de mayor venta (diagnóstico) y mapa de calor semanal —
-  // ahora sobre 12 meses de datos (mov12Meses), no solo el mes actual.
+  // sobre 12 meses de datos (heatmapAgg, agregado en la DB), no solo el mes actual.
   // Con un solo mes, cada día de la semana tenía apenas 4-5 muestras —
   // suficiente para que una sola venta grande "inventara" un patrón falso.
   // Con 12 meses, cada día de la semana acumula ~48-52 muestras reales.
-  const ventasParaPatron = mov12Meses.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
   const ventasPorDiaSemana: Record<number, number> = {}
   const heatmapMonto: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
   const heatmapCantidad: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
-  for (const m of ventasParaPatron) {
-    const dow = new Date(m.fecha).getDay()
-    ventasPorDiaSemana[dow] = (ventasPorDiaSemana[dow] ?? 0) + Number(m.monto)
-    const hora = new Date(m.createdAt ?? m.fecha).getHours()
-    heatmapMonto[dow][hora] += Number(m.monto)
-    heatmapCantidad[dow][hora] += 1
+  for (const row of heatmapAgg) {
+    heatmapMonto[row.dow][row.hora] += row.monto
+    heatmapCantidad[row.dow][row.hora] += row.cantidad
+    ventasPorDiaSemana[row.dow] = (ventasPorDiaSemana[row.dow] ?? 0) + row.monto
   }
   const diasOrdenados = Object.entries(ventasPorDiaSemana).sort((a, b) => b[1] - a[1])
   const mejorDia = diasOrdenados[0] ? DIAS_NOMBRE[Number(diasOrdenados[0][0])] : null
   const peorDia = diasOrdenados.length > 1 ? DIAS_NOMBRE[Number(diasOrdenados[diasOrdenados.length - 1][0])] : null
   // Semanas reales de datos usadas — para avisar con transparencia cuando
   // la muestra todavía es chica (negocio recién empezando en Nelyx).
-  const semanasDeDatos = ventasParaPatron.length > 0
-    ? Math.max(1, Math.round((finMes.getTime() - new Date(Math.min(...ventasParaPatron.map(m => new Date(m.fecha).getTime()))).getTime()) / (7 * 86400000)))
+  const rangoPatron = rangoAgg[0]
+  const semanasDeDatos = rangoPatron && rangoPatron.total > 0 && rangoPatron.min_fecha
+    ? Math.max(1, Math.round((finMes.getTime() - new Date(rangoPatron.min_fecha).getTime()) / (7 * 86400000)))
     : 0
 
   // ── Método de pago (aproximado por cliente registrado) ──
@@ -233,22 +269,22 @@ export default async function ReportesPage() {
   if (oportunidades.length === 0) oportunidades.push({ texto: "Sigue registrando movimientos para que aparezcan oportunidades personalizadas." })
 
   // ══════════════════════════════════════════
-  // GRÁFICO GRANDE — últimos 12 meses, todos los movimientos desglosados
-  // (reutiliza la misma consulta mov12Meses que antes alimentaba "Evolución")
+  // GRÁFICO GRANDE — últimos 12 meses, totales por mes/tipo (rollupMensual,
+  // agregado en la DB en vez de traer cada movimiento individual)
   // ══════════════════════════════════════════
   const mesesMap: Record<string, { ingresos: number; gastos: number; costosFijos: number }> = {}
   for (let i = 0; i < 12; i++) {
     const d = new Date(hoy.getFullYear(), hoy.getMonth() - 11 + i, 1)
     mesesMap[`${d.getFullYear()}-${d.getMonth()}`] = { ingresos: 0, gastos: 0, costosFijos: 0 }
   }
-  for (const m of mov12Meses) {
-    const d = new Date(m.fecha)
-    const key = `${d.getFullYear()}-${d.getMonth()}`
+  for (const row of rollupMensual) {
+    // EXTRACT(MONTH) de Postgres es 1-12; las llaves de mesesMap usan
+    // getMonth() (0-11) — de ahí el -1.
+    const key = `${row.anio}-${row.mes - 1}`
     if (!mesesMap[key]) continue
-    const monto = Number(m.monto)
-    if (m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA") mesesMap[key].ingresos += monto
-    else if (m.tipo === "COSTO_FIJO") mesesMap[key].costosFijos += monto
-    else mesesMap[key].gastos += monto // GASTO + RETIRO
+    if (row.tipo === "VENTA" || row.tipo === "INGRESO_EXTRA") mesesMap[key].ingresos += row.total
+    else if (row.tipo === "COSTO_FIJO") mesesMap[key].costosFijos += row.total
+    else mesesMap[key].gastos += row.total // GASTO + RETIRO
   }
   const graficoAnual = Object.entries(mesesMap).map(([key, v]) => {
     const [y, mIdx] = key.split("-").map(Number)
