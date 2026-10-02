@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs"
+
 // Envío de correos transaccionales vía la API REST de Resend — sin
 // dependencia nueva (fetch nativo). Igual que SENTRY_DSN: si no hay
 // RESEND_API_KEY configurada, la función no hace nada y la plataforma
@@ -12,8 +14,19 @@ export async function enviarEmail(params: { to: string; subject: string; text: s
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from, to: params.to, subject: params.subject, text: params.text, html: params.html }),
     })
+    if (!res.ok) {
+      // Antes esto fallaba en silencio — un correo que nunca llegaba no
+      // dejaba ningún rastro. Con esto, el próximo chequeo de Sentry lo
+      // detecta con la razón real (ej. dominio de origen no verificado).
+      const body = await res.text().catch(() => "")
+      Sentry.captureMessage("Resend: envío de correo falló", {
+        level: "error",
+        extra: { status: res.status, body, to: params.to, subject: params.subject, from },
+      })
+    }
     return res.ok
-  } catch {
+  } catch (err) {
+    Sentry.captureException(err, { extra: { to: params.to, subject: params.subject, from } })
     return false
   }
 }
