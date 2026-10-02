@@ -5,7 +5,9 @@ import { crearProducto, crearCategoriaPersonalizada } from "@/app/actions/accion
 import { formatCLP } from "@/lib/utils"
 import { aInterno, type FormaVenta } from "@/lib/unidades"
 import { calcularMargenPorcentual } from "@/lib/financial-engine"
-import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import dynamic from "next/dynamic"
+// Carga perezosa: ver nota en escanear-nuevos-client.tsx.
+const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { getColorCategoria } from "@/lib/categorias"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"

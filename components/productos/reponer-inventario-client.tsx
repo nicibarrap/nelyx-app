@@ -6,7 +6,9 @@ import { confirmarReposicionMasiva } from "@/app/actions/reposicion-acciones"
 import { AvisoCambioCostoModal, type AvisoCosto } from "@/components/productos/aviso-cambio-costo-modal"
 import { formatCLP } from "@/lib/utils"
 import { labelUnidad, formatearStock } from "@/lib/unidades"
-import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import dynamic from "next/dynamic"
+// Carga perezosa: ver nota en escanear-nuevos-client.tsx.
+const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
 interface ProductoOpt {

@@ -6,7 +6,12 @@ import { generarPlantillaDesdeEscaneo, type ItemEscaneado } from "@/lib/importac
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
-import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import dynamic from "next/dynamic"
+// Carga perezosa: @zxing/library (el fallback del escáner) es una
+// librería de decodificación no trivial que antes se incluía en el bundle
+// inicial de esta pantalla aunque el escáner nunca se abriera — penaliza
+// el Time-to-Interactive en celulares de gama baja.
+const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
 
 interface ProductoExistente { sku: string | null; codigoBarras: string | null }
 

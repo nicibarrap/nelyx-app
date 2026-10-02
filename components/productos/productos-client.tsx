@@ -15,7 +15,9 @@ import { type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { LotesProducto } from "@/components/productos/lotes-producto"
-import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import dynamic from "next/dynamic"
+// Carga perezosa: ver nota en escanear-nuevos-client.tsx.
+const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
 
 const MOTIVOS_AJUSTE: { value: TipoMovimientoStock; label: string }[] = [
   { value: "reposicion", label: "Compra" },

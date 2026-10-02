@@ -10,7 +10,9 @@ import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { unidadesEntradaVenta, convertirValor, formatearStock, labelUnidad } from "@/lib/unidades"
-import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
+import dynamic from "next/dynamic"
+// Carga perezosa: ver nota en escanear-nuevos-client.tsx.
+const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const inp = "w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-4 h-11 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
