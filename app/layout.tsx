@@ -19,7 +19,9 @@ export const viewport: Viewport = {
   themeColor: "#0B1220",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Sin maximumScale fijo en 1 — bloqueaba el pellizco para hacer zoom en
+  // toda la app, justo el tipo de ajuste que más pesa para el público real
+  // (dueños de local, a veces con vista cansada, leyendo montos y stock).
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

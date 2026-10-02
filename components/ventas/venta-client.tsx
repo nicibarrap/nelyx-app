@@ -8,6 +8,7 @@ import { registrarVenta, eliminarCliente } from "@/app/actions/acciones"
 import { iniciarCobroMaquina, consultarCobroMaquina } from "@/app/actions/pagos-acciones"
 import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
+import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { unidadesEntradaVenta, convertirValor, formatearStock, labelUnidad } from "@/lib/unidades"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
 import { CampoFecha } from "@/components/shared/campo-fecha"
@@ -335,15 +336,19 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
 
     startTransition(async () => {
       try {
-        await registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, tipoPago, fechaVence || undefined, metodoPago)
+        await conTimeout(registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, tipoPago, fechaVence || undefined, metodoPago))
         toast.success("✅ Venta registrada — listo para la siguiente")
         // Se mantiene en Venta (no navega a Movimientos) para poder cargar
         // otra venta de inmediato. router.refresh() trae el stock actualizado
         // de los productos sin perder el formulario ya limpio.
         resetFormulario()
         router.refresh()
-      } catch (err: any) {
-        toast.error(err?.message ?? "Error al registrar la venta")
+      } catch (err) {
+        // Con conexión inestable, el servidor puede haber alcanzado a
+        // registrar la venta antes de que la respuesta se perdiera — por
+        // eso NO se limpia el formulario acá: mejor que el usuario revise
+        // Movimientos antes de decidir si reintentar.
+        toast.error(mensajeErrorAccion(err, "la venta se registró"), { duration: 8000 })
       }
     })
   }

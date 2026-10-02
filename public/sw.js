@@ -21,6 +21,15 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return
+  // El reemplazo por OFFLINE_URL solo tiene sentido para una navegación de
+  // página — aplicado a CUALQUIER GET (como antes), un chunk .js/.css que
+  // falla sin conexión terminaba sirviendo el HTML de Resumen en su lugar,
+  // lo que el navegador no puede ejecutar como script y producía el mismo
+  // error ("Cannot read properties of undefined") que el recargador
+  // automático de app/layout.tsx existe para arreglar. Ahora un asset no
+  // navegacional simplemente falla (comportamiento normal sin red) en vez
+  // de responder con contenido del tipo equivocado.
+  if (e.request.mode !== 'navigate') return
   e.respondWith(
     fetch(e.request).catch(() =>
       caches.match(e.request).then(r => r || caches.match(OFFLINE_URL))

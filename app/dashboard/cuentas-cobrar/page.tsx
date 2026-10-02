@@ -28,7 +28,9 @@ export default async function CuentasCobrarPage() {
       where: { userId: session!.user.id },
       include: {
         cliente: { select: { id: true, nombre: true, apellido: true, empresa: true, telefono: true, email: true } },
-        pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] }
+        // take defensivo: una cuenta con muchos abonos parciales no debe
+        // poder inflar esta consulta sin límite.
+        pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }], take: 100 }
       },
       orderBy: { createdAt: "desc" },
       // Tope defensivo — mismo motivo que en /dashboard/clientes: con años

@@ -23,9 +23,15 @@ export default async function ProductosPage() {
         unidadVentaCantidad: true, unidadVentaTipo: true, ventaMinima: true, activo: true, createdAt: true,
       },
     }),
-    db.movimiento.findMany({
+    // groupBy en vez de traer cada movimiento de venta histórico: un negocio
+    // con meses/años de ventas podía significar decenas de miles de filas
+    // descargadas y sumadas en JS en cada visita a esta página — la suma
+    // ahora la hace la base de datos.
+    db.movimiento.groupBy({
+      by: ["productoId"],
       where: { userId: session!.user.id, tipo: "VENTA", productoId: { not: null } },
-      select: { productoId: true, monto: true },
+      _count: { _all: true },
+      _sum: { monto: true },
     }),
     calcularProximoVencimientoPorProducto(session!.user.id),
     db.categoriaPersonalizada.findMany({
@@ -40,13 +46,11 @@ export default async function ProductosPage() {
     }),
   ])
 
-  // Calcular ventas e ingresos por producto
+  // Ventas e ingresos por producto — ya vienen agregados por la DB (groupBy).
   const ventasPorProducto: Record<string, { count: number; total: number }> = {}
-  for (const mv of movimientos) {
-    const id = mv.productoId!
-    if (!ventasPorProducto[id]) ventasPorProducto[id] = { count: 0, total: 0 }
-    ventasPorProducto[id].count++
-    ventasPorProducto[id].total += Number(mv.monto)
+  for (const g of movimientos) {
+    if (!g.productoId) continue
+    ventasPorProducto[g.productoId] = { count: g._count._all, total: Number(g._sum.monto ?? 0) }
   }
 
   const productosData = productosRaw.map(p => ({

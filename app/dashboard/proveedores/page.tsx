@@ -35,7 +35,8 @@ export default async function ProveedoresPage() {
           take: 100,
           select: { id: true, costoTotal: true, createdAt: true, observacion: true }
         },
-        notas: { orderBy: { createdAt: "desc" } }
+        // take defensivo, mismo motivo que movimientos/movimientosStock arriba.
+        notas: { orderBy: { createdAt: "desc" }, take: 100 }
       },
       orderBy: { updatedAt: "desc" },
       // Mismo tope defensivo que Clientes/Deudas/Cuentas por cobrar — protege

@@ -13,6 +13,7 @@ import { CampoFecha } from "@/components/shared/campo-fecha"
 import { ProductoWizard } from "@/components/productos/producto-wizard"
 import { type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
+import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { LotesProducto } from "@/components/productos/lotes-producto"
 import { EscanerCodigoBarras } from "@/components/shared/escaner-codigo-barras"
 
@@ -435,11 +436,11 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
     const unidadLabel = labelUnidad(producto.unidadMedida, producto.unidadPersonalizada)
     start(async () => {
       try {
-        const resultado = await ajustarStock(producto.id, cantidadNum, tipo, motivoAjuste, {
+        const resultado = await conTimeout(ajustarStock(producto.id, cantidadNum, tipo, motivoAjuste, {
           observacion: observacionAjuste || undefined,
           costoUnitario: typeof costoAjuste === "number" ? costoAjuste : undefined,
           fechaVencimiento: fechaVencimientoAjuste || undefined,
-        })
+        }))
         toast.success(tipo === "agregar" ? `+${cantidadNum} ${unidadLabel} agregado(s)` : `-${cantidadNum} ${unidadLabel} reducido(s)`)
         setAjustando(false)
         setObservacionAjuste("")
@@ -447,7 +448,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
         setFechaVencimientoAjuste("")
         setCantidadAjuste("1")
         if (resultado?.avisoCosto) setAvisoCosto(resultado.avisoCosto)
-      } catch (err: any) { toast.error(err?.message ?? "Error al ajustar stock") }
+      } catch (err) { toast.error(mensajeErrorAccion(err, "el ajuste de stock se guardó"), { duration: 8000 }) }
     })
   }
 
@@ -695,7 +696,12 @@ function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDe
 export function ProductosClient({ productosData, customCategorias = [], customUnidades = [] }: { productosData: Producto[]; customCategorias?: string[]; customUnidades?: string[] }) {
   const router = useRouter()
   const [inventarioActivo, setInventarioActivo] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("nelyx_inventario") === "1"
+    // localStorage puede lanzar (no solo estar ausente) en navegación
+    // privada estricta o en un WebView con el almacenamiento bloqueado —
+    // sin el try/catch, eso rompía el render completo de Productos.
+    try {
+      if (typeof window !== "undefined") return localStorage.getItem("nelyx_inventario") === "1"
+    } catch {}
     return false
   })
   const [productos, setProductos] = useState(productosData)
@@ -711,7 +717,7 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
   function toggleInventario() {
     const nuevo = !inventarioActivo
     setInventarioActivo(nuevo)
-    if (typeof window !== "undefined") localStorage.setItem("nelyx_inventario", nuevo ? "1" : "0")
+    try { if (typeof window !== "undefined") localStorage.setItem("nelyx_inventario", nuevo ? "1" : "0") } catch {}
   }
 
   const productosFiltrados = useMemo(() => {

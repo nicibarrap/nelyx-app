@@ -21,9 +21,13 @@ export default async function ClientesPage() {
       where: { userId: session!.user.id },
       include: {
         movimientos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }], take: 100, select: { monto: true, fecha: true, tipo: true, descripcion: true, metodoPago: true } },
-        notas: { orderBy: { createdAt: "desc" } },
+        // take defensivo (mismo motivo que movimientos arriba): un cliente
+        // muy antiguo con años de notas o cuentas por cobrar no debe poder
+        // inflar esta consulta sin límite.
+        notas: { orderBy: { createdAt: "desc" }, take: 100 },
         cuentasPorCobrar: {
           orderBy: { fechaVenta: "desc" },
+          take: 100,
           select: { id: true, numero: true, montoOriginal: true, saldoPendiente: true, estado: true, fechaVenta: true, fechaVence: true, observaciones: true }
         }
       },

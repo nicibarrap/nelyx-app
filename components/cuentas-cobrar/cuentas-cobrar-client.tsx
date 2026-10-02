@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearCuentaPorCobrar, registrarPagoCuenta, eliminarCuentaPorCobrar, registrarVenta } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
+import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { CentroCobranza } from "@/components/cuentas-cobrar/centro-cobranza"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
@@ -231,8 +232,8 @@ function FormPago({ cuenta, onClose, onSuccess }: { cuenta: Cuenta; onClose: () 
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     start(async () => {
-      try { await registrarPagoCuenta(cuenta.id, fd); toast.success("Pago registrado ✅"); onSuccess() }
-      catch (err: any) { toast.error(err?.message ?? "Error") }
+      try { await conTimeout(registrarPagoCuenta(cuenta.id, fd)); toast.success("Pago registrado ✅"); onSuccess() }
+      catch (err) { toast.error(mensajeErrorAccion(err, "el pago se registró"), { duration: 8000 }) }
     })
   }
   const pct = cuenta.montoOriginal > 0 ? Math.round((cuenta.totalPagado / cuenta.montoOriginal) * 100) : 0

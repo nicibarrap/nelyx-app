@@ -16,7 +16,10 @@ export function ThemeToggle() {
   function toggle() {
     const nuevoEsClaro = !esClaro
     document.documentElement.classList.toggle("light", nuevoEsClaro)
-    localStorage.setItem("nelyx-theme", nuevoEsClaro ? "light" : "dark")
+    // localStorage puede lanzar (no solo estar ausente) en navegación
+    // privada estricta o un WebView con el almacenamiento bloqueado — el
+    // tema igual debe cambiar en pantalla aunque no se pueda recordar.
+    try { localStorage.setItem("nelyx-theme", nuevoEsClaro ? "light" : "dark") } catch {}
     setEsClaro(nuevoEsClaro)
   }
 
