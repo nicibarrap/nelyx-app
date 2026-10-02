@@ -7,6 +7,7 @@ import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import { reemplazarVariables, calcularNivelSugerido, PLANTILLAS_DEFAULT } from "@/lib/cobranza"
 import { enviarEmail } from "@/lib/email"
 import { formatCLP } from "@/lib/utils"
+import { sincronizarSuscripciones } from "@/lib/suscripciones"
 import * as Sentry from "@sentry/nextjs"
 
 /**
@@ -205,6 +206,13 @@ async function ejecutarCron() {
   })
 
   // ── 7) CLIENTES NELYX (solo admin) ──────────────────────────────────────
+  // sincronizarSuscripciones() antes se ejecutaba SOLO cuando un admin
+  // abría /admin/clientes — si nadie la visitaba, una prueba gratuita
+  // vencida nunca generaba su cobro, y un cobro atrasado nunca pasaba a
+  // "vencido". Al correr acá, las transiciones de estado quedan al día
+  // todos los días sin depender de que alguien entre a esa pantalla.
+  await sincronizarSuscripciones()
+
   const admin = await db.user.findFirst({ where: { rol: "ADMIN" } })
   if (admin) {
     const suscripciones = await db.suscripcionNelyx.findMany({ where: { estado: { notIn: ["cancelado"] } }, include: { user: { select: { nombre: true, negocio: true } } } })
