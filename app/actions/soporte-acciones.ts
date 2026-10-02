@@ -1,5 +1,6 @@
 "use server"
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
@@ -122,10 +123,13 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
 
   // Rate limit básico anti-spam: máx. 20 mensajes de este hilo cada 5 min.
   const desde = new Date(Date.now() - 5 * 60 * 1000)
-  const recientes = await db.mensajeSoporte.count({ where: { conversacionId, de: "cliente", createdAt: { gte: desde } } })
+  const [recientes, totalMensajes] = await Promise.all([
+    db.mensajeSoporte.count({ where: { conversacionId, de: "cliente", createdAt: { gte: desde } } }),
+    db.mensajeSoporte.count({ where: { conversacionId } }),
+  ])
   if (recientes >= 20) throw new Error("Estás escribiendo muy rápido — espera un momento antes de enviar otro mensaje.")
 
-  const esPrimerMensaje = (await db.mensajeSoporte.count({ where: { conversacionId } })) === 0
+  const esPrimerMensaje = totalMensajes === 0
   const urgente = detectarUrgencia(texto)
 
   await db.mensajeSoporte.create({
@@ -141,31 +145,37 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
     data: { estado: "abierta", ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date(), recordatorioEnviado: false },
   })
 
-  // Avisa a soporte (staff ADMIN) — in-app + push + correo, mismo mecanismo
-  // que el resto de notificaciones de la plataforma.
-  const negocio = session.user.negocio || "Un negocio en Nelyx"
-  const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
-  const previa = texto.length > 140 ? texto.slice(0, 140) + "…" : texto
-  await Promise.all(admins.map(async (admin) => {
-    await notificar({
-      userId: admin.id,
-      categoria: "soporte",
-      prioridad: urgente ? "alta" : "media",
-      titulo: `${urgente ? "🔴 " : ""}Nuevo mensaje de ${negocio}`,
-      mensaje: previa,
-      accionUrl: `/admin/soporte?c=${conversacionId}`,
-      claveUnica: `soporte-${conversacionId}-${Date.now()}`,
-    })
-    if (admin.email) {
-      await enviarEmail({
-        to: admin.email,
-        subject: `${urgente ? "[URGENTE] " : ""}Nuevo mensaje de soporte — ${negocio}`,
-        text: `${nombreAutor(session)} (${negocio}) escribió:\n\n"${texto}"\n\nResponder: ${process.env.NEXT_PUBLIC_APP_URL || ""}/admin/soporte?c=${conversacionId}`,
-      })
-    }
-  }))
-
   revalidatePath("/admin/soporte")
+
+  // Avisa a soporte (staff ADMIN) — in-app + push + correo. Corre con
+  // after(), DESPUÉS de responderle al cliente: antes el envío del mensaje
+  // se sentía lento (varios segundos) porque la UI esperaba a que
+  // terminaran el push y el correo, que son llamadas HTTP externas y no
+  // tienen por qué bloquear la respuesta.
+  const negocio = session.user.negocio || "Un negocio en Nelyx"
+  const previa = texto.length > 140 ? texto.slice(0, 140) + "…" : texto
+  const nombre = nombreAutor(session)
+  after(async () => {
+    const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
+    await Promise.all(admins.map(async (admin) => {
+      await notificar({
+        userId: admin.id,
+        categoria: "soporte",
+        prioridad: urgente ? "alta" : "media",
+        titulo: `${urgente ? "🔴 " : ""}Nuevo mensaje de ${negocio}`,
+        mensaje: previa,
+        accionUrl: `/admin/soporte?c=${conversacionId}`,
+        claveUnica: `soporte-${conversacionId}-${Date.now()}`,
+      })
+      if (admin.email) {
+        await enviarEmail({
+          to: admin.email,
+          subject: `${urgente ? "[URGENTE] " : ""}Nuevo mensaje de soporte — ${negocio}`,
+          text: `${nombre} (${negocio}) escribió:\n\n"${texto}"\n\nResponder: ${process.env.NEXT_PUBLIC_APP_URL || ""}/admin/soporte?c=${conversacionId}`,
+        })
+      }
+    }))
+  })
 }
 
 // ── Panel de soporte (staff ADMIN) ──────────────────────────────────────
