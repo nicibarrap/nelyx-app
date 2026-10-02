@@ -695,7 +695,12 @@ function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDe
 export function ProductosClient({ productosData, customCategorias = [], customUnidades = [] }: { productosData: Producto[]; customCategorias?: string[]; customUnidades?: string[] }) {
   const router = useRouter()
   const [inventarioActivo, setInventarioActivo] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("nelyx_inventario") === "1"
+    // localStorage puede lanzar (no solo estar ausente) en navegación
+    // privada estricta o en un WebView con el almacenamiento bloqueado —
+    // sin el try/catch, eso rompía el render completo de Productos.
+    try {
+      if (typeof window !== "undefined") return localStorage.getItem("nelyx_inventario") === "1"
+    } catch {}
     return false
   })
   const [productos, setProductos] = useState(productosData)
@@ -711,7 +716,7 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
   function toggleInventario() {
     const nuevo = !inventarioActivo
     setInventarioActivo(nuevo)
-    if (typeof window !== "undefined") localStorage.setItem("nelyx_inventario", nuevo ? "1" : "0")
+    try { if (typeof window !== "undefined") localStorage.setItem("nelyx_inventario", nuevo ? "1" : "0") } catch {}
   }
 
   const productosFiltrados = useMemo(() => {

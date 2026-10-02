@@ -800,7 +800,11 @@ export function CalendarioClient({data}:{data:CalData}){
 
   useEffect(()=>{
     const root=scrollContainerRef.current
-    if(!root||vista!=="mes")return
+    // IntersectionObserver no estaba protegido — en un navegador que no lo
+    // soporte (poco probable hoy, pero posible en un WebView viejo), esto
+    // tiraba abajo toda la vista Mes del calendario en vez de solo perder
+    // el detalle de qué mes queda marcado como activo mientras se hace scroll.
+    if(!root||vista!=="mes"||typeof IntersectionObserver==="undefined")return
     visiblesRef.current.clear()
     const observer=new IntersectionObserver(entries=>{
       if(programaticoRef.current)return

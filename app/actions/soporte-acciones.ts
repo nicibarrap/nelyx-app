@@ -109,8 +109,10 @@ export async function obtenerMensajesCliente(conversacionId: string) {
     data: { leidoCliente: true },
   })
 
-  const mensajes = await db.mensajeSoporte.findMany({ where: { conversacionId }, orderBy: { createdAt: "asc" } })
-  return mensajes.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
+  // Últimos 300 en vez de la conversación completa: un hilo muy largo no
+  // debe poder inflar esta consulta sin límite cada vez que se abre.
+  const mensajes = await db.mensajeSoporte.findMany({ where: { conversacionId }, orderBy: { createdAt: "desc" }, take: 300 })
+  return mensajes.reverse().map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
 }
 
 export async function enviarMensajeCliente(conversacionId: string, contenido: string, paginaOrigen?: string) {
@@ -225,8 +227,8 @@ export async function obtenerMensajesAdmin(conversacionId: string) {
     where: { conversacionId, de: "cliente", leidoSoporte: false },
     data: { leidoSoporte: true },
   })
-  const mensajes = await db.mensajeSoporte.findMany({ where: { conversacionId }, orderBy: { createdAt: "asc" } })
-  return mensajes.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
+  const mensajes = await db.mensajeSoporte.findMany({ where: { conversacionId }, orderBy: { createdAt: "desc" }, take: 300 })
+  return mensajes.reverse().map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
 }
 
 export async function enviarMensajeSoporte(conversacionId: string, contenido: string) {

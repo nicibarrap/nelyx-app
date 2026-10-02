@@ -24,6 +24,15 @@ export function DiagnosticoPushClient() {
   useEffect(() => { refrescar() }, [])
 
   async function activar() {
+    // Safari en iOS no tuvo la API Notification hasta la versión 16.4
+    // (marzo 2023) — en un iPhone más viejo, `Notification.permission`
+    // lanza un ReferenceError y esta pantalla se rompía por completo en
+    // vez de mostrar el mensaje de "no soportado" que ya existe para este
+    // caso en otras partes de la app (push-client.ts, permiso-modal.tsx).
+    if (typeof Notification === "undefined") {
+      toast.error(MOTIVO_LABEL.sin_soporte)
+      return
+    }
     setCargando(true)
     try {
       if (Notification.permission === "default") {
