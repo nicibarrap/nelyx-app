@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { formatCLP } from "@/lib/utils"
@@ -79,6 +79,10 @@ const DIAS_CORTO = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"]
 
 function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapMonto: number[][]; heatmapCantidad: number[][]; semanasDeDatos: number }) {
   const [modo, setModo] = useState<"monto" | "cantidad">("monto")
+  const [esClaro, setEsClaro] = useState(false)
+  useEffect(() => {
+    setEsClaro(document.documentElement.classList.contains("light"))
+  }, [])
   const heatmap = modo === "monto" ? heatmapMonto : heatmapCantidad
   const max = Math.max(1, ...heatmap.flat())
   // Agrupa en bloques de 3 horas para que la grilla sea legible en celular
@@ -94,12 +98,27 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
     return `rgba(56,189,248,${alphaCelda(valor)})`
   }
   // Con poca intensidad la celda es casi transparente — se ve el fondo real
-  // de la tarjeta (blanco en modo claro, oscuro en modo oscuro). Texto
-  // blanco fijo ahí queda invisible en modo claro. Solo con suficiente
-  // intensidad el celeste satura lo bastante como para que el blanco
-  // funcione en ambos modos.
+  // de la tarjeta (blanco en modo claro, oscuro en modo oscuro). Un umbral
+  // fijo de opacidad para decidir blanco/oscuro no funciona igual en los
+  // dos temas: el mismo alfa de celeste mezclado con blanco da un color
+  // mucho más claro que mezclado con el fondo oscuro, así que celdas con
+  // valores vecinos (ej. "2 ventas" y "3 ventas") podían quedar una con
+  // texto blanco y la de al lado con texto oscuro aunque se vieran casi
+  // del mismo tono — eso es lo que se veía inconsistente, sobre todo en
+  // "N° de ventas" en modo claro (rango de valores chico, saltos de alfa
+  // más bruscos entre celdas). Acá se calcula el color real resultante de
+  // mezclar el celeste con el fondo de ESTE tema y se decide según su
+  // luminancia, así el corte blanco/oscuro cae donde realmente corresponde
+  // en cada tema.
   function textoLegible(valor: number) {
-    return alphaCelda(valor) >= 0.45
+    if (valor <= 0) return false
+    const alpha = alphaCelda(valor)
+    const [baseR, baseG, baseB] = esClaro ? [255, 255, 255] : [17, 24, 39]
+    const r = 56 * alpha + baseR * (1 - alpha)
+    const g = 189 * alpha + baseG * (1 - alpha)
+    const b = 248 * alpha + baseB * (1 - alpha)
+    const luminancia = 0.299 * r + 0.587 * g + 0.114 * b
+    return luminancia < 140
   }
 
   function formatoCelda(valor: number) {

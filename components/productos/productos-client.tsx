@@ -1,5 +1,5 @@
 "use client"
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -707,6 +707,14 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
     return false
   })
   const [productos, setProductos] = useState(productosData)
+  useEffect(() => {
+    // useState(productosData) solo toma el valor inicial al montar — sin
+    // esto, cuando router.refresh() trae productosData actualizado del
+    // servidor (tras crear/editar un producto), el estado local se queda
+    // con la lista vieja y el producto nuevo no aparece hasta recargar la
+    // página entera.
+    setProductos(productosData)
+  }, [productosData])
   const [searchQuery, setSearchQuery] = useState("")
   const [filtro, setFiltro] = useState("todos")
   const [categoriaFiltro, setCategoriaFiltro] = useState("")
