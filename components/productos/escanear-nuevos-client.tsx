@@ -1,5 +1,5 @@
 "use client"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { buscarProductoPorCodigoBarras } from "@/app/actions/openfoodfacts-acciones"
 import { generarPlantillaDesdeEscaneo, type ItemEscaneado } from "@/lib/importacion-productos"
@@ -37,6 +37,17 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   const [pendienteViaCamara, setPendienteViaCamara] = useState(true)
   const [nombreManualInput, setNombreManualInput] = useState("")
   const inputNombreRef = useRef<HTMLInputElement>(null)
+  const inputManualRef = useRef<HTMLInputElement>(null)
+
+  // El campo se deshabilita mientras busca (para no mandar dos escaneos a la
+  // vez) y un input deshabilitado pierde el foco solo, por eso después de
+  // cada vuelta al estado "listo para escanear" hay que recuperarlo a mano
+  // — si no, hay que hacer clic de nuevo en el campo antes de cada producto.
+  function reenfocarInputPistola() {
+    setTimeout(() => inputManualRef.current?.focus(), 50)
+  }
+
+  useEffect(() => { reenfocarInputPistola() }, [])
 
   const codigosExistentes = new Set(productosExistentes.map(p => p.codigoBarras).filter(Boolean))
   const codigosYaEscaneados = new Set(items.map(it => it.codigoBarras))
@@ -46,12 +57,12 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
 
     if (codigosExistentes.has(codigo)) {
       toast.error(`Ya tienes ese producto en tu catálogo`, { description: `Código ${codigo}` })
-      if (viaCamara) reabrirEscaner()
+      if (viaCamara) reabrirEscaner(); else reenfocarInputPistola()
       return
     }
     if (codigosYaEscaneados.has(codigo)) {
       toast.error("Ya escaneaste este código en esta misma sesión")
-      if (viaCamara) reabrirEscaner()
+      if (viaCamara) reabrirEscaner(); else reenfocarInputPistola()
       return
     }
 
@@ -72,7 +83,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
       }
       setItems(prev => [...prev, nuevo])
       toast.success(`✨ ${resultado.nombre}`, { description: "Reconocido automáticamente" })
-      if (viaCamara) reabrirEscaner()
+      if (viaCamara) reabrirEscaner(); else reenfocarInputPistola()
     } else {
       // No lo encontró — pide el nombre antes de seguir, sin excepción.
       setPendienteViaCamara(viaCamara)
@@ -98,7 +109,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
     }
     setItems(prev => [...prev, nuevo])
     setPendienteNombre(null)
-    if (pendienteViaCamara) reabrirEscaner()
+    if (pendienteViaCamara) reabrirEscaner(); else reenfocarInputPistola()
   }
 
   function quitarItem(id: string) {
@@ -134,7 +145,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
             solo y manda Enter, sin tocar el teclado. Mismo patrón que ya
             usan Venta y Actualizar inventario, reutilizando la misma
             función de detección que la cámara. */}
-        <input value={inputManual} onChange={e => setInputManual(e.target.value)}
+        <input ref={inputManualRef} value={inputManual} onChange={e => setInputManual(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && inputManual.trim() && !buscando) { const c = inputManual.trim(); setInputManual(""); handleCodigoDetectado(c, false) } }}
           placeholder="Con pistola: apunta acá y escanea..." disabled={buscando}
           className={`${inp} mb-2 disabled:opacity-60`} />
@@ -209,6 +220,9 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
             <p className="text-[10px] text-[var(--c-text4)] text-center mt-2">
               Completa lo que falte (precio, costo, stock) y súbela en <span className="text-[var(--c-text3)]">Productos → Importación masiva</span>.
             </p>
+            <p className="text-[10px] text-[var(--c-text4)] text-center mt-1">
+              ¿No tienes Excel? Súbelo a tu Google Drive y ábrelo gratis con Google Sheets — no hace falta cuenta de Microsoft.
+            </p>
           </div>
         </div>
       )}
@@ -239,7 +253,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
               onKeyDown={e => { if (e.key === "Enter") confirmarNombreManual() }}
               placeholder="Nombre del producto..." className={inp} />
             <div className="flex gap-2 mt-4">
-              <button onClick={() => { setPendienteNombre(null); if (pendienteViaCamara) reabrirEscaner() }} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-sm rounded-xl hover:bg-[var(--c-hover)] transition-all">
+              <button onClick={() => { setPendienteNombre(null); if (pendienteViaCamara) reabrirEscaner(); else reenfocarInputPistola() }} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-sm rounded-xl hover:bg-[var(--c-hover)] transition-all">
                 Omitir este código
               </button>
               <button onClick={confirmarNombreManual} className="flex-1 h-10 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all">
