@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useMemo, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -647,6 +648,13 @@ function ToggleActivoBtn({ producto }: { producto: Producto }) {
 function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDeleted: () => void }) {
   const [isPending, start] = useTransition()
   const [confirmando, setConfirmando] = useState(false)
+  // Portal a document.body: sin esto, position:fixed queda atrapado dentro
+  // de cualquier ancestro con transform (como las animaciones de entrada
+  // de las tarjetas) en vez de cubrir toda la pantalla — se veía achicado
+  // y mal centrado. montado evita el mismatch de SSR (document no existe
+  // en el servidor) — mismo patrón ya usado en clientes-client.tsx.
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
 
   function handleEliminar() {
     start(async () => {
@@ -665,7 +673,7 @@ function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDe
         🗑️ Eliminar
       </button>
 
-      {confirmando && (
+      {confirmando && montado && createPortal(
         <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" onClick={() => !isPending && setConfirmando(false)}>
           <div className="bg-[var(--c-card)] border border-red-500/20 rounded-2xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
@@ -689,7 +697,8 @@ function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDe
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )
