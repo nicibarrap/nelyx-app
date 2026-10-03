@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next"
+import { cookies } from "next/headers"
 import { SessionProvider } from "next-auth/react"
 import { Toaster } from "sonner"
 import { EmojiConsistente } from "@/components/shared/emoji-consistente"
@@ -24,16 +25,27 @@ export const viewport: Viewport = {
   // (dueños de local, a veces con vista cansada, leyendo montos y stock).
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // El tema se lee de una cookie (no solo localStorage) para que el HTML
+  // ya nazca con la clase correcta desde el servidor — antes dependía de
+  // un script en el cliente que corriera antes del primer pintado, lo que
+  // en una recarga podía perderse (ej. storage bloqueado/particionado en
+  // ciertos navegadores móviles) y la página volvía a verse oscura aunque
+  // la persona hubiera elegido claro.
+  const cookieStore = await cookies()
+  const esClaro = cookieStore.get("nelyx-theme")?.value === "light"
+
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" className={esClaro ? "light" : undefined} suppressHydrationWarning>
       <head>
-        {/* Aplica el tema guardado ANTES de pintar — evita el parpadeo de
-            "se ve oscuro un instante y después cambia a claro" al cargar. */}
+        {/* Migración de la preferencia vieja (solo localStorage) a la
+            cookie, para quienes ya habían elegido modo claro antes de
+            este cambio — una sola vez, después el servidor manda. */}
         <script dangerouslySetInnerHTML={{ __html: `
           try {
-            if (localStorage.getItem('nelyx-theme') === 'light') {
+            if (!document.documentElement.classList.contains('light') && localStorage.getItem('nelyx-theme') === 'light') {
               document.documentElement.classList.add('light')
+              document.cookie = 'nelyx-theme=light; path=/; max-age=31536000; samesite=lax'
             }
           } catch (e) {}
         `}} />

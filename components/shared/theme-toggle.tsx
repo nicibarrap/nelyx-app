@@ -16,9 +16,12 @@ export function ThemeToggle() {
   function toggle() {
     const nuevoEsClaro = !esClaro
     document.documentElement.classList.toggle("light", nuevoEsClaro)
-    // localStorage puede lanzar (no solo estar ausente) en navegación
-    // privada estricta o un WebView con el almacenamiento bloqueado — el
-    // tema igual debe cambiar en pantalla aunque no se pueda recordar.
+    // Cookie: la lee el servidor para que la próxima carga/recarga ya
+    // nazca con el tema correcto. localStorage queda como respaldo.
+    // Cualquiera de las dos puede lanzar (navegación privada estricta,
+    // WebView con almacenamiento bloqueado) — el tema igual debe cambiar
+    // en pantalla aunque no se pueda recordar.
+    try { document.cookie = `nelyx-theme=${nuevoEsClaro ? "light" : "dark"}; path=/; max-age=31536000; samesite=lax` } catch {}
     try { localStorage.setItem("nelyx-theme", nuevoEsClaro ? "light" : "dark") } catch {}
     setEsClaro(nuevoEsClaro)
   }
