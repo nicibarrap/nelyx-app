@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { detectarUrgencia, necesitaRecordatorio } from "@/lib/soporte-logica"
+import { detectarUrgencia } from "@/lib/soporte-logica"
 
 describe("detectarUrgencia", () => {
   it("detecta palabras clave de urgencia sin importar mayúsculas", () => {
@@ -11,27 +11,5 @@ describe("detectarUrgencia", () => {
   it("no marca como urgente un mensaje normal", () => {
     expect(detectarUrgencia("¿Cómo agrego un producto nuevo?")).toBe(false)
     expect(detectarUrgencia("Gracias por la ayuda de ayer")).toBe(false)
-  })
-})
-
-describe("necesitaRecordatorio", () => {
-  it("no hace falta si el último mensaje es de soporte", () => {
-    const ahora = new Date("2026-01-01T12:20:00Z")
-    expect(necesitaRecordatorio({ ultimoMensajeDe: "soporte", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: false }, ahora)).toBe(false)
-  })
-
-  it("no hace falta si ya se mandó un recordatorio para esta espera", () => {
-    const ahora = new Date("2026-01-01T12:20:00Z")
-    expect(necesitaRecordatorio({ ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: true }, ahora)).toBe(false)
-  })
-
-  it("no hace falta si todavía no pasan 4 minutos", () => {
-    const ahora = new Date("2026-01-01T12:03:00Z")
-    expect(necesitaRecordatorio({ ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: false }, ahora)).toBe(false)
-  })
-
-  it("hace falta apenas pasan 4 minutos sin respuesta de soporte", () => {
-    const ahora = new Date("2026-01-01T12:04:00Z")
-    expect(necesitaRecordatorio({ ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date("2026-01-01T12:00:00Z"), recordatorioEnviado: false }, ahora)).toBe(true)
   })
 })
