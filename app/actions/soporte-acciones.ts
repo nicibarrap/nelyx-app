@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
 import { enviarEmail } from "@/lib/email"
-import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA } from "@/lib/soporte-logica"
+import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA, MENSAJE_RECORDATORIO } from "@/lib/soporte-logica"
 import { generarRespuestaIA } from "@/lib/soporte-ia"
 
 async function getSession() {
@@ -281,5 +281,19 @@ export async function enviarMensajeSoporte(conversacionId: string, contenido: st
 export async function marcarConversacionResuelta(conversacionId: string, resuelta: boolean) {
   await getSessionAdmin()
   await db.conversacionSoporte.update({ where: { id: conversacionId }, data: { estado: resuelta ? "resuelta" : "abierta" } })
+
+  // Al marcar resuelta (no al reabrir) se avisa al cliente — mismo mensaje
+  // de cierre que ya existía para el recordatorio automático por inactividad,
+  // ahora también se manda al toque cuando soporte resuelve el hilo a mano.
+  if (resuelta) {
+    await db.mensajeSoporte.create({
+      data: { conversacionId, de: "sistema", contenido: MENSAJE_RECORDATORIO },
+    })
+    await db.conversacionSoporte.update({
+      where: { id: conversacionId },
+      data: { ultimoMensajeDe: "sistema", ultimoMensajeAt: new Date() },
+    })
+  }
+
   revalidatePath("/admin/soporte")
 }
