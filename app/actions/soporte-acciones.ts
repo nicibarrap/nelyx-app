@@ -7,6 +7,7 @@ import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
 import { enviarEmail } from "@/lib/email"
 import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA } from "@/lib/soporte-logica"
+import { generarRespuestaIA } from "@/lib/soporte-ia"
 
 async function getSession() {
   const session = await auth()
@@ -138,11 +139,11 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
   await db.mensajeSoporte.create({
     data: { conversacionId, de: "cliente", autorNombre: nombreAutor(session), contenido: texto, paginaOrigen, urgente },
   })
-  if (esPrimerMensaje) {
-    await db.mensajeSoporte.create({
-      data: { conversacionId, de: "sistema", contenido: MENSAJE_AUTO_RESPUESTA },
-    })
-  }
+  // La auto-respuesta del primer mensaje se genera en after() (ver abajo) —
+  // así le da tiempo a la IA a responder algo real en vez del texto fijo de
+  // siempre, sin bloquear el envío del mensaje del cliente. El widget del
+  // chat ya refresca solo cada 4s mientras el hilo está abierto, así que
+  // aparece igual de rápido para quien está esperando.
   await db.conversacionSoporte.update({
     where: { id: conversacionId },
     data: { estado: "abierta", ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date(), recordatorioEnviado: false },
@@ -159,6 +160,19 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
   const previa = texto.length > 140 ? texto.slice(0, 140) + "…" : texto
   const nombre = nombreAutor(session)
   after(async () => {
+    if (esPrimerMensaje) {
+      try {
+        const respuestaIA = await generarRespuestaIA(texto)
+        await db.mensajeSoporte.create({
+          data: { conversacionId, de: "sistema", contenido: respuestaIA ?? MENSAJE_AUTO_RESPUESTA },
+        })
+        revalidatePath("/admin/soporte")
+      } catch (err) {
+        // Si hasta el fallback falla (ej. la DB), que quede visible — pero
+        // no debe impedir que igual se intente notificar a los admins abajo.
+        Sentry.captureException(err, { extra: { conversacionId, etapa: "auto-respuesta" } })
+      }
+    }
     try {
       const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
       await Promise.all(admins.map(async (admin) => {
