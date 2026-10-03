@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
 import { enviarEmail } from "@/lib/email"
-import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA } from "@/lib/soporte-logica"
+import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA, MENSAJE_RECORDATORIO } from "@/lib/soporte-logica"
 import { generarRespuestaIA } from "@/lib/soporte-ia"
 
 async function getSession() {
@@ -122,32 +122,39 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
   if (!texto) return
   if (texto.length > 2000) throw new Error("El mensaje es demasiado largo (máximo 2000 caracteres).")
 
-  const conv = await db.conversacionSoporte.findUnique({ where: { id: conversacionId } })
-  if (!conv || conv.userId !== session.user.id) throw new Error("No autorizado")
-
-  // Rate limit básico anti-spam: máx. 20 mensajes de este hilo cada 5 min.
+  // Las tres consultas son independientes entre sí (ninguna necesita el
+  // resultado de otra, solo conversacionId) — antes iban en dos viajes
+  // seguidos a la base de datos (el conv primero, los conteos después);
+  // ahora es uno solo. La validación de dueño del hilo sigue pasando antes
+  // de usar cualquiera de los resultados.
   const desde = new Date(Date.now() - 5 * 60 * 1000)
-  const [recientes, totalMensajes] = await Promise.all([
+  const [conv, recientes, totalMensajes] = await Promise.all([
+    db.conversacionSoporte.findUnique({ where: { id: conversacionId } }),
     db.mensajeSoporte.count({ where: { conversacionId, de: "cliente", createdAt: { gte: desde } } }),
     db.mensajeSoporte.count({ where: { conversacionId } }),
   ])
+  if (!conv || conv.userId !== session.user.id) throw new Error("No autorizado")
   if (recientes >= 20) throw new Error("Estás escribiendo muy rápido — espera un momento antes de enviar otro mensaje.")
 
   const esPrimerMensaje = totalMensajes === 0
   const urgente = detectarUrgencia(texto)
 
-  await db.mensajeSoporte.create({
-    data: { conversacionId, de: "cliente", autorNombre: nombreAutor(session), contenido: texto, paginaOrigen, urgente },
-  })
   // La auto-respuesta del primer mensaje se genera en after() (ver abajo) —
   // así le da tiempo a la IA a responder algo real en vez del texto fijo de
   // siempre, sin bloquear el envío del mensaje del cliente. El widget del
   // chat ya refresca solo cada 4s mientras el hilo está abierto, así que
   // aparece igual de rápido para quien está esperando.
-  await db.conversacionSoporte.update({
-    where: { id: conversacionId },
-    data: { estado: "abierta", ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date(), recordatorioEnviado: false },
-  })
+  // Crear el mensaje y actualizar la conversación tampoco dependen entre
+  // sí — otro viaje menos a la base de datos antes de responder.
+  const [mensaje] = await Promise.all([
+    db.mensajeSoporte.create({
+      data: { conversacionId, de: "cliente", autorNombre: nombreAutor(session), contenido: texto, paginaOrigen, urgente },
+    }),
+    db.conversacionSoporte.update({
+      where: { id: conversacionId },
+      data: { estado: "abierta", ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date(), recordatorioEnviado: false },
+    }),
+  ])
 
   revalidatePath("/admin/soporte")
 
@@ -204,6 +211,13 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
       Sentry.captureException(err, { extra: { conversacionId } })
     }
   })
+
+  // Devuelve el mensaje recién creado — el widget lo usa para reemplazar
+  // su burbuja optimista en vez de pedir la conversación completa de
+  // nuevo, que era un segundo viaje redondo al servidor completo (con sus
+  // propias consultas a la base de datos) solo para traer lo mismo que ya
+  // tiene en pantalla más este único mensaje nuevo.
+  return { id: mensaje.id, de: mensaje.de, autorNombre: mensaje.autorNombre, contenido: mensaje.contenido, createdAt: mensaje.createdAt.toISOString() }
 }
 
 // ── Panel de soporte (staff ADMIN) ──────────────────────────────────────
@@ -267,5 +281,19 @@ export async function enviarMensajeSoporte(conversacionId: string, contenido: st
 export async function marcarConversacionResuelta(conversacionId: string, resuelta: boolean) {
   await getSessionAdmin()
   await db.conversacionSoporte.update({ where: { id: conversacionId }, data: { estado: resuelta ? "resuelta" : "abierta" } })
+
+  // Al marcar resuelta (no al reabrir) se avisa al cliente — mismo mensaje
+  // de cierre que ya existía para el recordatorio automático por inactividad,
+  // ahora también se manda al toque cuando soporte resuelve el hilo a mano.
+  if (resuelta) {
+    await db.mensajeSoporte.create({
+      data: { conversacionId, de: "sistema", contenido: MENSAJE_RECORDATORIO },
+    })
+    await db.conversacionSoporte.update({
+      where: { id: conversacionId },
+      data: { ultimoMensajeDe: "sistema", ultimoMensajeAt: new Date() },
+    })
+  }
+
   revalidatePath("/admin/soporte")
 }

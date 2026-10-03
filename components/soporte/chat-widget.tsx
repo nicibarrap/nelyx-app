@@ -140,8 +140,17 @@ export function ChatSoporteWidget() {
           id = nueva.id
           setConversacionId(id)
         }
-        await enviarMensajeCliente(id, contenido, pathname)
-        await cargarMensajes(id)
+        const real = await enviarMensajeCliente(id, contenido, pathname)
+        // Reemplaza la burbuja optimista por la real en vez de volver a
+        // pedir toda la conversación — antes eso era un segundo viaje
+        // redondo completo al servidor (con sus propias consultas a la
+        // base de datos) solo para traer lo mismo que ya está en pantalla
+        // más este único mensaje nuevo, y se sentía como una demora extra.
+        // La respuesta automática / de soporte sigue llegando igual por
+        // el polling cada 4s mientras el hilo está abierto.
+        if (real) {
+          setMensajes(prev => prev.map(m => m.id === idOptimista ? real : m))
+        }
       } catch (err) {
         setMensajes(prev => prev.filter(m => m.id !== idOptimista))
         setTexto(contenido)
