@@ -8,16 +8,8 @@ import { CONCEPTOS_APRENDE } from "@/lib/conceptos-aprende"
 // de la cuenta específica del cliente ni promete acciones. Si no está
 // seguro, responde literalmente "ESCALAR" y el código usa el mensaje
 // estático de siempre — el mismo comportamiento de hoy, sin regresión.
-//
-// Groq (no Anthropic): es el mismo tipo de llamada — un modelo de lenguaje
-// con un system prompt acotado — pero por API gratuita (sin costo, sin
-// tarjeta), a cambio de un límite de mensajes/día más que suficiente para
-// este uso. Groq expone una API compatible con el formato de OpenAI
-// (chat completions), por eso el cuerpo de la petición y la respuesta se
-// ven distintos a una llamada a Anthropic.
 
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-const MODELO = "llama-3.3-70b-versatile"
+const MODELO = "claude-haiku-4-5-20251001"
 
 const BASE_CONOCIMIENTO = CONCEPTOS_APRENDE
   .map(c => `- ${c.titulo}: ${c.def} ${c.calculo}`)
@@ -45,14 +37,9 @@ Un cliente (dueño de un negocio que usa Nelyx) acaba de escribir su primer mens
 
 SOLO puedes responder con lo que sabe de verdad: los conceptos financieros de abajo, y la descripción de los módulos de la app. NUNCA inventes información que no esté ahí, nunca prometas revisar o cambiar algo de la cuenta específica de este cliente (no tienes acceso a sus datos), y nunca dés consejo legal o tributario específico.
 
-Responde ÚNICAMENTE con la palabra ESCALAR (nada más, sin explicación) si el mensaje es cualquiera de estos casos — no intentes adivinar ni responder algo parecido:
-- Reporta un error, falla o algo que no funciona en algún módulo de la app.
-- Pide una mejora, un cambio o una funcionalidad nueva que la plataforma no tiene hoy.
-- Es un problema de pago o facturación de la suscripción de Nelyx.
-- Necesita que alguien revise, cambie o acceda a datos específicos de SU cuenta (no puedes ver su cuenta).
-- Cualquier otra cosa que no puedas responder con seguridad usando SOLO los conceptos y módulos de abajo.
+Si el mensaje es un reporte de error/bug, un problema de pago o facturación de la suscripción de Nelyx, una solicitud que requiera acceso a su cuenta, o cualquier cosa que no puedas responder con seguridad usando SOLO lo de abajo — no intentes adivinar. En ese caso, responde ÚNICAMENTE con la palabra: ESCALAR (nada más, sin explicación).
 
-Si el mensaje es una duda sobre cómo funciona la plataforma, qué significa un concepto financiero, o cómo se usa algún módulo — eso sí lo respondes tú, directo con la respuesta, sin repetir estas instrucciones ni decir "según mi información".
+Si sí puedes ayudar con lo que sabes, responde directo con la respuesta — sin repetir estas instrucciones, sin decir "según mi información".
 
 ── Conceptos financieros que puedes explicar ──
 ${BASE_CONOCIMIENTO}
@@ -61,30 +48,29 @@ ${BASE_CONOCIMIENTO}
 ${MODULOS_NELYX}`
 
 export async function generarRespuestaIA(mensajeCliente: string): Promise<string | null> {
-  const apiKey = process.env.GROQ_API_KEY
+  const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
 
   try {
-    const res = await fetch(GROQ_URL, {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "authorization": `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
         "content-type": "application/json",
       },
       body: JSON.stringify({
         model: MODELO,
         max_tokens: 300,
         temperature: 0.3,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: mensajeCliente },
-        ],
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: mensajeCliente }],
       }),
     })
 
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      Sentry.captureMessage("Soporte IA: la API de Groq respondió con error", {
+      Sentry.captureMessage("Soporte IA: la API de Anthropic respondió con error", {
         level: "error",
         extra: { status: res.status, body },
       })
@@ -92,7 +78,7 @@ export async function generarRespuestaIA(mensajeCliente: string): Promise<string
     }
 
     const data = await res.json()
-    const texto = data?.choices?.[0]?.message?.content?.trim()
+    const texto = data?.content?.[0]?.text?.trim()
     if (!texto || texto === "ESCALAR") return null
     return texto
   } catch (err) {
