@@ -1,7 +1,7 @@
 "use client"
 import { useState, useRef } from "react"
 import { toast } from "sonner"
-import { buscarEnOpenFoodFacts } from "@/app/actions/openfoodfacts-acciones"
+import { buscarProductoPorCodigoBarras } from "@/app/actions/openfoodfacts-acciones"
 import { generarPlantillaDesdeEscaneo, type ItemEscaneado } from "@/lib/importacion-productos"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
@@ -30,7 +30,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   const [buscando, setBuscando] = useState(false)
   const [inputManual, setInputManual] = useState("")
 
-  // Cuando Open Food Facts no reconoce el código, se pide el nombre acá —
+  // Cuando ninguna base de datos reconoce el código, se pide el nombre acá —
   // es lo único obligatorio, para que nunca quede un código "huérfano" sin
   // saber qué producto era, sin depender de que alguien se acuerde después.
   const [pendienteNombre, setPendienteNombre] = useState<string | null>(null)
@@ -56,14 +56,14 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
     }
 
     setBuscando(true)
-    const resultado = await buscarEnOpenFoodFacts(codigo)
+    const resultado = await buscarProductoPorCodigoBarras(codigo)
     setBuscando(false)
 
     if (resultado) {
-      // Open Food Facts a veces reconoce el producto pero no trae una
-      // categoría mapeable — en ese caso, igual que cuando no lo reconoce
-      // en absoluto, se usa la sugerencia local por palabras clave del
-      // nombre en vez de dejarlo sin categoría.
+      // A veces se reconoce el producto pero no trae una categoría mapeable
+      // — en ese caso, igual que cuando no lo reconoce en absoluto, se usa
+      // la sugerencia local por palabras clave del nombre en vez de
+      // dejarlo sin categoría.
       const categoria = resultado.categoria ?? sugerirCategoria(resultado.nombre).categoria
       const nuevo: ItemLista = {
         id: crypto.randomUUID(), codigoBarras: codigo,
@@ -89,7 +89,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   function confirmarNombreManual() {
     const nombre = nombreManualInput.trim()
     if (!nombre) { toast.error("Escribe un nombre para continuar"); return }
-    // Open Food Facts no reconoció el código, pero el nombre que el usuario
+    // Ninguna base de datos reconoció el código, pero el nombre que el usuario
     // acaba de escribir sí puede alcanzar para sugerir la categoría — mismo
     // mecanismo local (sin red) que ya usa el asistente de creación manual.
     const nuevo: ItemLista = {
@@ -228,7 +228,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
         />
       )}
 
-      {/* Nombre obligatorio cuando Open Food Facts no reconoce el código —
+      {/* Nombre obligatorio cuando ninguna base de datos reconoce el código —
           es lo único que nunca se puede saltar, para no perder la referencia. */}
       {pendienteNombre && (
         <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4">
