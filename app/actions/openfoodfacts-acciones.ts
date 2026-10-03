@@ -53,12 +53,23 @@ export async function buscarEnOpenFoodFacts(codigoBarras: string): Promise<Produ
     const nombreCrudo: string | undefined = data.product.product_name_es || data.product.product_name || data.product.generic_name_es || data.product.generic_name
     if (!nombreCrudo?.trim()) return null
 
+    // OFF a veces solo tiene cargado el nombre de la variante/sabor, sin el
+    // nombre genérico del producto ni la marca (ej. "Gold Lúcuma y Nueces"
+    // en vez de "Soprole Gold Lúcuma y Nueces", o "Tradición" en vez de
+    // "Nescafé Tradición") — si la marca no aparece ya en el nombre, se la
+    // antepone para que el producto quede identificable.
+    const normalizar = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    const primeraMarca = (data.product.brands as string | undefined)?.split(",")[0]?.trim()
+    const nombre = primeraMarca && !normalizar(nombreCrudo).includes(normalizar(primeraMarca))
+      ? `${primeraMarca} ${nombreCrudo.trim()}`
+      : nombreCrudo.trim()
+
     // 1° intento: la clasificación real de Open Food Facts. 2° intento
     // (respaldo): nuestro propio sistema de palabras clave sobre el
     // nombre, para cuando OFF no trae una categoría que reconozcamos.
-    const categoria = categoriaDesdeOFF(data.product.categories_tags) ?? sugerirCategoria(nombreCrudo).categoria
+    const categoria = categoriaDesdeOFF(data.product.categories_tags) ?? sugerirCategoria(nombre).categoria
 
-    return { nombre: nombreCrudo.trim(), categoria }
+    return { nombre, categoria }
   } catch {
     return null // timeout, sin internet, o código no encontrado — todos se tratan igual: "no se pudo autocompletar"
   }
