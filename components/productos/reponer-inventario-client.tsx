@@ -14,6 +14,7 @@ import { CampoFecha } from "@/components/shared/campo-fecha"
 interface ProductoOpt {
   id: string; nombre: string; sku: string | null; codigoBarras: string | null
   stock: number | null; costo: any; formaVenta: string; unidadMedida: string; unidadPersonalizada: string | null
+  unidadVentaCantidad: number | null
 }
 interface ProveedorOpt { id: string; nombre: string }
 
@@ -26,6 +27,7 @@ type ItemReposicion = {
   unidadMedida: string
   unidadPersonalizada: string | null
   costoUnitario: string // string para el input, se parsea al confirmar
+  unidadVentaCantidad: number | null // si no es null, el producto se vende en presentación fija — su costo es "por presentación", no por esta unidad de compra, así que el costo acá no se aplica
   fechaVencimiento: string // opcional — este lote específico de reposición
   observacion: string // opcional — ej. el número que el dueño anotó en la caja física, para ubicar el lote después en el Kardex
 }
@@ -55,7 +57,8 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
       return [...prev, {
         productoId: prod.id, nombre: prod.nombre, cantidad: 1, stockActual: prod.stock,
         formaVenta: prod.formaVenta, unidadMedida: prod.unidadMedida, unidadPersonalizada: prod.unidadPersonalizada,
-        costoUnitario: prod.costo ? String(prod.costo) : "",
+        costoUnitario: prod.unidadVentaCantidad ? "" : (prod.costo ? String(prod.costo) : ""),
+        unidadVentaCantidad: prod.unidadVentaCantidad,
         fechaVencimiento: "",
         observacion: "",
       }]
@@ -170,15 +173,19 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
                         className="w-8 h-8 rounded-lg bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text)] flex items-center justify-center hover:border-sky-500/40 transition-all">+</button>
                       <span className="text-xs text-[var(--c-text3)]">{label}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 ml-auto">
-                      <span className="text-xs text-[var(--c-text4)]">Costo/{label}:</span>
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--c-text4)] text-xs">$</span>
-                        <input type="number" min="0" placeholder="opcional" value={it.costoUnitario}
-                          onChange={e => setCosto(it.productoId, e.target.value)}
-                          className="w-24 h-8 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg pl-5 pr-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
+                    {it.unidadVentaCantidad ? (
+                      <span className="text-[11px] text-[var(--c-text4)] ml-auto italic">Se vende por presentación — actualiza su costo desde la ficha del producto</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <span className="text-xs text-[var(--c-text4)]">Costo/{label}:</span>
+                        <div className="relative">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--c-text4)] text-xs">$</span>
+                          <input type="number" min="0" placeholder="opcional" value={it.costoUnitario}
+                            onChange={e => setCosto(it.productoId, e.target.value)}
+                            className="w-24 h-8 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg pl-5 pr-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="text-xs text-[var(--c-text4)]">🗓️ Vence (opcional):</span>

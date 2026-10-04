@@ -54,8 +54,8 @@ export async function registrarMovimientoStock(params: RegistrarMovimientoParams
   if (!productoId || !cantidad || cantidad === 0) return null
 
   return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ stock: number | null; controlaInventario: boolean; costo: number | null; precio: number | null }[]>`
-      SELECT stock, "controlaInventario", costo, precio FROM "Producto" WHERE id = ${productoId} AND "userId" = ${userId} FOR UPDATE
+    const rows = await tx.$queryRaw<{ stock: number | null; controlaInventario: boolean; costo: number | null; precio: number | null; unidadVentaCantidad: number | null }[]>`
+      SELECT stock, "controlaInventario", costo, precio, "unidadVentaCantidad" FROM "Producto" WHERE id = ${productoId} AND "userId" = ${userId} FOR UPDATE
     `
     const row = rows[0]
     if (!row || !row.controlaInventario || row.stock === null) return null
@@ -67,10 +67,16 @@ export async function registrarMovimientoStock(params: RegistrarMovimientoParams
 
     // Costo Promedio Ponderado: solo se recalcula en ENTRADAS de inventario
     // con costo unitario informado (reposiciones). Las salidas (ventas,
-    // mermas, etc.) nunca modifican el costo del producto.
+    // mermas, etc.) nunca modifican el costo del producto. Si el producto
+    // se vende en presentación fija (bolsas, botellas...), su costo está
+    // guardado "por presentación" — el costo que se informa acá al reponer
+    // es "por unidad de compra" (ej. por Kg), una unidad totalmente
+    // distinta, así que promediarlos daría un costo corrupto. Para esos
+    // productos no se toca el costo automáticamente: solo se actualiza el
+    // stock, y el costo por presentación se ajusta a mano si cambió.
     const dataUpdate: { stock: number; costo?: number } = { stock: stockPosterior }
     let cambioCosto: { costoAnterior: number; costoNuevo: number; precioActual: number | null } | null = null
-    if (tipo === "reposicion" && costoUnitario != null && cantidadReal > 0) {
+    if (tipo === "reposicion" && costoUnitario != null && cantidadReal > 0 && !row.unidadVentaCantidad) {
       const costoAnterior = row.costo ?? costoUnitario
       const costoNuevo = costoPromedioPonderado(stockAnterior, costoAnterior, cantidadReal, costoUnitario)
       dataUpdate.costo = costoNuevo
