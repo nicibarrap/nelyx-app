@@ -1487,7 +1487,7 @@ async function verificarLimiteCredito(clienteId: string, userId: string, montoNu
 }
 
 export async function crearCuentaPorCobrar(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("cuentas-cobrar")
   const clienteId = formData.get("clienteId") as string
   if (!clienteId) throw new Error("Cliente requerido")
   const monto = parseFloat(formData.get("monto") as string)
@@ -1523,7 +1523,7 @@ export async function crearCuentaPorCobrar(formData: FormData) {
 }
 
 export async function registrarPagoCuenta(cuentaId: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("cuentas-cobrar")
   const monto = parseFloat(formData.get("monto") as string)
   if (!monto || monto <= 0) throw new Error("Monto inválido")
   const fecha = new Date(formData.get("fecha") as string)
@@ -1575,6 +1575,10 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
   revalidatePath("/dashboard/cuentas-cobrar")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/clientes")
+  // registrarPagoCuenta crea un Movimiento (INGRESO_EXTRA) — sin esto, el
+  // cobro no aparecía en el historial de Movimientos hasta que otra acción
+  // revalidara esa ruta por su cuenta.
+  revalidatePath("/dashboard/movimientos")
 
   await cancelarNotificacionesPorPrefijo(`cxc:${cuentaId}:`)
   const clienteDatos = resultado.clienteId
@@ -1590,7 +1594,7 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
 }
 
 export async function actualizarEstadoCuenta(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("cuentas-cobrar")
   const cuenta = await db.cuentaPorCobrar.findFirst({ where: { id, userId: session.user.id } })
   if (!cuenta) return
   const hoy = new Date()
@@ -1602,7 +1606,7 @@ export async function actualizarEstadoCuenta(id: string) {
 }
 
 export async function eliminarCuentaPorCobrar(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("cuentas-cobrar")
   await db.cuentaPorCobrar.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`cxc:${id}:`)
   revalidatePath("/dashboard/cuentas-cobrar")

@@ -3,10 +3,24 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { PLANTILLAS_DEFAULT, type NivelCobranza } from "@/lib/cobranza"
+import { esSoloLectura } from "@/lib/permisos"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  return session
+}
+
+/** Igual que getSession(), pero rechaza a un empleado al que "cuentas-cobrar"
+ * se le dejó en "solo lectura" — mismo patrón que getSessionEscritura en
+ * app/actions/acciones.ts. Las plantillas y el registro de contacto son
+ * herramientas de cobranza, así que se gatillan con ese mismo módulo aunque
+ * las plantillas también se editen desde Configuración. */
+async function getSessionEscritura() {
+  const session = await getSession()
+  if (esSoloLectura(session.user.modulosPermitidos, "cuentas-cobrar")) {
+    throw new Error("Tu acceso a este módulo es solo de lectura")
+  }
   return session
 }
 
@@ -24,7 +38,7 @@ export async function obtenerPlantillasCobranza() {
 }
 
 export async function actualizarPlantillaCobranza(nivel: NivelCobranza, mensaje: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura()
   if (!mensaje.trim()) throw new Error("El mensaje no puede estar vacío")
   await db.plantillaCobranza.upsert({
     where: { userId_nivel: { userId: session.user.id, nivel } },
@@ -36,7 +50,7 @@ export async function actualizarPlantillaCobranza(nivel: NivelCobranza, mensaje:
 }
 
 export async function restaurarPlantillaCobranza(nivel: NivelCobranza) {
-  const session = await getSession()
+  const session = await getSessionEscritura()
   await db.plantillaCobranza.deleteMany({ where: { userId: session.user.id, nivel } })
   revalidatePath("/dashboard/configuracion")
   return PLANTILLAS_DEFAULT[nivel]
@@ -45,7 +59,7 @@ export async function restaurarPlantillaCobranza(nivel: NivelCobranza) {
 /** Registra que se contactó al cliente por un canal — es lo que permite
  * saber "cuándo fue el último contacto" sin tener que preguntarlo. */
 export async function registrarContactoCobranza(cuentaId: string, canal: "whatsapp" | "email", nivel: NivelCobranza, mensaje: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura()
   const cuenta = await db.cuentaPorCobrar.findFirst({ where: { id: cuentaId, userId: session.user.id } })
   if (!cuenta) throw new Error("Cuenta no encontrada")
 
