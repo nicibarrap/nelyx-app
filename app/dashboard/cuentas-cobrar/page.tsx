@@ -117,7 +117,12 @@ export default async function CuentasCobrarPage() {
   const scoreClientes = clientes.map(cl => {
     const cuentasCl = cuentasData.filter(c => c.cliente.id === cl.id)
     const vencidasCl = cuentasCl.filter(c => c.estado === "vencida").length
-    const atrasosCl = cuentasCl.filter(c => c.diasAtraso > 0).length
+    // diasAtraso se calcula contra la fecha de HOY sin mirar el estado —
+    // una cuenta ya pagada hace meses, con fechaVence en el pasado, seguía
+    // contando como "atraso" para siempre. Eso clasificaba como "riesgo" a
+    // clientes que en realidad siempre pagaron, solo por tener historial
+    // antiguo.
+    const atrasosCl = cuentasCl.filter(c => c.estado !== "pagada" && c.diasAtraso > 0).length
     let score: "excelente"|"bueno"|"irregular"|"riesgo" = "excelente"
     if (vencidasCl > 0 || atrasosCl > 2) score = "riesgo"
     else if (atrasosCl > 1) score = "irregular"
