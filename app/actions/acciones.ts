@@ -217,6 +217,10 @@ async function ingresarMovimientoInterno(formData: FormData) {
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/reportes")
+  // Un GASTO puede quedar vinculado a un proveedor (es justo lo que invita
+  // a hacer la pestaña "Compras" de su ficha) — sin esto, el gasto recién
+  // registrado no aparecía en "Total comprado" hasta otra revalidación.
+  if (proveedorId) revalidatePath("/dashboard/proveedores")
 }
 
 export async function eliminarMovimiento(id: string) {
@@ -240,6 +244,7 @@ export async function eliminarMovimiento(id: string) {
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/reportes")
+  if (mov.proveedorId) revalidatePath("/dashboard/proveedores")
 }
 
 export async function registrarVenta(items: Array<{
@@ -801,6 +806,13 @@ export async function ajustarStock(
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/reportes")
+  // Esta es la función que registra cada reposición de stock (incluida la
+  // masiva desde "Actualizar inventario", que es donde se asigna el
+  // proveedor) — sin esto, el "Total comprado" y "Compras" de la ficha del
+  // proveedor quedaban desactualizados después de reponer inventario con
+  // un proveedor asignado, aunque crearDeuda/editarDeuda sí revalidaban
+  // esta misma ruta por el lado de las deudas.
+  revalidatePath("/dashboard/proveedores")
 
   if (resultado?.cambioCosto) {
     const { costoAnterior, costoNuevo, precioActual } = resultado.cambioCosto
@@ -952,6 +964,12 @@ export async function registrarPago(deudaId: string, formData: FormData) {
 
   revalidatePath("/dashboard/deudas")
   revalidatePath("/dashboard/resumen")
+  // Esta deuda puede estar vinculada a un proveedor (crearDeuda/editarDeuda
+  // sí revalidan esta ruta, pero este pago — la acción más común sobre una
+  // deuda — se quedaba corta) — sin esto, la "Deuda pendiente" que muestra
+  // la ficha del proveedor quedaba desactualizada hasta la próxima
+  // navegación que sí disparara una revalidación.
+  revalidatePath("/dashboard/proveedores")
   if (pagadaCompleta) await cancelarNotificacionesPorPrefijo(`deuda:${deudaId}:`)
 }
 
@@ -1010,6 +1028,9 @@ export async function eliminarDeuda(id: string) {
   await cancelarNotificacionesPorPrefijo(`deuda:${id}:`)
   revalidatePath("/dashboard/deudas")
   revalidatePath("/dashboard/resumen")
+  // Misma razón que en registrarPago — esta deuda puede estar vinculada a
+  // un proveedor, y su ficha también muestra deudas pendientes.
+  revalidatePath("/dashboard/proveedores")
 }
 
 
@@ -1292,7 +1313,7 @@ export async function eliminarNotaCliente(id: string) {
 
 // ── PROVEEDORES ──────────────────────────────────────────────
 export async function crearProveedor(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("El nombre es requerido")
   await db.proveedor.create({
@@ -1314,7 +1335,7 @@ export async function crearProveedor(formData: FormData) {
 }
 
 export async function actualizarProveedor(id: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   const prov = await db.proveedor.findFirst({ where: { id, userId: session.user.id } })
   if (!prov) throw new Error("Proveedor no encontrado")
   await db.proveedor.update({
@@ -1329,7 +1350,13 @@ export async function actualizarProveedor(id: string, formData: FormData) {
       ciudad:       (formData.get("ciudad") as string)?.trim() || null,
       categoria:    (formData.get("categoria") as string) || "Otros",
       esFavorito:   formData.get("esFavorito") === "on",
-      activo:       formData.get("activo") !== "off",
+      // "activo" NO se toca acá a propósito — el formulario de editar no
+      // tiene ese campo (se maneja aparte con el botón Activar/Desactivar
+      // del panel, vía toggleActivoProveedor). Antes esta línea leía
+      // formData.get("activo") esperando un checkbox que nunca existió en
+      // el formulario, así que SIEMPRE volvía null → se guardaba
+      // "activo: true" en cada edición, reactivando en silencio cualquier
+      // proveedor que el dueño hubiera desactivado.
       observaciones:(formData.get("observaciones") as string)?.trim() || null,
     }
   })
@@ -1337,19 +1364,19 @@ export async function actualizarProveedor(id: string, formData: FormData) {
 }
 
 export async function toggleActivoProveedor(id: string, activo: boolean) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   await db.proveedor.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/proveedores")
 }
 
 export async function toggleFavoritoProveedor(id: string, esFavorito: boolean) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   await db.proveedor.updateMany({ where: { id, userId: session.user.id }, data: { esFavorito } })
   revalidatePath("/dashboard/proveedores")
 }
 
 export async function eliminarProveedor(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   // Sin este chequeo, borrar un proveedor con compras registradas fallaba
   // con el error crudo de la restricción de llave foránea de Postgres (no
   // hay onDelete configurado a propósito, para no perder el historial de
@@ -1366,7 +1393,7 @@ export async function eliminarProveedor(id: string) {
 }
 
 export async function crearNotaProveedor(proveedorId: string, texto: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   const prov = await db.proveedor.findFirst({ where: { id: proveedorId, userId: session.user.id } })
   if (!prov) throw new Error("Proveedor no encontrado")
   await db.notaProveedor.create({ data: { proveedorId, texto: texto.trim() } })
@@ -1374,7 +1401,7 @@ export async function crearNotaProveedor(proveedorId: string, texto: string) {
 }
 
 export async function eliminarNotaProveedor(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("proveedores")
   const nota = await db.notaProveedor.findFirst({ where: { id }, include: { proveedor: { select: { userId: true } } } })
   if (!nota || nota.proveedor.userId !== session.user.id) throw new Error("Sin acceso")
   await db.notaProveedor.delete({ where: { id } })
