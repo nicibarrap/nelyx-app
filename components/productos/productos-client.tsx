@@ -259,7 +259,6 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
                 <select name="formaVenta" value={formaVenta} onChange={e => cambiarFormaVenta(e.target.value as FormaVenta)} className={sel}>
                   <option value="unidad">Se vende por unidad</option>
                   <option value="peso">Se vende por peso</option>
-                  <option value="volumen">Se vende por volumen</option>
                 </select>
               </div>
               <div>
