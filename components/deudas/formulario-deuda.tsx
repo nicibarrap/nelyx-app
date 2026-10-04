@@ -52,8 +52,11 @@ export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Prop
   // El total que calcula Nelyx (cuota × cuotas) es solo una estimación —
   // los bancos reales suman seguros/impuestos que no podemos conocer, así
   // que se deja editable para que el usuario copie el número exacto que
-  // le mostró su banco, en vez de confiar en nuestra estimación.
-  const [totalManual, setTotalManual] = useState<number | null>(deudaEditar?.montoTotal ?? null)
+  // le mostró su banco, en vez de confiar en nuestra estimación. Se usa un
+  // flag aparte ("totalEditado") en vez de mirar si el texto está vacío —
+  // si no, el campo "se traba" al borrarlo: apenas queda vacío, el `||`
+  // de respaldo lo vuelve a llenar con el valor calculado al instante.
+  const [totalEditado, setTotalEditado] = useState(deudaEditar?.montoTotal != null)
   const [totalDisplay, setTotalDisplay] = useState(deudaEditar?.montoTotal ? formatMiles(deudaEditar.montoTotal) : "")
   const [fechaDeuda, setFechaDeuda] = useState(deudaEditar?.fechaDeuda?.toISOString().split("T")[0] ?? localToday())
   const [fechaPrimerPago, setFechaPrimerPago] = useState(deudaEditar?.fechaPrimerPago?.toISOString().split("T")[0] ?? "")
@@ -62,6 +65,7 @@ export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Prop
 
   const cuotasNum = Math.min(360, Math.max(1, parseInt(cuotas) || 0))
   const totalCalculado = cuota > 0 && cuotasNum > 0 ? cuota * cuotasNum : 0
+  const totalManual = totalEditado ? parseMiles(totalDisplay) : null
   const totalPagar = totalManual ?? totalCalculado
   const totalInteres = monto > 0 && totalPagar > monto ? totalPagar - monto : 0
 
@@ -84,7 +88,7 @@ export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Prop
     fd.append("monto", monto.toString())
     fd.append("cuotaManual", cuota.toString())
     fd.append("cuotas", cuotasNum.toString())
-    if (totalManual != null) fd.append("montoTotal", totalManual.toString())
+    if (totalManual != null && totalManual > 0) fd.append("montoTotal", totalManual.toString())
     fd.append("fechaDeuda", fechaDeuda)
     if (fechaPrimerPago) fd.append("fechaPrimerPago", fechaPrimerPago)
     if (fechaVence) fd.append("fechaVence", fechaVence)
@@ -195,11 +199,15 @@ export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Prop
                         <label className="text-[10px] text-[var(--c-text3)] block mb-1">Total a pagar</label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text4)] text-xs">$</span>
-                          <input value={totalDisplay || formatMiles(totalCalculado)}
+                          <input value={totalEditado ? totalDisplay : formatMiles(totalCalculado)}
                             onChange={e => {
-                              const n = parseMiles(e.target.value)
-                              setTotalDisplay(formatMiles(n))
-                              setTotalManual(n !== totalCalculado ? n : null)
+                              const raw = e.target.value
+                              setTotalEditado(true)
+                              setTotalDisplay(raw.trim() === "" ? "" : formatMiles(parseMiles(raw)))
+                            }}
+                            onBlur={() => {
+                              // Si lo dejan vacío, no tiene sentido mandar $0 — se vuelve a la estimación automática.
+                              if (totalEditado && !parseMiles(totalDisplay)) setTotalEditado(false)
                             }}
                             className="w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg pl-6 pr-2 text-sm font-bold text-[var(--c-text)] outline-none focus:border-sky-500" inputMode="numeric" />
                         </div>

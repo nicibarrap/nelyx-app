@@ -61,11 +61,16 @@ export default async function DeudasPage(props: { searchParams: Promise<{ filtro
     .flatMap(d => d.pagos)
     .filter(p => new Date(p.fecha) >= inicioMes)
     .reduce((a, p) => a + Number(p.monto), 0)
+  // El formulario actual no pide una tasa de interés (ese campo "interes"
+  // quedó de una versión anterior) — la cuota mensual se carga directa,
+  // así que exigir d.interes acá dejaba este acumulado en $0 siempre,
+  // aunque la deuda sí tuviera un total a pagar mayor al monto original.
   const interesesAcumulados = pendientes.reduce((a, d) => {
-    if (!d.interes || !d.cuotas || !d.valorCuota) return a
+    if (!d.cuotas || !d.valorCuota) return a
     // Si el usuario cargó el total exacto que le mostró su banco, se usa
     // ese — la multiplicación simple es solo una estimación de respaldo.
     const totalAPagar = d.montoTotal ? Number(d.montoTotal) : Number(d.valorCuota) * d.cuotas
+    if (totalAPagar <= Number(d.monto)) return a
     return a + (totalAPagar - Number(d.monto))
   }, 0)
 

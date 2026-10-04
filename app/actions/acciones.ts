@@ -924,6 +924,12 @@ export async function editarDeuda(id: string, formData: FormData) {
   const interes = interesStr ? parseFloat(interesStr) : null
   const cuotas = formData.get("cuotas") ? parseInt(formData.get("cuotas") as string) : null
   const valorCuota = cuotas && interes ? calcularValorCuota(monto, interes, cuotas) : null
+  // El formulario actual no pide una tasa de interés — manda la cuota
+  // mensual directa como "cuotaManual", igual que crearDeuda. Sin esto,
+  // valorCuota quedaba siempre null al editar (porque interes siempre es
+  // null), borrando la cuota mensual de la deuda en cada edición.
+  const cuotaManualStr = formData.get("cuotaManual") as string
+  const cuotaManual = cuotaManualStr ? parseFloat(cuotaManualStr) : null
   const fechaPrimerPagoStr = formData.get("fechaPrimerPago") as string
   const montoTotalStr = formData.get("montoTotal") as string
   const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
@@ -945,7 +951,8 @@ export async function editarDeuda(id: string, formData: FormData) {
       fechaPrimerPago: fechaPrimerPagoStr ? new Date(fechaPrimerPagoStr) : null,
       interes,
       cuotas,
-      valorCuota,
+      valorCuota: cuotaManual ?? valorCuota,
+      cuotaManual,
       montoTotal,
       proveedorId,
     }
