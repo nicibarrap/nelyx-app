@@ -142,6 +142,16 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
   const [usaPresentacion, setUsaPresentacion] = useState(!!producto?.unidadVentaCantidad)
   const [unidadVentaTipoInput, setUnidadVentaTipoInput] = useState(producto?.unidadVentaTipo ?? "bolsa")
   const [pesoPorPresentacion, setPesoPorPresentacion] = useState<number | "">(producto?.unidadVentaCantidad ?? "")
+  // Mismo cálculo que el paso 5 del wizard de creación — acá precio/costo
+  // ya están "por presentación" (se tipean directo, no se derivan de un
+  // costo de compra por Kg), así que la ganancia/margen salen de los
+  // mismos valores que ya muestra "Margen estimado" más arriba. Lo que sí
+  // es nuevo es la equivalencia y cuántas presentaciones rinde el stock
+  // actual — eso cambia con el peso y antes no había forma de verlo sin
+  // hacer la cuenta a mano.
+  const pesoPresNum = typeof pesoPorPresentacion === "number" ? pesoPorPresentacion : 0
+  const unidadesPorKg = pesoPresNum > 0 ? 1000 / pesoPresNum : 0
+  const cantidadMaximaPresentaciones = pesoPresNum > 0 ? Math.floor((producto?.stock ?? 0) / pesoPresNum) : 0
 
   function cambiarFormaVenta(f: FormaVenta) {
     setFormaVenta(f)
@@ -310,6 +320,35 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
                     </div>
                   </div>
                 </div>
+                {pesoPresNum > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                    <div className="bg-[var(--c-card)] rounded-xl p-3 text-center border border-[var(--c-border)]">
+                      <p className="text-sm font-black text-[var(--c-text)]">1 Kg = {unidadesPorKg.toFixed(1)}</p>
+                      <p className="text-[9px] text-[var(--c-text4)]">{unidadVentaTipoInput}s · equivalencia</p>
+                    </div>
+                    {margen !== null && (
+                      <>
+                        <div className="bg-[var(--c-card)] rounded-xl p-3 text-center border border-[var(--c-border)]">
+                          <p className="text-sm font-black text-orange-400">{formatCLP(margenPreview.costo)}</p>
+                          <p className="text-[9px] text-[var(--c-text4)]">costo por {unidadVentaTipoInput}</p>
+                        </div>
+                        <div className={`rounded-xl p-3 text-center border ${margen.ganancia >= 0 ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}>
+                          <p className={`text-sm font-black ${margen.ganancia >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatCLP(margen.ganancia)}</p>
+                          <p className="text-[9px] text-[var(--c-text4)]">ganancia</p>
+                        </div>
+                        <div className={`rounded-xl p-3 text-center border ${margen.margen >= 0 ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}>
+                          <p className={`text-sm font-black ${margen.margen >= 0 ? "text-emerald-400" : "text-red-400"}`}>{margen.margen.toFixed(0)}%</p>
+                          <p className="text-[9px] text-[var(--c-text4)]">margen</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {inventarioActivo && pesoPresNum > 0 && (
+                  <p className="text-[11px] text-[var(--c-text4)] mt-2">
+                    📦 Con el stock actual, quedan disponibles: <strong className="text-[var(--c-text2)]">{cantidadMaximaPresentaciones} {unidadVentaTipoInput}s</strong>
+                  </p>
+                )}
               </>
             ) : producto?.unidadVentaCantidad ? (
               <p className="text-[10px] text-[var(--c-warning)] mt-1.5">⚠️ Al guardar, el precio y el costo de arriba vuelven a ser "por kg" — revísalos.</p>
