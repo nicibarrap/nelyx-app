@@ -13,7 +13,7 @@ export default async function ReponerInventarioPage() {
   const [productos, proveedores] = await Promise.all([
     db.producto.findMany({
       where: { userId: session!.user.id, activo: true, controlaInventario: true },
-      select: { id: true, nombre: true, sku: true, codigoBarras: true, stock: true, costo: true, formaVenta: true, unidadMedida: true, unidadPersonalizada: true },
+      select: { id: true, nombre: true, sku: true, codigoBarras: true, stock: true, costo: true, formaVenta: true, unidadMedida: true, unidadPersonalizada: true, unidadVentaCantidad: true },
       orderBy: { nombre: "asc" },
     }),
     db.proveedor.findMany({ where: { userId: session!.user.id, activo: true }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),

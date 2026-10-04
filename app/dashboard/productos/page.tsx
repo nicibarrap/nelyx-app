@@ -31,7 +31,7 @@ export default async function ProductosPage() {
       by: ["productoId"],
       where: { userId: session!.user.id, tipo: "VENTA", productoId: { not: null } },
       _count: { _all: true },
-      _sum: { monto: true },
+      _sum: { monto: true, utilidad: true },
     }),
     calcularProximoVencimientoPorProducto(session!.user.id),
     db.categoriaPersonalizada.findMany({
@@ -46,11 +46,17 @@ export default async function ProductosPage() {
     }),
   ])
 
-  // Ventas e ingresos por producto — ya vienen agregados por la DB (groupBy).
-  const ventasPorProducto: Record<string, { count: number; total: number }> = {}
+  // Ventas, ingresos y utilidad por producto — ya vienen agregados por la
+  // DB (groupBy). La utilidad se suma directo del snapshot que ya guardó
+  // cada venta (movimiento.utilidad) en vez de recalcularla acá con el
+  // margen y precio ACTUALES del producto — eso quedaba mal para
+  // productos por peso (cada venta es una cantidad distinta, no "1
+  // unidad") y además ignoraba que el costo pudo haber cambiado desde
+  // entonces.
+  const ventasPorProducto: Record<string, { count: number; total: number; utilidad: number }> = {}
   for (const g of movimientos) {
     if (!g.productoId) continue
-    ventasPorProducto[g.productoId] = { count: g._count._all, total: Number(g._sum.monto ?? 0) }
+    ventasPorProducto[g.productoId] = { count: g._count._all, total: Number(g._sum.monto ?? 0), utilidad: Number(g._sum.utilidad ?? 0) }
   }
 
   const productosData = productosRaw.map(p => ({
@@ -75,6 +81,7 @@ export default async function ProductosPage() {
     createdAt: p.createdAt,
     ventasCount: ventasPorProducto[p.id]?.count ?? 0,
     ingresosTotal: ventasPorProducto[p.id]?.total ?? 0,
+    utilidadTotal: ventasPorProducto[p.id]?.utilidad ?? 0,
     proximoVencimiento: vencimientos.get(p.id) ?? null,
   }))
 

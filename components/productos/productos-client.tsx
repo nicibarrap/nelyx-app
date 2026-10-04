@@ -42,7 +42,7 @@ type Producto = {
   controlaInventario: boolean
   unidadVentaCantidad: number | null; unidadVentaTipo: string | null
   ventaMinima: number | null
-  createdAt: Date; ventasCount: number; ingresosTotal: number
+  createdAt: Date; ventasCount: number; ingresosTotal: number; utilidadTotal: number
   proximoVencimiento: { fechaVencimiento: string; diasRestantes: number } | null
 }
 
@@ -546,10 +546,10 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
               <span className="text-xs text-[var(--c-text2)]">Ingresos generados</span>
               <span className="text-xs font-bold text-emerald-400">{formatCLP(producto.ingresosTotal)}</span>
             </div>
-            {inventarioActivo && margen && (
+            {inventarioActivo && (
               <div className="flex justify-between">
                 <span className="text-xs text-[var(--c-text2)]">Utilidad generada</span>
-                <span className="text-xs font-bold text-sky-400">{formatCLP(margen.ganancia * producto.ventasCount)}</span>
+                <span className="text-xs font-bold text-sky-400">{formatCLP(producto.utilidadTotal)}</span>
               </div>
             )}
           </div>
@@ -579,9 +579,15 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
               </div>
               {motivoAjuste === "reposicion" && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-[var(--c-text2)]">Costo unitario (opcional):</span>
-                  <input type="number" min="0" value={costoAjuste} onChange={e => setCostoAjuste(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                    className="w-24 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 h-7 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
+                  {producto.unidadVentaCantidad ? (
+                    <span className="text-[11px] text-[var(--c-text4)] italic">Se vende por presentación — el costo no se recalcula acá, edítalo desde "Editar"</span>
+                  ) : (
+                    <>
+                      <span className="text-xs text-[var(--c-text2)]">Costo unitario (opcional):</span>
+                      <input type="number" min="0" value={costoAjuste} onChange={e => setCostoAjuste(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                        className="w-24 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 h-7 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
+                    </>
+                  )}
                   <span className="text-xs text-[var(--c-text2)]">🗓️ Vence (opcional):</span>
                   <CampoFecha value={fechaVencimientoAjuste} onChange={e => setFechaVencimientoAjuste(e.target.value)}
                     className="bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 h-7 text-xs text-[var(--c-text)] outline-none focus:border-sky-500" />
