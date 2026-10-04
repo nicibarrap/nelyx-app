@@ -72,6 +72,9 @@ export function ImportarProductosClient({ productosExistentes }: Props) {
           className="h-10 px-4 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] text-sm font-semibold hover:border-sky-500/40 hover:text-sky-400 transition-all">
           📄 Descargar plantilla Excel
         </button>
+        <p className="text-[10px] text-[var(--c-text4)] mt-2">
+          ¿No tienes Excel? Súbelo a tu Google Drive y ábrelo gratis con Google Sheets — no hace falta cuenta de Microsoft. Al terminar, descárgalo ahí mismo como "Microsoft Excel (.xlsx)" para subirlo acá.
+        </p>
       </div>
 
       {/* Paso 2: subir */}
