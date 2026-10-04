@@ -113,7 +113,14 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
     const fd = new FormData(e.currentTarget)
     const form = e.currentTarget
     const monto = Number(fd.get("monto"))
-    const saldo = Number(deudaDetalle.saldoPendiente ?? deudaDetalle.monto)
+    // Deuda no tiene un campo "saldoPendiente" propio (a diferencia de
+    // CuentaPorCobrar) — ese `?? deudaDetalle.monto` siempre caía al monto
+    // ORIGINAL completo, no a lo que realmente queda por pagar. El tope de
+    // "el pago no puede superar el saldo pendiente" quedaba prácticamente
+    // inútil apenas había algún abono registrado. Mismo cálculo que ya usa
+    // el resto de este componente para "Saldo pendiente" (totalRealDetalle).
+    const totalReal = Number(deudaDetalle.montoTotal ?? deudaDetalle.monto)
+    const saldo = totalReal - Number(deudaDetalle.montoPagado)
     const cuota = Number(deudaDetalle.valorCuota ?? 0)
     // Block: payment > remaining balance
     if (monto > saldo) {
