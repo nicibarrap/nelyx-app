@@ -133,6 +133,16 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
   const [unidadPersInput, setUnidadPersInput] = useState(producto?.unidadPersonalizada ?? "")
   const opcionesUnidad = unidadesParaForma(formaVenta)
 
+  // Presentación fija (bolsas, botellas...) — solo aplica a productos por
+  // peso, igual que en el wizard de creación. Antes esta configuración solo
+  // se podía definir una vez al crear el producto; sin esto, un error al
+  // tipear el peso de la bolsa o un cambio de formato del proveedor
+  // obligaba a borrar el producto y crearlo de nuevo, perdiendo su
+  // historial de ventas y movimientos de stock.
+  const [usaPresentacion, setUsaPresentacion] = useState(!!producto?.unidadVentaCantidad)
+  const [unidadVentaTipoInput, setUnidadVentaTipoInput] = useState(producto?.unidadVentaTipo ?? "bolsa")
+  const [pesoPorPresentacion, setPesoPorPresentacion] = useState<number | "">(producto?.unidadVentaCantidad ?? "")
+
   function cambiarFormaVenta(f: FormaVenta) {
     setFormaVenta(f)
     // Al cambiar la forma de venta, seleccionar la primera unidad compatible
@@ -146,6 +156,10 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (formaVenta === "peso" && usaPresentacion && (pesoPorPresentacion === "" || pesoPorPresentacion <= 0)) {
+      toast.error(`Indica cuánto pesa cada ${unidadVentaTipoInput}`)
+      return
+    }
     const fd = new FormData(e.currentTarget)
     const form = e.currentTarget
     start(async () => {
@@ -199,7 +213,9 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">Precio de venta</label>
+            <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">
+              Precio de venta{formaVenta === "peso" && usaPresentacion ? ` (por ${unidadVentaTipoInput})` : ""}
+            </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">$</span>
               <input name="precio" type="number" min="0" step="1" placeholder="0" defaultValue={producto?.precio ?? ""}
@@ -209,7 +225,9 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
           </div>
           {inventarioActivo && (
             <div>
-              <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">Costo del producto</label>
+              <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">
+                Costo del producto{formaVenta === "peso" && usaPresentacion ? ` (por ${unidadVentaTipoInput})` : ""}
+              </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">$</span>
                 <input name="costo" type="number" min="0" step="1" placeholder="0" defaultValue={producto?.costo ?? ""}
@@ -241,7 +259,6 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
                 <select name="formaVenta" value={formaVenta} onChange={e => cambiarFormaVenta(e.target.value as FormaVenta)} className={sel}>
                   <option value="unidad">Se vende por unidad</option>
                   <option value="peso">Se vende por peso</option>
-                  <option value="volumen">Se vende por volumen</option>
                 </select>
               </div>
               <div>
@@ -261,6 +278,42 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
                 </datalist>
               </div>
             )}
+          </div>
+        )}
+
+        {inventarioActivo && formaVenta === "peso" && (
+          <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-card2)] p-3.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={usaPresentacion} onChange={e => setUsaPresentacion(e.target.checked)}
+                className="w-4 h-4 rounded accent-sky-500" />
+              <span className="text-[11px] font-bold text-[var(--c-text2)]">📦 Se vende en presentaciones fijas (bolsas, botellas...)</span>
+            </label>
+            {usaPresentacion ? (
+              <>
+                <p className="text-[10px] text-[var(--c-text4)] mt-1.5 mb-2.5">
+                  El precio y el costo de arriba pasan a ser "por {unidadVentaTipoInput}", no por kg — revísalos si acabas de activar esto.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿En qué vendes las presentaciones?</label>
+                    <select name="unidadVentaTipo" value={unidadVentaTipoInput} onChange={e => setUnidadVentaTipoInput(e.target.value)} className={sel}>
+                      {["bolsa","paquete","botella","caja","frasco"].map(u => <option key={u} value={u}>En {u}s</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">¿Cuánto pesa cada {unidadVentaTipoInput}?</label>
+                    <div className="relative">
+                      <input name="unidadVentaCantidad" type="number" min="0" step="any" value={pesoPorPresentacion}
+                        onChange={e => setPesoPorPresentacion(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                        placeholder="0" className={inp + " pr-8"} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-xs">g</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : producto?.unidadVentaCantidad ? (
+              <p className="text-[10px] text-[var(--c-warning)] mt-1.5">⚠️ Al guardar, el precio y el costo de arriba vuelven a ser "por kg" — revísalos.</p>
+            ) : null}
           </div>
         )}
 
