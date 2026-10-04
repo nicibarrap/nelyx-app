@@ -199,6 +199,12 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Le dice al servidor si la sección de inventario (unidad de
+            medida, presentación, stock, SKU, código de barras) viajó en
+            este envío — en modo simple esos campos ni siquiera están en
+            el formulario, y sin esta bandera el servidor no podía
+            distinguir "el usuario los vació" de "nunca estuvieron acá". */}
+        <input type="hidden" name="inventarioActivo" value={inventarioActivo ? "1" : "0"} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">Nombre *</label>

@@ -689,9 +689,25 @@ export async function actualizarProducto(id: string, formData: FormData) {
   const precio = formData.get("precio") ? parseFloat(formData.get("precio") as string) : null
   const costo = formData.get("costo") ? parseFloat(formData.get("costo") as string) : null
 
-  const formaVenta = ((formData.get("formaVenta") as string) || "unidad") as FormaVenta
-  const unidadMedida = (formData.get("unidadMedida") as string) || "unidad"
-  const unidadPersonalizada = unidadMedida === "personalizada" ? ((formData.get("unidadPersonalizada") as string)?.trim() || null) : null
+  // El formulario de editar solo muestra la sección de inventario (unidad
+  // de medida, presentación, stock, SKU, código de barras) cuando el
+  // producto controla inventario — en "modo simple" esos campos ni
+  // siquiera existen en el formulario. Sin esta bandera (mandada como
+  // input oculto desde el cliente), guardar cualquier cambio — hasta solo
+  // el nombre — en un producto de modo simple borraba en silencio su SKU,
+  // código de barras, forma de venta, unidad de medida y presentación,
+  // porque FormData nunca los traía y se interpretaba como "vacío" en vez
+  // de "no corresponde tocarlos". Un producto de modo simple SÍ puede
+  // tener forma de venta "peso", SKU o código de barras (se definen en el
+  // wizard de creación sin depender de si controla inventario), así que
+  // sin esto se perdían de verdad.
+  const seccionInventarioEnviada = formData.get("inventarioActivo") === "1"
+
+  const formaVenta = seccionInventarioEnviada ? ((formData.get("formaVenta") as string) || "unidad") as FormaVenta : (prod.formaVenta as FormaVenta)
+  const unidadMedida = seccionInventarioEnviada ? ((formData.get("unidadMedida") as string) || "unidad") : prod.unidadMedida
+  const unidadPersonalizada = seccionInventarioEnviada
+    ? (unidadMedida === "personalizada" ? ((formData.get("unidadPersonalizada") as string)?.trim() || null) : null)
+    : prod.unidadPersonalizada
 
   const stockVal = formData.get("stock")
   const stock = stockVal !== null && stockVal !== "" ? aInterno(parseFloat(stockVal as string), unidadMedida) : null
@@ -701,15 +717,21 @@ export async function actualizarProducto(id: string, formData: FormData) {
   const ventaMinimaVal = formData.get("ventaMinima")
   const ventaMinima = ventaMinimaVal !== null && ventaMinimaVal !== "" ? aInterno(parseFloat(ventaMinimaVal as string), unidadMedida) : null
 
-  // Presentación fija (bolsas, botellas...) — solo el formulario del wizard
-  // de creación podía definir esto hasta ahora. Si el campo no viene en el
-  // FormData (formaVenta ya no es "peso", o el usuario desmarcó la opción),
-  // se guarda null a propósito: así se puede corregir un peso mal tipeado,
-  // ajustarlo si cambia el formato de compra, o convertir el producto de
-  // vuelta a venta directa por peso, sin tener que borrarlo y recrearlo.
+  // Presentación fija (bolsas, botellas...) — antes solo el wizard de
+  // creación podía definir esto; ahora el formulario de editar también,
+  // pero solo cuando su sección (gated por inventarioActivo) se envió: así
+  // se puede corregir un peso mal tipeado, ajustarlo si cambia el formato
+  // de compra, o convertir el producto de vuelta a venta directa por
+  // peso, sin tener que borrarlo y recrearlo — y sin arriesgar el caso de
+  // modo simple de arriba.
   const unidadVentaCantidadVal = formData.get("unidadVentaCantidad")
-  const unidadVentaCantidad = unidadVentaCantidadVal && unidadVentaCantidadVal !== "" ? parseFloat(unidadVentaCantidadVal as string) : null
-  const unidadVentaTipo = (formData.get("unidadVentaTipo") as string)?.trim() || null
+  const unidadVentaCantidad = seccionInventarioEnviada
+    ? (unidadVentaCantidadVal && unidadVentaCantidadVal !== "" ? parseFloat(unidadVentaCantidadVal as string) : null)
+    : prod.unidadVentaCantidad
+  const unidadVentaTipo = seccionInventarioEnviada ? ((formData.get("unidadVentaTipo") as string)?.trim() || null) : prod.unidadVentaTipo
+
+  const sku = seccionInventarioEnviada ? ((formData.get("sku") as string)?.trim() || null) : prod.sku
+  const codigoBarras = seccionInventarioEnviada ? ((formData.get("codigoBarras") as string)?.trim() || null) : prod.codigoBarras
 
   if (unidadMedida === "personalizada" && unidadPersonalizada) {
     await db.categoriaPersonalizada.create({
@@ -728,8 +750,8 @@ export async function actualizarProducto(id: string, formData: FormData) {
         costo,
         descripcion: (formData.get("descripcion") as string)?.trim() || null,
         categoria: (formData.get("categoria") as string)?.trim() || null,
-        sku: (formData.get("sku") as string)?.trim() || null,
-        codigoBarras: (formData.get("codigoBarras") as string)?.trim() || null,
+        sku,
+        codigoBarras,
         stock,
         stockMinimo,
         ventaMinima,
