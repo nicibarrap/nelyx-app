@@ -689,7 +689,10 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
         {/* Detail panel — desktop: columna lateral */}
         {selectedUpdated && (
           <div className="hidden lg:block bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden min-h-[500px]">
-            <DetailPanel c={selectedUpdated} onClose={() => setSelected(null)} />
+            {/* key remonta el panel al cambiar de cliente — evita que
+                showPago/showEditar/nota queden pegados del cliente anterior
+                (mismo fix que ClientePanel/ProveedorPanel). */}
+            <DetailPanel key={selectedUpdated.id} c={selectedUpdated} onClose={() => setSelected(null)} />
           </div>
         )}
       </div>
@@ -700,7 +703,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelected(null)} />
           <div className="relative w-full max-h-[88vh] bg-[var(--c-card)] border-t border-[var(--c-border)] rounded-t-3xl overflow-hidden flex flex-col animate-fade-up">
             <div className="w-10 h-1 rounded-full bg-white/15 mx-auto mt-2.5 mb-1 flex-shrink-0" />
-            <DetailPanel c={selectedUpdated} onClose={() => setSelected(null)} />
+            <DetailPanel key={selectedUpdated.id} c={selectedUpdated} onClose={() => setSelected(null)} />
           </div>
         </div>
       )}

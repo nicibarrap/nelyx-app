@@ -695,7 +695,13 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
         {/* Panel perfil */}
         <div className="lg:col-span-2">
           {selected ? (
+            // key={selected.id} fuerza a React a remontar el panel al
+            // cambiar de cliente — sin esto, estados internos como la nota
+            // sin enviar quedaban pegados: tipear una nota para un cliente
+            // y cambiar de cliente antes de enviarla la adjuntaba al
+            // cliente equivocado.
             <ClientePanel
+              key={selected.id}
               cliente={selected}
               onClose={() => setSelectedId(null)}
               onEdit={() => { setEditando(selected); setSelectedId(null) }}
