@@ -1121,7 +1121,7 @@ export async function eliminarDeuda(id: string) {
 
 // ── COSTOS FIJOS RECURRENTES ───────────────────────────────
 export async function crearCostoUnico(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
   const monto = parseFloat(formData.get("monto") as string)
@@ -1146,7 +1146,7 @@ export async function crearCostoUnico(formData: FormData) {
 }
 
 export async function crearCostoRecurrente(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
   const monto = parseFloat(formData.get("monto") as string)
@@ -1175,7 +1175,7 @@ export async function crearCostoRecurrente(formData: FormData) {
 }
 
 export async function actualizarEstadoCosto(id: string, estado: "activo" | "pausado" | "finalizado") {
-  const session = await getSession()
+  const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.updateMany({
     where: { id, userId: session.user.id },
     data: { estado }
@@ -1185,13 +1185,19 @@ export async function actualizarEstadoCosto(id: string, estado: "activo" | "paus
 }
 
 export async function eliminarCostoRecurrente(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
 }
 
 export async function generarCostosDelMes(userId: string, mes: number, anio: number): Promise<number> {
+  // Aunque solo se llama desde el render de Resumen/Costos Fijos con el
+  // propio userId de la sesión, sigue siendo una Server Action exportada —
+  // cualquiera podría invocarla directo con el userId de otra cuenta. Se
+  // verifica que coincida con la sesión real antes de tocar nada.
+  const session = await getSession()
+  if (userId !== session.user.id) throw new Error("No autorizado")
   // hoyEnChile(), no new Date() crudo — el servidor corre en UTC, y en la
   // noche chilena eso ya cree que es el día siguiente, generando (o
   // saltándose) un costo con horas de anticipación o atraso.
@@ -1244,7 +1250,7 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
 }
 
 export async function marcarCostoPagado(generacionId: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("costos-fijos")
   const generacion = await db.generacionCosto.findUnique({
     where: { id: generacionId },
     include: { costoFijo: true }
