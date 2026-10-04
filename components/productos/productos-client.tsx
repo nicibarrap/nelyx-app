@@ -761,7 +761,16 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
   const stats = useMemo(() => {
     const activos = productos.filter(p => p.activo)
     const conInventario = activos.filter(p => p.stock !== null)
-    const valorInventario = conInventario.reduce((a, p) => a + deInterno(p.stock ?? 0, p.unidadMedida) * (p.costo ?? p.precio ?? 0), 0)
+    // Si el producto se vende en presentación fija (bolsas, botellas...), el
+    // costo/precio guardado es "por presentación" — hay que dividir el
+    // stock (siempre en gramos/ml internos) por el tamaño de esa
+    // presentación para saber cuántas hay, en vez de convertir por
+    // unidadMedida (la unidad de COMPRA, sin relación con el precio por bolsa).
+    const valorInventario = conInventario.reduce((a, p) => {
+      const costoOPrecio = p.costo ?? p.precio ?? 0
+      const cantidadParaValorizar = p.unidadVentaCantidad ? (p.stock ?? 0) / p.unidadVentaCantidad : deInterno(p.stock ?? 0, p.unidadMedida)
+      return a + cantidadParaValorizar * costoOPrecio
+    }, 0)
     const stockBajo = conInventario.filter(p => p.stockMinimo && p.stock! <= p.stockMinimo).length
     const agotados = conInventario.filter(p => p.stock === 0).length
     const masVendido = [...productos].filter(p => p.ventasCount > 0).sort((a,b) => b.ventasCount - a.ventasCount)[0] ?? null
