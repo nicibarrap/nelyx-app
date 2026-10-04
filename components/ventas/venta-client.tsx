@@ -268,6 +268,20 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
     }))
   }
 
+  // Suma la cantidad pedida por producto a través de TODAS las líneas del
+  // carrito antes de comparar contra el stock — dos líneas del mismo
+  // producto (ej. agregado dos veces por error) pasaban esta validación
+  // cada una por separado contra el mismo stockDisponible, sin restarse
+  // entre sí. Mismo cálculo que ahora hace el servidor en registrarVenta.
+  function productoConStockInsuficiente(lista: ItemVenta[]) {
+    const totalesPorProducto = new Map<string, number>()
+    for (const it of lista) {
+      if (!it.productoId) continue
+      totalesPorProducto.set(it.productoId, (totalesPorProducto.get(it.productoId) ?? 0) + (it.cantidadInterna ?? it.cantidad))
+    }
+    return lista.find(it => it.productoId && it.stockDisponible !== null && (totalesPorProducto.get(it.productoId) ?? 0) > it.stockDisponible)
+  }
+
   function resetFormulario() {
     setItems([])
     setClienteId("")
@@ -281,10 +295,18 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
   // Cobro con máquina conectada — crea la orden, y consulta el resultado
   // cada 2 segundos hasta que deje de estar pendiente (o pasen 90s).
   const [cobroMaquina, setCobroMaquina] = useState<{ estado: "esperando" | "aprobado" | "rechazado" | "error"; mensaje?: string } | null>(null)
+  // Si el usuario navega fuera de Venta mientras se espera el pago, este
+  // intervalo seguía corriendo en segundo plano (nada lo cancelaba al
+  // desmontar) — podía terminar registrando una venta varios segundos
+  // después de que la pantalla ya mostraba otra cosa.
+  const intervaloCobroRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    return () => { if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current) }
+  }, [])
 
   function handleCobrarConMaquina(tipo: "debito" | "credito") {
     if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
-    const stockInsuf = items.find(i => i.stockDisponible !== null && (i.cantidadInterna ?? i.cantidad) > i.stockDisponible)
+    const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
     const etiqueta = tipo === "debito" ? "Débito (Mercado Pago)" : "Crédito (Mercado Pago)"
@@ -296,23 +318,23 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
 
         let intentos = 0
         const maxIntentos = 45 // ~90 segundos, consultando cada 2s
-        const intervalo = setInterval(async () => {
+        intervaloCobroRef.current = setInterval(async () => {
           intentos++
           try {
             const { estado } = await consultarCobroMaquina(orderId)
             if (estado === "aprobado") {
-              clearInterval(intervalo)
+              if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current)
               setCobroMaquina({ estado: "aprobado" })
               await confirmarVentaTrasPago(etiqueta)
             } else if (estado === "rechazado") {
-              clearInterval(intervalo)
+              if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current)
               setCobroMaquina({ estado: "rechazado", mensaje: "El pago fue rechazado en la máquina." })
             } else if (intentos >= maxIntentos) {
-              clearInterval(intervalo)
+              if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current)
               setCobroMaquina({ estado: "error", mensaje: "Se acabó el tiempo de espera — si el cliente sí pagó, verifica en tu app de Mercado Pago antes de reintentar." })
             }
           } catch {
-            clearInterval(intervalo)
+            if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current)
             setCobroMaquina({ estado: "error", mensaje: "No se pudo consultar el estado del pago." })
           }
         }, 2000)
@@ -341,7 +363,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
     if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
     if (metodo === "pendiente" && !clienteId) { toast.error("Selecciona un cliente para una venta pendiente"); return }
 
-    const stockInsuf = items.find(i => i.stockDisponible !== null && (i.cantidadInterna ?? i.cantidad) > i.stockDisponible)
+    const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
     // Si no hay productos en el carrito, se registra como un único ítem libre —

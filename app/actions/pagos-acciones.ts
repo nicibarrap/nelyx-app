@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
+import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 // El tipo NO se re-exporta desde acá a propósito — un archivo "use server"
 // solo debe exportar funciones async. Bajo Turbopack (Next 15), mezclar un
 // "export type" en un archivo de Server Actions rompe el bundle cliente
@@ -14,6 +15,17 @@ import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMerca
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  return session
+}
+
+/** Igual que getSession(), pero rechaza a un empleado al que ese módulo se
+ * le dejó en "solo lectura" — mismo patrón que getSessionEscritura en
+ * app/actions/acciones.ts. */
+async function getSessionEscritura(moduloKey: ModuloKey) {
+  const session = await getSession()
+  if (esSoloLectura(session.user.modulosPermitidos, moduloKey)) {
+    throw new Error("Tu acceso a este módulo es solo de lectura")
+  }
   return session
 }
 
@@ -33,7 +45,7 @@ export async function listarTerminalesParaConectar(accessToken: string): Promise
 
 /** Paso 2: guarda la conexión ya con la terminal elegida. */
 export async function conectarMercadoPago(accessToken: string, terminalId: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("configuracion")
   await db.conexionPago.upsert({
     where: { userId_proveedor: { userId: session.user.id, proveedor: "mercadopago" } },
     create: { userId: session.user.id, proveedor: "mercadopago", accessToken, terminalId, activo: true, ultimaConexionOk: new Date() },
@@ -44,7 +56,7 @@ export async function conectarMercadoPago(accessToken: string, terminalId: strin
 }
 
 export async function desconectarPago(proveedor: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("configuracion")
   await db.conexionPago.deleteMany({ where: { userId: session.user.id, proveedor } })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
@@ -53,7 +65,7 @@ export async function desconectarPago(proveedor: string) {
 /** Se llama desde Venta al elegir "Cobrar con máquina conectada" — le pide
  * a la terminal que cobre el monto exacto. */
 export async function iniciarCobroMaquina(monto: number, referenciaVenta: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("venta")
   const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "mercadopago", activo: true } })
   if (!conexion || !conexion.terminalId) throw new Error("No tienes ninguna máquina de pago conectada. Ve a Configuración para conectarla.")
 
