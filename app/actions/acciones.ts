@@ -108,7 +108,7 @@ export async function ingresarMovimiento(formData: FormData) {
 }
 
 async function ingresarMovimientoInterno(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("movimientos")
   const tipo = formData.get("tipo") as string
   const monto = parseFloat(formData.get("monto") as string)
   const fecha = new Date(formData.get("fecha") as string)
@@ -126,7 +126,7 @@ async function ingresarMovimientoInterno(formData: FormData) {
   // pasar el id (adivinado o filtrado) de un producto/cliente/proveedor
   // ajeno y ese nombre terminaba mostrándose dentro de su propio panel.
   const prodParaCosto = productoId
-    ? await db.producto.findFirst({ where: { id: productoId, userId: session.user.id }, select: { costo: true, nombre: true } })
+    ? await db.producto.findFirst({ where: { id: productoId, userId: session.user.id }, select: { costo: true, nombre: true, stock: true, formaVenta: true, unidadMedida: true, unidadPersonalizada: true } })
     : null
   if (productoId && !prodParaCosto) throw new Error("Producto no encontrado")
   if (clienteId) {
@@ -136,6 +136,16 @@ async function ingresarMovimientoInterno(formData: FormData) {
   if (proveedorId) {
     const proveedorPropio = await db.proveedor.findFirst({ where: { id: proveedorId, userId: session.user.id }, select: { id: true } })
     if (!proveedorPropio) throw new Error("Proveedor no encontrado")
+  }
+
+  // Validar stock ANTES de crear cualquier registro — mismo chequeo que
+  // registrarVentaInterno (el camino real de Venta): registrarMovimientoStock
+  // nunca lanza error si el descuento supera el stock disponible, solo lo
+  // "clampa" en silencio a 0, así que sin esta validación se podía vender
+  // más unidades de las que había sin ningún aviso, dejando además un
+  // Movimiento ya creado si el rechazo llegara después.
+  if (productoId && tipo === "VENTA" && prodParaCosto?.stock != null && prodParaCosto.stock < cantidad) {
+    throw new Error(`Stock insuficiente para "${prodParaCosto.nombre}". Disponible: ${formatearStock(prodParaCosto.stock, prodParaCosto.formaVenta, prodParaCosto.unidadMedida, prodParaCosto.unidadPersonalizada)}`)
   }
 
   // Snapshot financiero: el costo del producto AL MOMENTO de la venta, para
@@ -178,6 +188,7 @@ async function ingresarMovimientoInterno(formData: FormData) {
   }
 
   // Auto-descontar stock si es VENTA con producto que tiene inventario
+  // (ya validado arriba, antes de crear el Movimiento).
   if (productoId && tipo === "VENTA") {
     await registrarMovimientoStock({
       productoId, userId: session.user.id, tipo: "venta",
@@ -227,7 +238,7 @@ async function ingresarMovimientoInterno(formData: FormData) {
 }
 
 export async function eliminarMovimiento(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("movimientos")
   const mov = await db.movimiento.findFirst({ where: { id, userId: session.user.id } })
   if (!mov) throw new Error("No encontrado")
 
@@ -241,12 +252,26 @@ export async function eliminarMovimiento(id: string) {
     })
   }
 
+  // Si este movimiento viene de "Marcar como pagado" en Costos Fijos,
+  // GeneracionCosto.movimientoId lo referencia con un string suelto (sin
+  // relación ni cascada en el esquema) — sin esto, al eliminar el
+  // movimiento ese costo fijo quedaba "pagado" para siempre, apuntando a
+  // un movimiento que ya no existe, aunque el dinero ya no esté en
+  // Movimientos.
+  if (mov.tipo === "COSTO_FIJO") {
+    await db.generacionCosto.updateMany({
+      where: { movimientoId: id },
+      data: { pagado: false, fechaPagado: null, movimientoId: null },
+    })
+  }
+
   await db.movimiento.delete({ where: { id } })
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/reportes")
+  if (mov.tipo === "COSTO_FIJO") revalidatePath("/dashboard/costos-fijos")
   if (mov.proveedorId) revalidatePath("/dashboard/proveedores")
   if (mov.clienteId) revalidatePath("/dashboard/clientes")
 }
