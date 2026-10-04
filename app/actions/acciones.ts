@@ -275,7 +275,7 @@ async function registrarVentaInterno(items: Array<{
   cantidad: number
   cantidadInterna?: number | null
 }>, fecha: string, descripcion?: string, clienteId?: string | null, descuento?: number, tipoPago?: string, fechaVence?: string, metodoPago?: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("venta")
   if (!items || items.length === 0) throw new Error("Agrega al menos un producto")
 
   // Un cliente de OTRA cuenta nunca debe poder quedar asociado a esta
@@ -287,16 +287,33 @@ async function registrarVentaInterno(items: Array<{
     if (!clientePropio) throw new Error("Cliente no encontrado")
   }
 
-  // Validar stock y venta mínima (usa la cantidad interna en gramos/ml cuando el producto es por peso/volumen)
-  // — y de paso, que cada producto sea realmente de esta cuenta: antes, si
-  // el id no calzaba con userId, `prod` quedaba null y el chequeo se
-  // saltaba en silencio, dejando crear la venta igual con ese id ajeno.
+  // Cantidad total pedida por producto, sumando TODAS las líneas del
+  // carrito que apunten al mismo productoId — dos líneas del mismo
+  // producto (ej. agregado dos veces por error) antes se validaban cada
+  // una por separado contra el mismo prod.stock sin restarse entre sí: 4+4
+  // con solo 5 de stock pasaba la validación igual, porque ninguna de las
+  // dos por sí sola superaba el disponible.
+  const cantidadTotalPorProducto = new Map<string, number>()
+  for (const item of items) {
+    if (!item.productoId) continue
+    const cantidadDescuento = item.cantidadInterna ?? item.cantidad
+    cantidadTotalPorProducto.set(item.productoId, (cantidadTotalPorProducto.get(item.productoId) ?? 0) + cantidadDescuento)
+  }
+
+  // Validar stock (sobre el total agregado) y venta mínima (sobre cada
+  // línea individual — el mínimo aplica por línea, no al total del
+  // carrito), usando la cantidad interna en gramos/ml cuando el producto
+  // es por peso/volumen — y de paso, que cada producto sea realmente de
+  // esta cuenta: antes, si el id no calzaba con userId, `prod` quedaba
+  // null y el chequeo se saltaba en silencio, dejando crear la venta igual
+  // con ese id ajeno.
   for (const item of items) {
     if (item.productoId) {
       const prod = await db.producto.findFirst({ where: { id: item.productoId, userId: session.user.id } })
       if (!prod) throw new Error("Producto no encontrado")
       const cantidadDescuento = item.cantidadInterna ?? item.cantidad
-      if (prod.stock !== null && prod.stock < cantidadDescuento) {
+      const cantidadTotal = cantidadTotalPorProducto.get(item.productoId) ?? cantidadDescuento
+      if (prod.stock !== null && prod.stock < cantidadTotal) {
         throw new Error(`Stock insuficiente para "${prod.nombre}". Disponible: ${formatearStock(prod.stock, prod.formaVenta, prod.unidadMedida, prod.unidadPersonalizada)}`)
       }
       if (prod.ventaMinima != null && cantidadDescuento < prod.ventaMinima) {
