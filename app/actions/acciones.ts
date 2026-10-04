@@ -701,13 +701,23 @@ export async function actualizarProducto(id: string, formData: FormData) {
   const ventaMinimaVal = formData.get("ventaMinima")
   const ventaMinima = ventaMinimaVal !== null && ventaMinimaVal !== "" ? aInterno(parseFloat(ventaMinimaVal as string), unidadMedida) : null
 
+  // Presentación fija (bolsas, botellas...) — solo el formulario del wizard
+  // de creación podía definir esto hasta ahora. Si el campo no viene en el
+  // FormData (formaVenta ya no es "peso", o el usuario desmarcó la opción),
+  // se guarda null a propósito: así se puede corregir un peso mal tipeado,
+  // ajustarlo si cambia el formato de compra, o convertir el producto de
+  // vuelta a venta directa por peso, sin tener que borrarlo y recrearlo.
+  const unidadVentaCantidadVal = formData.get("unidadVentaCantidad")
+  const unidadVentaCantidad = unidadVentaCantidadVal && unidadVentaCantidadVal !== "" ? parseFloat(unidadVentaCantidadVal as string) : null
+  const unidadVentaTipo = (formData.get("unidadVentaTipo") as string)?.trim() || null
+
   if (unidadMedida === "personalizada" && unidadPersonalizada) {
     await db.categoriaPersonalizada.create({
       data: { nombre: unidadPersonalizada, tipo: "UNIDAD_MEDIDA", userId: session.user.id },
     }).catch(() => {})
   }
 
-  validarNumerosProducto({ precio, costo, stock, stockMinimo, ventaMinima })
+  validarNumerosProducto({ precio, costo, stock, stockMinimo, ventaMinima, unidadVentaCantidad })
 
   try {
     await db.producto.update({
@@ -726,6 +736,8 @@ export async function actualizarProducto(id: string, formData: FormData) {
         unidadMedida,
         unidadPersonalizada,
         formaVenta,
+        unidadVentaCantidad,
+        unidadVentaTipo,
       },
     })
   } catch (err: any) {
