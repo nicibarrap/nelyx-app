@@ -84,13 +84,24 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
     router.push(`?filtro=${key}`)
   }
 
+  // Centraliza el cambio de deuda seleccionada — showPago/pagoMontoDisplay/
+  // pagoWarning son estados aparte del panel de pago, y sin este reset
+  // quedaban "pegados" al cambiar de deuda: un monto tipeado para la
+  // deuda A (sin enviar) seguía apareciendo en el formulario de la deuda B.
+  function seleccionarDeuda(d: Deuda | null) {
+    setDeudaDetalle(d)
+    setShowPago(false)
+    setPagoMontoDisplay("")
+    setPagoWarning(null)
+  }
+
   function handleEliminar(id: string) {
     if (!confirm("¿Eliminar esta deuda?")) return
     startTransition(async () => {
       try {
         await eliminarDeuda(id)
         toast.success("Deuda eliminada")
-        if (deudaDetalle?.id === id) setDeudaDetalle(null)
+        if (deudaDetalle?.id === id) seleccionarDeuda(null)
       } catch { toast.error("No se pudo eliminar") }
     })
   }
@@ -113,7 +124,14 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
     const fd = new FormData(e.currentTarget)
     const form = e.currentTarget
     const monto = Number(fd.get("monto"))
-    const saldo = Number(deudaDetalle.saldoPendiente ?? deudaDetalle.monto)
+    // Deuda no tiene un campo "saldoPendiente" propio (a diferencia de
+    // CuentaPorCobrar) — ese `?? deudaDetalle.monto` siempre caía al monto
+    // ORIGINAL completo, no a lo que realmente queda por pagar. El tope de
+    // "el pago no puede superar el saldo pendiente" quedaba prácticamente
+    // inútil apenas había algún abono registrado. Mismo cálculo que ya usa
+    // el resto de este componente para "Saldo pendiente" (totalRealDetalle).
+    const totalReal = Number(deudaDetalle.montoTotal ?? deudaDetalle.monto)
+    const saldo = totalReal - Number(deudaDetalle.montoPagado)
     const cuota = Number(deudaDetalle.valorCuota ?? 0)
     // Block: payment > remaining balance
     if (monto > saldo) {
@@ -188,7 +206,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
               return (
                 <div
                   key={d.id}
-                  onClick={() => setDeudaDetalle(isSelected ? null : d)}
+                  onClick={() => seleccionarDeuda(isSelected ? null : d)}
                   className={`p-4 cursor-pointer transition-colors hover:bg-white/[0.02] ${isSelected ? "bg-sky-500/5" : ""}`}
                 >
                   <div className="flex items-start gap-3">
@@ -256,7 +274,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
                 {deudaDetalle.estado}
               </span>
             </div>
-            <button onClick={() => setDeudaDetalle(null)} className="text-[var(--c-text3)] hover:text-[var(--c-text)]">×</button>
+            <button onClick={() => seleccionarDeuda(null)} className="text-[var(--c-text3)] hover:text-[var(--c-text)]">×</button>
           </div>
 
           <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-4">

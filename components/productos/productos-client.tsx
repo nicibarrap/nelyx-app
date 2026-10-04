@@ -1055,6 +1055,12 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
       {/* Product detail */}
       {selectedProducto && !editingProducto && (
         <ProductoDetalle
+          // key remonta la ficha al cambiar de producto — sin esto, el
+          // formulario de "Ajustar stock" (cantidad, motivo, costo, etc.)
+          // quedaba pegado al producto anterior: tipear una cantidad sin
+          // enviar y seleccionar otro producto dejaba ese valor viejo
+          // cargado en el ajuste del producto nuevo.
+          key={selectedProducto.id}
           producto={selectedProducto}
           // La propia ficha del producto manda, no el interruptor de la
           // página — antes, un producto que SÍ controla inventario perdía

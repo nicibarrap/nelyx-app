@@ -440,7 +440,11 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
         {/* Panel perfil */}
         <div className="lg:col-span-2">
           {selected ? (
-            <ProveedorPanel prov={selected} onClose={() => setSelectedId(null)} onEdit={() => { setEditando(selected); setSelectedId(null) }} />
+            // key={selected.id} fuerza a React a remontar el panel al
+            // cambiar de proveedor — mismo fix que en ClientePanel: sin
+            // esto, una nota tipeada sin enviar quedaba pegada y se podía
+            // adjuntar al proveedor equivocado al cambiar de selección.
+            <ProveedorPanel key={selected.id} prov={selected} onClose={() => setSelectedId(null)} onEdit={() => { setEditando(selected); setSelectedId(null) }} />
           ) : (
             <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl h-full flex items-center justify-center p-10 text-center min-h-[300px]">
               <div>

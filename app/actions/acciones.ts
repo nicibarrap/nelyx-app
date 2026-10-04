@@ -871,12 +871,15 @@ export async function eliminarProducto(id: string) {
 
 // ── DEUDAS ─────────────────────────────────────────────────
 export async function crearDeuda(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("deudas")
+  const acreedor = (formData.get("acreedor") as string)?.trim()
+  if (!acreedor) throw new Error("El acreedor es requerido")
+
   const tipo = (formData.get("tipo") as string) || "Otros"
-  const monto = parseFloat(formData.get("monto") as string)
+  const montoForm = parseFloat(formData.get("monto") as string) || 0
   const interes = formData.get("interes") ? parseFloat(formData.get("interes") as string) : null
   const cuotas = formData.get("cuotas") ? parseInt(formData.get("cuotas") as string) : null
-  const valorCuota = cuotas && interes ? calcularValorCuota(monto, interes, cuotas) : null
+  const valorCuotaCalc = cuotas && interes ? calcularValorCuota(montoForm, interes, cuotas) : null
 
   const fechaPrimerPagoStr = formData.get("fechaPrimerPago") as string
   const fechaPrimerPago = fechaPrimerPagoStr ? new Date(fechaPrimerPagoStr) : null
@@ -886,6 +889,18 @@ export async function crearDeuda(formData: FormData) {
   const tipoTasa = (formData.get("tipoTasa") as string) || "mensual"
   const montoTotalStr = formData.get("montoTotal") as string
   const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
+  const valorCuota = cuotaManual ?? valorCuotaCalc
+
+  // El formulario deja "Monto original" sin obligar a llenarlo — pide la
+  // cuota mensual como dato principal (es lo que el banco siempre informa)
+  // y la deja a $0 si el usuario no sabe/no escribe el capital. Sin este
+  // respaldo, esa deuda quedaba con monto=0: la tarjeta "Deuda total" la
+  // mostraba en $0 pese a tener cuotas reales pendientes, y registrarPago
+  // la marcaba "pagada" completa apenas se registraba el primer abono
+  // (0 - cualquier pago siempre da <= 0). Mismo estimado que ya se le
+  // muestra al usuario como "Total a pagar" en el formulario.
+  const monto = montoForm > 0 ? montoForm : (valorCuota && cuotas ? valorCuota * cuotas : montoForm)
+  if (monto <= 0) throw new Error("Ingresa el monto original o la cuota mensual")
 
   // Se valida que el proveedor exista y sea del mismo dueño — sin esto, un
   // proveedorId manipulado en el formData podría vincular la deuda al
@@ -897,7 +912,7 @@ export async function crearDeuda(formData: FormData) {
 
   await db.deuda.create({
     data: {
-      acreedor: formData.get("acreedor") as string,
+      acreedor,
       tipo,
       entidad: (formData.get("entidad") as string) || null,
       monto,
@@ -907,7 +922,7 @@ export async function crearDeuda(formData: FormData) {
       fechaPrimerPago,
       interes,
       cuotas,
-      valorCuota: cuotaManual ?? valorCuota,
+      valorCuota,
       cuotaManual,
       tipoTasa,
       montoTotal,
@@ -927,7 +942,7 @@ function calcularValorCuota(monto: number, interesMensual: number, cuotas: numbe
 }
 
 export async function registrarPago(deudaId: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("deudas")
   const montoPago = parseFloat(formData.get("monto") as string)
   const fecha = new Date(formData.get("fecha") as string)
   const descripcion = (formData.get("descripcion") as string) || null
@@ -943,12 +958,19 @@ export async function registrarPago(deudaId: string, formData: FormData) {
       // viejo y uno termine pisando (perdiendo) el pago del otro.
       const deuda = await tx.deuda.findFirst({ where: { id: deudaId, userId: session.user.id } })
       if (!deuda) throw new Error("Deuda no encontrada")
-      const nuevoMontoPagado = Number(deuda.montoPagado) + montoPago
       // El total real a cubrir es el que el usuario cargó desde su banco
       // (montoTotal) si existe — comparar solo contra el capital original
       // marcaría la deuda "pagada" antes de tiempo, mientras todavía se debe
       // el interés/seguros reales.
       const totalReal = Number(deuda.montoTotal ?? deuda.monto)
+      const saldoActual = totalReal - Number(deuda.montoPagado)
+      // Mismo tope que ya tiene registrarPagoCuenta para Cuentas por
+      // Cobrar — acá faltaba del todo, así que un pago más grande que lo
+      // realmente pendiente se aceptaba igual (el único freno era un
+      // chequeo en el cliente que comparaba contra el monto ORIGINAL, no
+      // contra el saldo real).
+      if (montoPago > saldoActual) throw new Error(`El pago supera el saldo pendiente ($${Math.round(saldoActual).toLocaleString("es-CL")})`)
+      const nuevoMontoPagado = Number(deuda.montoPagado) + montoPago
       const completa = totalReal - nuevoMontoPagado <= 0
       await tx.pagoDeuda.create({ data: { deudaId, monto: montoPago, fecha, descripcion } })
       await tx.deuda.update({ where: { id: deudaId }, data: { montoPagado: nuevoMontoPagado, pagada: completa, cuotasPagadas: { increment: 1 } } })
@@ -984,15 +1006,18 @@ export async function registrarPago(deudaId: string, formData: FormData) {
 }
 
 export async function editarDeuda(id: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("deudas")
   const deuda = await db.deuda.findFirst({ where: { id, userId: session.user.id } })
   if (!deuda) throw new Error("Deuda no encontrada")
 
-  const monto = parseFloat(formData.get("monto") as string)
+  const acreedor = (formData.get("acreedor") as string)?.trim()
+  if (!acreedor) throw new Error("El acreedor es requerido")
+
+  const montoForm = parseFloat(formData.get("monto") as string) || 0
   const interesStr = (formData.get("interes") as string)?.replace(",", ".")
   const interes = interesStr ? parseFloat(interesStr) : null
   const cuotas = formData.get("cuotas") ? parseInt(formData.get("cuotas") as string) : null
-  const valorCuota = cuotas && interes ? calcularValorCuota(monto, interes, cuotas) : null
+  const valorCuotaCalc = cuotas && interes ? calcularValorCuota(montoForm, interes, cuotas) : null
   // El formulario actual no pide una tasa de interés — manda la cuota
   // mensual directa como "cuotaManual", igual que crearDeuda. Sin esto,
   // valorCuota quedaba siempre null al editar (porque interes siempre es
@@ -1002,6 +1027,14 @@ export async function editarDeuda(id: string, formData: FormData) {
   const fechaPrimerPagoStr = formData.get("fechaPrimerPago") as string
   const montoTotalStr = formData.get("montoTotal") as string
   const montoTotal = montoTotalStr ? parseFloat(montoTotalStr) : null
+  const valorCuota = cuotaManual ?? valorCuotaCalc
+
+  // Mismo respaldo que crearDeuda — "Monto original" puede quedar vacío,
+  // y sin esto la deuda terminaba con monto=0 (y por lo tanto marcada
+  // "pagada" en registrarPago apenas con el primer abono).
+  const monto = montoForm > 0 ? montoForm : (valorCuota && cuotas ? valorCuota * cuotas : montoForm)
+  if (monto <= 0) throw new Error("Ingresa el monto original o la cuota mensual")
+
   const proveedorIdForm = (formData.get("proveedorId") as string) || null
   const proveedorId = proveedorIdForm
     ? (await db.proveedor.findFirst({ where: { id: proveedorIdForm, userId: session.user.id }, select: { id: true } }))?.id ?? null
@@ -1010,7 +1043,7 @@ export async function editarDeuda(id: string, formData: FormData) {
   await db.deuda.update({
     where: { id },
     data: {
-      acreedor: formData.get("acreedor") as string,
+      acreedor,
       tipo: (formData.get("tipo") as string) || "Otros",
       entidad: (formData.get("entidad") as string) || null,
       monto,
@@ -1020,7 +1053,7 @@ export async function editarDeuda(id: string, formData: FormData) {
       fechaPrimerPago: fechaPrimerPagoStr ? new Date(fechaPrimerPagoStr) : null,
       interes,
       cuotas,
-      valorCuota: cuotaManual ?? valorCuota,
+      valorCuota,
       cuotaManual,
       montoTotal,
       proveedorId,
@@ -1033,7 +1066,7 @@ export async function editarDeuda(id: string, formData: FormData) {
 }
 
 export async function eliminarDeuda(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("deudas")
   await db.deuda.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`deuda:${id}:`)
   revalidatePath("/dashboard/deudas")
