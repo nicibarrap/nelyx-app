@@ -16,7 +16,7 @@ export default async function ClientesPage() {
   const hoy = hoyEnChile()
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
 
-  const [clientes, movsMes, deudas, cuentasCobrar, usuario, plantillas] = await Promise.all([
+  const [clientes, movsMes, cuentasCobrar, usuario, plantillas] = await Promise.all([
     db.cliente.findMany({
       where: { userId: session!.user.id },
       include: {
@@ -42,10 +42,6 @@ export default async function ClientesPage() {
     db.movimiento.findMany({
       where: { userId: session!.user.id, tipo: "VENTA", fecha: { gte: inicioMes }, clienteId: { not: null } },
       select: { monto: true, clienteId: true }
-    }),
-    db.deuda.findMany({
-      where: { userId: session!.user.id, pagada: false },
-      select: { acreedor: true, monto: true, montoPagado: true }
     }),
     db.cuentaPorCobrar.findMany({
       where: { userId: session!.user.id, estado: { in: ["pendiente","parcial","vencida"] } },

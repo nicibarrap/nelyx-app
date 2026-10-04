@@ -221,6 +221,9 @@ async function ingresarMovimientoInterno(formData: FormData) {
   // a hacer la pestaña "Compras" de su ficha) — sin esto, el gasto recién
   // registrado no aparecía en "Total comprado" hasta otra revalidación.
   if (proveedorId) revalidatePath("/dashboard/proveedores")
+  // Una VENTA desde este formulario también puede quedar vinculada a un
+  // cliente — misma razón que en registrarVentaInterno.
+  if (clienteId) revalidatePath("/dashboard/clientes")
 }
 
 export async function eliminarMovimiento(id: string) {
@@ -245,6 +248,7 @@ export async function eliminarMovimiento(id: string) {
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/reportes")
   if (mov.proveedorId) revalidatePath("/dashboard/proveedores")
+  if (mov.clienteId) revalidatePath("/dashboard/clientes")
 }
 
 export async function registrarVenta(items: Array<{
@@ -413,6 +417,12 @@ async function registrarVentaInterno(items: Array<{
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/reportes")
+  // Esta es la función que registra cada venta real desde la pantalla de
+  // Venta (al contado y a crédito) — sin esto, el "Total comprado",
+  // "Compras" y el segmento automático de la ficha del cliente quedaban
+  // desactualizados después de CUALQUIER venta, el camino más frecuente
+  // de toda la app.
+  if (clienteId) revalidatePath("/dashboard/clientes")
 }
 
 // ── CATEGORÍAS PERSONALIZADAS ──────────────────────────────
@@ -1268,7 +1278,12 @@ export async function actualizarCliente(id: string, formData: FormData) {
       permiteCredito:   formData.get("permiteCredito") === "on",
       limiteCredito:    formData.get("limiteCredito") ? parseFloat(formData.get("limiteCredito") as string) : null,
       cumpleanos:       formData.get("cumpleanos") ? new Date(formData.get("cumpleanos") as string) : null,
-      activo:           formData.get("activo") !== "off",
+      // "activo" NO se toca acá — mismo bug y mismo fix que en
+      // actualizarProveedor: el formulario de editar nunca tuvo ese
+      // campo (el estado se maneja aparte con el botón
+      // Desactivar/Reactivar, vía toggleActivoCliente), así que
+      // formData.get("activo") siempre volvía null y esto reactivaba en
+      // silencio cualquier cliente desactivado en cada edición.
       observaciones:    (formData.get("observaciones") as string)?.trim() || null,
     }
   })
@@ -1558,6 +1573,9 @@ export async function eliminarCuentaPorCobrar(id: string) {
   await db.cuentaPorCobrar.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`cxc:${id}:`)
   revalidatePath("/dashboard/cuentas-cobrar")
+  // La cuenta eliminada puede estar vinculada a un cliente — mismo motivo
+  // que crearCuentaPorCobrar/registrarPagoCuenta ya revalidan esta ruta.
+  revalidatePath("/dashboard/clientes")
 }
 
 
