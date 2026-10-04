@@ -9,7 +9,7 @@ import { iniciarCobroMaquina, consultarCobroMaquina } from "@/app/actions/pagos-
 import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
-import { unidadesEntradaVenta, convertirValor, formatearStock, labelUnidad } from "@/lib/unidades"
+import { unidadesEntradaVenta, convertirValor, formatearStock, labelUnidad, deInterno } from "@/lib/unidades"
 import dynamic from "next/dynamic"
 // Carga perezosa: ver nota en escanear-nuevos-client.tsx.
 const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
@@ -117,7 +117,20 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
 
   const subtotal = items.reduce((a, i) => a + i.precio * i.cantidad, 0)
   const total = items.length > 0 ? subtotal : (parseFloat(montoLibre) || 0)
-  const utilidadEstimada = items.reduce((a, i) => i.costo != null ? a + (i.precio - i.costo) * i.cantidad : a, 0)
+  // En la venta rápida por peso, "precio" es el TOTAL a cobrar (no precio
+  // por unidad) y "cantidad" queda fija en 1 — la fórmula genérica
+  // (precio - costo) × cantidad mezclaba ese total con un costo "por Kg",
+  // mostrando una utilidad estimada absurda (ej. negativa) aunque la venta
+  // real fuera rentable. Acá se convierte cantidadInterna (gramos) a la
+  // misma unidad en que está denominado el costo antes de restar.
+  const utilidadEstimada = items.reduce((a, i) => {
+    if (i.costo == null) return a
+    if (i.ventaPorPesoRapida) {
+      const cantidadEnUnidadCosto = deInterno(i.cantidadInterna ?? 0, i.unidadMedida)
+      return a + (i.precio - i.costo * cantidadEnUnidadCosto)
+    }
+    return a + (i.precio - i.costo) * i.cantidad
+  }, 0)
   const hayUtilidadEstimable = items.some(i => i.costo != null)
 
   function agregarProducto(productoId: string): boolean {
@@ -125,10 +138,14 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
     if (!prod) return false
     const formaVenta = prod.formaVenta ?? "unidad"
 
-    // Los productos "por peso" no se agregan directo — se pesan en el
-    // momento (pan, queso, jamón), así que primero se abre el panel rápido
-    // de gramos/Kg + precio, en vez de meterlos al carrito con cantidad 1.
-    if (formaVenta === "peso") {
+    // Los productos "por peso" vendidos directo (sin presentación fija) no
+    // se agregan directo — se pesan en el momento (pan, queso, jamón), así
+    // que primero se abre el panel rápido de gramos/Kg + precio. Los que
+    // SÍ tienen una presentación fija (bolsas/paquetes de peso conocido,
+    // con precio por bolsa) siguen el camino normal de abajo — su precio
+    // ya no es "por Kg", así que el panel de pesaje calcularía mal el
+    // precio sugerido (lo trataría como precio por Kg).
+    if (formaVenta === "peso" && !prod.unidadVentaCantidad) {
       abrirVentaPorPeso(prod)
       return false
     }

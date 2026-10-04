@@ -318,16 +318,23 @@ async function registrarVentaInterno(items: Array<{
     // Snapshot financiero: costo del producto AL MOMENTO de la venta.
     // Se convierte la cantidad interna (siempre en gramos/ml/conteo) de
     // vuelta a la unidad en que está denominado producto.costo, para que
-    // el cálculo sea correcto tanto en venta directa como por presentación.
+    // el cálculo sea correcto en venta directa por peso/volumen. Cuando el
+    // producto se vende en presentación fija (bolsas, botellas...), el
+    // costo guardado es "por presentación" — ahí hay que dividir por el
+    // tamaño de esa presentación para saber cuántas se vendieron, en vez
+    // de convertir por unidadMedida (que es la unidad de COMPRA, sin
+    // relación con el precio/costo por bolsa).
     let costoUnitarioSnap: number | null = null
     let utilidadSnap: number | null = null
     let margenSnap: number | null = null
     if (item.productoId) {
-      const prodCosto = await db.producto.findFirst({ where: { id: item.productoId, userId: session.user.id }, select: { costo: true, unidadMedida: true, nombre: true } })
+      const prodCosto = await db.producto.findFirst({ where: { id: item.productoId, userId: session.user.id }, select: { costo: true, unidadMedida: true, unidadVentaCantidad: true, nombre: true } })
       if (prodCosto?.costo != null) {
         costoUnitarioSnap = Number(prodCosto.costo)
         const cantidadDescuento = item.cantidadInterna ?? item.cantidad
-        const cantidadEnUnidadCosto = deInterno(cantidadDescuento, prodCosto.unidadMedida)
+        const cantidadEnUnidadCosto = prodCosto.unidadVentaCantidad
+          ? cantidadDescuento / prodCosto.unidadVentaCantidad
+          : deInterno(cantidadDescuento, prodCosto.unidadMedida)
         const { utilidad, margen } = calcularUtilidadVenta(montoItem, costoUnitarioSnap, cantidadEnUnidadCosto)
         utilidadSnap = utilidad
         margenSnap = margen
