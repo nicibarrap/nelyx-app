@@ -1351,9 +1351,13 @@ export async function actualizarCliente(id: string, formData: FormData) {
       direccion:        (formData.get("direccion") as string)?.trim() || null,
       ciudad:           (formData.get("ciudad") as string)?.trim() || null,
       tipoCliente:      (formData.get("tipoCliente") as string) || "Minorista",
-      frecuenciaCompra: (formData.get("frecuenciaCompra") as string) || null,
-      metodoPago:       (formData.get("metodoPago") as string) || "Efectivo",
-      diasPago:         parseInt(formData.get("diasPago") as string) || 0,
+      // frecuenciaCompra, metodoPago y diasPago NO se tocan acá — mismo bug
+      // y mismo fix que "activo" arriba: el formulario de editar nunca tuvo
+      // esos campos (se reemplazaron por frecuenciaCompraAuto/metodoPagoAuto,
+      // calculados solos desde el historial real de compras), así que
+      // formData.get(...) siempre volvía null/vacío y cada edición los
+      // reseteaba en silencio — metodoPago quedaba pegado en "Efectivo" para
+      // siempre, y frecuenciaCompra/diasPago en null/0.
       esFrecuente:      formData.get("esFrecuente") === "on",
       esVip:            formData.get("esVip") === "on",
       permiteCredito:   formData.get("permiteCredito") === "on",
