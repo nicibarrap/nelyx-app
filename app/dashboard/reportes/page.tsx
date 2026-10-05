@@ -211,9 +211,15 @@ export default async function ReportesPage() {
     ? Math.max(1, Math.round((finMes.getTime() - new Date(rangoPatron.min_fecha).getTime()) / (7 * 86400000)))
     : 0
 
-  // ── Método de pago (aproximado por cliente registrado) ──
-  const ventasConCliente = ventasMes.filter(m => m.cliente)
-  const montoEfectivo = ventasConCliente.filter(m => (m.cliente?.metodoPago ?? "Efectivo") === "Efectivo").reduce((a, m) => a + Number(m.monto), 0)
+  // ── Método de pago (aproximado por cliente registrado) ── usa el
+  // metodoPago de cada VENTA (el real, cargado al momento de la venta), no
+  // cliente.metodoPago — ese campo quedó obsoleto cuando el perfil del
+  // cliente pasó a calcular el método de pago habitual solo desde su
+  // historial (ver actualizarCliente): cada edición lo reseteaba a
+  // "Efectivo" en silencio, así que este cálculo terminaba mostrando casi
+  // siempre ~100% efectivo sin importar la realidad.
+  const ventasConCliente = ventasMes.filter(m => m.tipo === "VENTA" && m.cliente)
+  const montoEfectivo = ventasConCliente.filter(m => (m.metodoPago ?? "Efectivo") === "Efectivo").reduce((a, m) => a + Number(m.monto), 0)
   const pctEfectivo = ventasConCliente.length > 0 ? Math.round((montoEfectivo / ventasConCliente.reduce((a, m) => a + Number(m.monto), 0)) * 100) : null
 
   // ── Rentabilidad — ya no es sección propia, se resume en 1 línea del diagnóstico ──
