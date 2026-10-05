@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { generarCostosDelMes } from "@/app/actions/acciones"
+import { esAplicableEnMes } from "@/lib/costos-fijos"
 import { calcularMetricas, prepararGrafico, calcularVariacionPct, formatCLP } from "@/lib/utils"
 import { hoyEnChile } from "@/lib/timezone"
 import { getColorCategoria } from "@/lib/categorias"
@@ -62,15 +63,13 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
 
   const [ingresosAgg, egresosAgg] = todosMovimientos as any
   const disponible = Number(ingresosAgg._sum.monto ?? 0) - Number(egresosAgg._sum.monto ?? 0)
-  const costosFijosAplicables = costosFijosRecurrentes.filter(c => {
-    const iMes = c.fechaInicio.getMonth() + 1, iAnio = c.fechaInicio.getFullYear()
-    if (anio < iAnio || (anio === iAnio && mes < iMes)) return false
-    if (c.fechaTermino) {
-      const tMes = c.fechaTermino.getMonth() + 1, tAnio = c.fechaTermino.getFullYear()
-      if (anio > tAnio || (anio === tAnio && mes > tMes)) return false
-    }
-    return true
-  })
+  // esAplicableEnMes (compartida con /dashboard/costos-fijos y el cron de
+  // notificaciones) — esta página tenía su propia copia que solo miraba
+  // mes/año, no el día exacto: un costo que termina el 5 de septiembre con
+  // día de cobro 20 seguía inflando "Costos fijos" (y por lo tanto la
+  // Utilidad neta) en septiembre completo, semanas después de haber
+  // terminado en realidad.
+  const costosFijosAplicables = costosFijosRecurrentes.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio))
   const totalCostosFijos = costosFijosAplicables.reduce((a, c) => a + Number(c.monto), 0)
 
   // Próximo costo fijo a generarse este mes — para que el KPI no solo diga

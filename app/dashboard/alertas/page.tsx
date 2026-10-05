@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { calcularEstadoDeuda, formatCLP, formatFechaCorta, ESTADO_CONFIG } from "@/lib/utils"
 import { obtenerLotesPorVencer } from "@/app/actions/kardex-acciones"
+import { esAplicableEnMes } from "@/lib/costos-fijos"
 import { FilaLotePorVencer } from "@/components/productos/fila-lote-por-vencer"
 import Link from "next/link"
 
@@ -54,18 +55,14 @@ export default async function AlertasPage() {
     obtenerLotesPorVencer(userId),
   ])
 
-  // Alertas de costos fijos (computadas, sin tabla dedicada)
-  function costoAplicableEsteMes(fechaInicio: Date, fechaTermino: Date | null) {
-    const iMes = fechaInicio.getMonth() + 1, iAnio = fechaInicio.getFullYear()
-    if (anioActual < iAnio || (anioActual === iAnio && mesActual < iMes)) return false
-    if (fechaTermino) {
-      const tMes = fechaTermino.getMonth() + 1, tAnio = fechaTermino.getFullYear()
-      if (anioActual > tAnio || (anioActual === tAnio && mesActual > tMes)) return false
-    }
-    return true
-  }
-  const costosGeneraMañana = costosFijos.filter(c => costoAplicableEsteMes(c.fechaInicio, c.fechaTermino) && c.generaciones.length === 0 && c.fechaInicio.getDate() === mananaDate.getDate())
-  const costosPendientesAtrasados = costosFijos.filter(c => costoAplicableEsteMes(c.fechaInicio, c.fechaTermino) && c.generaciones.length === 0 && c.fechaInicio.getDate() <= diaActual)
+  // Alertas de costos fijos (computadas, sin tabla dedicada) — usa
+  // esAplicableEnMes (compartida con /dashboard/costos-fijos, /dashboard/resumen
+  // y el cron de notificaciones): esta página tenía su propia copia que solo
+  // miraba mes/año, no el día exacto, así que un costo ya terminado dentro
+  // del mismo mes (ej. termina el 5, cobra el 20) seguía disparando alertas
+  // de "genera mañana"/"atrasado" semanas después de haber terminado.
+  const costosGeneraMañana = costosFijos.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual) && c.generaciones.length === 0 && c.fechaInicio.getDate() === mananaDate.getDate())
+  const costosPendientesAtrasados = costosFijos.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual) && c.generaciones.length === 0 && c.fechaInicio.getDate() <= diaActual)
   const costosGeneradosSinPagar = costosFijos.filter(c => c.generaciones.length > 0 && !c.generaciones[0].pagado)
   // "Pagado hace poco" compara contra timestamps reales (no días de
   // calendario) — acá sí corresponde el reloj real, no hoyEnChile().
