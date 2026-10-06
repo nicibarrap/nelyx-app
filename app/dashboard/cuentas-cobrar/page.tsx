@@ -23,7 +23,7 @@ export default async function CuentasCobrarPage() {
     data: { estado: "vencida" }
   })
 
-  const [cuentas, clientes, cobradoMes, productos, usuario, plantillas] = await Promise.all([
+  const [cuentas, clientes, cobradoMes, productosRaw, usuario, plantillas] = await Promise.all([
     db.cuentaPorCobrar.findMany({
       where: { userId: session!.user.id },
       include: {
@@ -60,6 +60,10 @@ export default async function CuentasCobrarPage() {
   ])
 
   const cobradoEsteMes = cobradoMes.reduce((a, p) => a + Number(p.monto), 0)
+
+  // precio es Decimal de Prisma — no se puede pasar tal cual de un Server
+  // Component a un Client Component (CuentasCobrarClient es "use client").
+  const productos = productosRaw.map(p => ({ ...p, precio: p.precio ? Number(p.precio) : null }))
 
   const cuentasData = cuentas.map(c => {
     const totalPagado = c.pagos.reduce((a, p) => a + Number(p.monto), 0)
