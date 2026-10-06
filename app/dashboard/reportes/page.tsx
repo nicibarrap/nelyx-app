@@ -95,7 +95,12 @@ export default async function ReportesPage() {
     db.producto.findMany({ where: { userId, activo: true }, select: { id: true } }),
     db.movimiento.groupBy({
       by: ["clienteId"],
-      where: { userId, tipo: "VENTA", clienteId: { not: null }, fecha: { gte: inicioMes, lt: finMes } },
+      // VENTA + INGRESO_EXTRA (no solo VENTA): "totalVentas" más abajo —el
+      // denominador de "concentración top 3"— también suma los pagos de
+      // cuentas por cobrar (INGRESO_EXTRA). Un cliente que compra fiado y
+      // paga después no sumaba nada acá, aunque su pago sí engrosaba el
+      // total del mes: subestimaba su aporte y la concentración real.
+      where: { userId, tipo: { in: ["VENTA", "INGRESO_EXTRA"] }, clienteId: { not: null }, fecha: { gte: inicioMes, lt: finMes } },
       _sum: { monto: true },
       _count: true,
     }),
@@ -113,16 +118,21 @@ export default async function ReportesPage() {
     }),
   ])
 
-  // ── Base: mes actual ──
+  // ── Base: mes actual ── gastosMes incluye RETIRO, igual que calcularMetricas
+  // (usado por /dashboard/resumen) y que el rollup del gráfico anual de más
+  // abajo en esta misma página — antes solo este cálculo lo excluía, así que
+  // la utilidad/margen del resumen ejecutivo y el diagnóstico no coincidía
+  // con la línea de "Resultado neto" del propio gráfico para el mes actual,
+  // cualquier mes en que el dueño hiciera un retiro.
   const ventasMes = movMesActual.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
-  const gastosMes = movMesActual.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO")
+  const gastosMes = movMesActual.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentas = ventasMes.reduce((a, m) => a + Number(m.monto), 0)
   const totalGastos = gastosMes.reduce((a, m) => a + Number(m.monto), 0)
   const utilidadNeta = totalVentas - totalGastos
 
   // ── Mes anterior ──
   const ventasMesAnt = movMesAnterior.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
-  const gastosMesAnt = movMesAnterior.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO")
+  const gastosMesAnt = movMesAnterior.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentasAnt = ventasMesAnt.reduce((a, m) => a + Number(m.monto), 0)
   const totalGastosAnt = gastosMesAnt.reduce((a, m) => a + Number(m.monto), 0)
   const utilidadNetaAnt = totalVentasAnt - totalGastosAnt
@@ -312,7 +322,9 @@ export default async function ReportesPage() {
   partes.push(utilidadNeta >= 0 ? `La utilidad se mantiene positiva, con ${Math.abs(margenPor100)}% de margen sobre las ventas.` : `La utilidad fue negativa este período — los gastos superaron a las ventas.`)
   if (productoMasRentable) partes.push(`El producto con mayor margen fue ${productoMasRentable}.`)
   if (clienteTop) partes.push(`El cliente más valioso fue ${clienteTop.nombre}, con ${formatearMonto(clienteTop.monto)} en compras.`)
-  partes.push(oportunidades[0]?.texto ?? "")
+  // No se repite oportunidades[0] acá: ese mismo texto ya es el primer ítem
+  // de la tarjeta "Oportunidades detectadas", justo debajo — antes aparecía
+  // dos veces, palabra por palabra, en la misma pantalla.
   const resumenEjecutivo = partes.filter(Boolean).join(" ")
 
   function formatearMonto(n: number) { return `$${Math.round(n).toLocaleString("es-CL")}` }
