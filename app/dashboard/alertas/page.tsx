@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { calcularEstadoDeuda, formatCLP, formatFechaCorta, ESTADO_CONFIG } from "@/lib/utils"
 import { obtenerLotesPorVencer } from "@/app/actions/kardex-acciones"
-import { esAplicableEnMes } from "@/lib/costos-fijos"
+import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import { FilaLotePorVencer } from "@/components/productos/fila-lote-por-vencer"
 import Link from "next/link"
 
@@ -21,10 +21,8 @@ export default async function AlertasPage() {
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
 
   const en7Dias = new Date(hoy.getTime() + 7 * 86400000)
-  const mananaDate = new Date(hoy.getTime() + 86400000)
   const mesActual = hoy.getMonth() + 1
   const anioActual = hoy.getFullYear()
-  const diaActual = hoy.getDate()
 
   const [deudas, productosRaw, movsMes, cuentasVencidas, cuentasProximas, tareasVencidas, costosFijos, lotesPorVencer] = await Promise.all([
     db.deuda.findMany({ where: { userId, pagada: false }, orderBy: { fechaVence: "asc" } }),
@@ -44,7 +42,12 @@ export default async function AlertasPage() {
       take: 5, orderBy: { fechaVence: "asc" }
     }),
     db.eventoCalendario.findMany({
-      where: { userId, estado: "pendiente", fecha: { lt: inicioHoy } },
+      // Solo tarea/recordatorio: son los únicos tipos que el Calendario deja
+      // marcar como completados (ver `toggleable` en calendario-client.tsx).
+      // Un "evento" (ej. una reunión) nunca cambia de estado "pendiente" por
+      // sí solo, así que si se incluía acá cualquier evento pasado se quedaba
+      // para siempre en "Tareas vencidas", sin forma de resolverlo.
+      where: { userId, tipo: { in: ["tarea", "recordatorio"] }, estado: "pendiente", fecha: { lt: inicioHoy } },
       select: { id: true, titulo: true, fecha: true, tipo: true },
       take: 5, orderBy: { fecha: "asc" }
     }),
@@ -52,7 +55,7 @@ export default async function AlertasPage() {
       where: { userId, estado: "activo" },
       include: { generaciones: { where: { mes: mesActual, anio: anioActual } } }
     }),
-    obtenerLotesPorVencer(userId),
+    obtenerLotesPorVencer(),
   ])
 
   // Alertas de costos fijos (computadas, sin tabla dedicada) — usa
@@ -61,8 +64,21 @@ export default async function AlertasPage() {
   // miraba mes/año, no el día exacto, así que un costo ya terminado dentro
   // del mismo mes (ej. termina el 5, cobra el 20) seguía disparando alertas
   // de "genera mañana"/"atrasado" semanas después de haber terminado.
-  const costosGeneraMañana = costosFijos.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual) && c.generaciones.length === 0 && c.fechaInicio.getDate() === mananaDate.getDate())
-  const costosPendientesAtrasados = costosFijos.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual) && c.generaciones.length === 0 && c.fechaInicio.getDate() <= diaActual)
+  //
+  // El día de cobro también se recalcula con diaOcurrenciaEnMes (no
+  // c.fechaInicio.getDate() crudo): un costo que cobra el día 29/30/31 nunca
+  // disparaba "pendiente" ni "mañana" en un mes más corto (ej. febrero),
+  // aunque /dashboard/costos-fijos y el cron sí lo marcaban — mismo cálculo
+  // que ellos, para no desincronizarse. Comparar por diferencia de días
+  // (diasEntreChile) en vez de igualdad de "día del mes" también evita que,
+  // el último día del mes, un mismo costo aparezca a la vez como "atrasado"
+  // y "se genera mañana" (el día de "mañana" cruza a otro mes y coincidía
+  // por casualidad con el día de cobro de este mes).
+  const costosConVencimiento = costosFijos
+    .filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual) && c.generaciones.length === 0)
+    .map(c => ({ ...c, diaVence: diaOcurrenciaEnMes(c.fechaInicio, mesActual, anioActual), diffVence: diasEntreChile(hoy, new Date(anioActual, mesActual - 1, diaOcurrenciaEnMes(c.fechaInicio, mesActual, anioActual))) }))
+  const costosGeneraMañana = costosConVencimiento.filter(c => c.diffVence === 1)
+  const costosPendientesAtrasados = costosConVencimiento.filter(c => c.diffVence <= 0)
   const costosGeneradosSinPagar = costosFijos.filter(c => c.generaciones.length > 0 && !c.generaciones[0].pagado)
   // "Pagado hace poco" compara contra timestamps reales (no días de
   // calendario) — acá sí corresponde el reloj real, no hoyEnChile().
@@ -303,7 +319,7 @@ export default async function AlertasPage() {
                   <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-sm flex-shrink-0">⏳</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-[var(--c-text)] truncate">{c.nombre}</p>
-                    <p className="text-xs text-[var(--c-text3)]">Pendiente de generar — día {c.fechaInicio.getDate()}</p>
+                    <p className="text-xs text-[var(--c-text3)]">Pendiente de generar — día {c.diaVence}</p>
                   </div>
                   <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/10 text-[var(--c-warning)] border border-amber-500/20 font-semibold flex-shrink-0">Pendiente</span>
                 </div>

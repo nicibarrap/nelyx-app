@@ -2,10 +2,22 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { TIPO_MOVIMIENTO_LABEL, type TipoMovimientoStock } from "@/lib/stock"
+import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  return session
+}
+
+/** Igual que getSession(), pero además rechaza a un empleado al que ese
+ * módulo se le dejó en "solo lectura" — usarla en toda acción que CREE,
+ * EDITE o ELIMINE algo (nunca en una que solo lea). */
+async function getSessionEscritura(moduloKey: ModuloKey) {
+  const session = await getSession()
+  if (esSoloLectura(session.user.modulosPermitidos, moduloKey)) {
+    throw new Error("Tu acceso a este módulo es solo de lectura")
+  }
   return session
 }
 
@@ -58,7 +70,7 @@ export async function obtenerHistorialProducto(productoId: string, cursor?: stri
  * en Alertas para que no quede como ruido permanente.
  */
 export async function descartarAvisoVencimiento(movimientoStockId: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("productos")
   const mov = await db.movimientoStock.findFirst({ where: { id: movimientoStockId, userId: session.user.id } })
   if (!mov) throw new Error("No encontrado")
   await db.movimientoStock.update({ where: { id: movimientoStockId }, data: { avisoVencimientoDescartado: true } })
@@ -67,9 +79,14 @@ export async function descartarAvisoVencimiento(movimientoStockId: string) {
 /**
  * Todos los lotes con fecha de vencimiento informada, sin descartar,
  * ordenados del más próximo al menos próximo — para la sección "Productos
- * por vencer" de Alertas.
+ * por vencer" de Alertas. El userId se toma de la sesión (no de un parámetro
+ * del llamador): al ser una Server Action, es invocable directamente desde
+ * el cliente con cualquier id, así que antes cualquiera podía leer los
+ * lotes de inventario (vencimientos, cantidades) de otro usuario.
  */
-export async function obtenerLotesPorVencer(userId: string) {
+export async function obtenerLotesPorVencer() {
+  const session = await getSession()
+  const userId = session.user.id
   const lotes = await db.movimientoStock.findMany({
     // Solo entradas (reposición / inventario inicial) — las ventas ahora
     // también heredan la fecha del lote de origen (para poder descontar
