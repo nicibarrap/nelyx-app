@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
-import { registrarPagoCuenta, marcarCostoPagado } from "@/app/actions/acciones"
+import { registrarPagoCuenta, marcarCostoPagado, generarCostosDelMes } from "@/app/actions/acciones"
+import { registrarMovimientoStock } from "@/lib/stock"
 
 // Mismos stubs que en email-case-insensitive.test.ts: acciones.ts importa
 // NextAuth (vía getSession) y next/cache (revalidatePath), ninguno de los
@@ -88,5 +89,73 @@ describe("marcarCostoPagado bajo concurrencia real", () => {
     const generacionFinal = await db.generacionCosto.findUniqueOrThrow({ where: { id: generacion.id } })
     expect(generacionFinal.pagado).toBe(true)
     expect(generacionFinal.movimientoId).toBe(movimientos[0].id)
+  })
+})
+
+// registrarMovimientoStock es el único punto de entrada para tocar stock
+// (lib/stock.ts) — usa SELECT ... FOR UPDATE dentro de una transacción
+// justamente para que dos ventas/reposiciones del mismo producto al mismo
+// tiempo no se pisen. Esto prueba esa garantía con volumen real (20
+// salidas simultáneas, con stock para menos de la mitad): el Kardex nunca
+// debe quedar inconsistente ni el stock caer bajo cero, sin importar cuál
+// de las 20 "gane" la carrera.
+describe("registrarMovimientoStock bajo concurrencia real", () => {
+  it("muchas salidas simultáneas del mismo producto nunca dejan el stock negativo ni el Kardex descuadrado", async () => {
+    const user = await crearUsuario()
+    const STOCK_INICIAL = 10
+    const producto = await db.producto.create({
+      data: { userId: user.id, nombre: "Producto con poco stock", stock: STOCK_INICIAL, precio: 1000, costo: 500, controlaInventario: true, formaVenta: "unidad" },
+    })
+
+    // 20 salidas de a 1 compitiendo por 10 unidades de stock: como máximo
+    // 10 pueden aplicarse completas.
+    await Promise.allSettled(
+      Array.from({ length: 20 }, () =>
+        registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "venta", cantidad: -1 })
+      )
+    )
+
+    const productoFinal = await db.producto.findUniqueOrThrow({ where: { id: producto.id } })
+    expect(productoFinal.stock).toBe(0)
+
+    // Invariante del Kardex: cada fila debe empezar exactamente donde
+    // terminó la anterior (sin huecos ni pisadas), y la cadena completa
+    // debe llegar de STOCK_INICIAL a 0 — nunca a un número negativo en
+    // ningún punto intermedio.
+    const kardex = await db.movimientoStock.findMany({ where: { productoId: producto.id }, orderBy: { createdAt: "asc" } })
+    let stockEsperado = STOCK_INICIAL
+    for (const mov of kardex) {
+      expect(mov.stockAnterior).toBe(stockEsperado)
+      expect(mov.stockPosterior).toBeGreaterThanOrEqual(0)
+      stockEsperado = mov.stockPosterior
+    }
+    expect(stockEsperado).toBe(0)
+  })
+})
+
+// generarCostosDelMes se llama desde el render de Resumen Y de Costos
+// Fijos — si alguien tiene ambas pestañas abiertas (o solo navega rápido
+// entre las dos), pueden llegar a correr casi al mismo tiempo para el mismo
+// mes. La función ya maneja esto atrapando la violación del índice único
+// (costoFijoId+mes+anio) como caso esperado — esto lo prueba con
+// concurrencia real, no solo leyendo el código.
+describe("generarCostosDelMes bajo concurrencia real", () => {
+  it("dos llamadas simultáneas para el mismo mes no duplican la generación ni se caen", async () => {
+    const user = await crearUsuario()
+    const costo = await db.costoFijoRecurrente.create({
+      data: { nombre: "Arriendo", monto: 100000, fechaInicio: new Date(2026, 0, 1), estado: "activo", userId: user.id },
+    })
+    const mes = new Date().getMonth() + 1
+    const anio = new Date().getFullYear()
+
+    const resultados = await Promise.allSettled([
+      generarCostosDelMes(user.id, mes, anio),
+      generarCostosDelMes(user.id, mes, anio),
+    ])
+
+    expect(resultados.every(r => r.status === "fulfilled")).toBe(true)
+
+    const generaciones = await db.generacionCosto.findMany({ where: { costoFijoId: costo.id, mes, anio } })
+    expect(generaciones.length).toBe(1)
   })
 })
