@@ -1203,6 +1203,8 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
   // saltándose) un costo con horas de anticipación o atraso.
   const hoy = hoyEnChile()
   const diaActual = hoy.getDate()
+  const esMesActualParaCosto = mes === hoy.getMonth() + 1 && anio === hoy.getFullYear()
+  const esMesFuturo = anio > hoy.getFullYear() || (anio === hoy.getFullYear() && mes > hoy.getMonth() + 1)
 
   const costosActivos = await db.costoFijoRecurrente.findMany({
     where: { userId, estado: "activo" },
@@ -1222,7 +1224,13 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
     // ajustado si el mes es más corto (ej. inicio el 31, en febrero cae el 28).
     const diaDelMes = diaOcurrenciaEnMes(costo.fechaInicio, mes, anio)
     // Si es el mes actual, solo generar cuando el día ya llegó (no antes).
-    if (mes === hoy.getMonth() + 1 && anio === hoy.getFullYear() && diaDelMes > diaActual) continue
+    // Si es un mes futuro, nunca generar todavía — este chequeo antes solo
+    // miraba "es el mes actual", así que Resumen/Costos Fijos (cuyo
+    // selector de período deja elegir cualquier mes hasta 2027) podían
+    // generar de inmediato el registro de un costo fijo de un mes que ni
+    // siquiera había empezado, con solo navegar el filtro de período hacia
+    // adelante.
+    if (esMesFuturo || (esMesActualParaCosto && diaDelMes > diaActual)) continue
 
     try {
       // Solo se crea el registro de "Generado". El Movimiento real
