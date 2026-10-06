@@ -164,6 +164,23 @@ async function ingresarMovimientoInterno(formData: FormData) {
     }
   }
 
+  // Auto-descontar stock si es VENTA con producto que tiene inventario —
+  // ANTES de crear el Movimiento, no después (ver mismo comentario en
+  // registrarVentaInterno): exigirStockSuficiente rechaza esta operación
+  // completa si el stock ya no alcanza en el momento exacto de aplicarlo
+  // (otra venta del mismo producto se adelantó), antes de que el dinero de
+  // esta venta quede registrado. El chequeo de arriba (prodParaCosto.stock)
+  // sigue dando el mensaje rápido en el caso normal, sin carrera — esto es
+  // la garantía real para el caso raro en que sí la hay.
+  let movStockCreado: { id: string } | null = null
+  if (productoId && tipo === "VENTA") {
+    const resultadoStock = await registrarMovimientoStock({
+      productoId, userId: session.user.id, tipo: "venta",
+      cantidad: -cantidad, exigirStockSuficiente: true,
+    })
+    movStockCreado = resultadoStock?.movimiento ?? null
+  }
+
   const tipoPagoCheck = formData.get("tipoPago") as string
   // Only create movimiento for cash sales - credit sales register income when payment is received
   let movimientoCreado: { id: string } | null = null
@@ -185,15 +202,12 @@ async function ingresarMovimientoInterno(formData: FormData) {
         realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
       }
     })
-  }
-
-  // Auto-descontar stock si es VENTA con producto que tiene inventario
-  // (ya validado arriba, antes de crear el Movimiento).
-  if (productoId && tipo === "VENTA") {
-    await registrarMovimientoStock({
-      productoId, userId: session.user.id, tipo: "venta",
-      cantidad: -cantidad, movimientoId: movimientoCreado?.id ?? null,
-    })
+    // Conecta el Kardex (creado arriba) con este Movimiento — antes se
+    // pasaba movimientoId en el mismo llamado porque el Movimiento se
+    // creaba primero; el orden se invirtió a propósito (ver comentario arriba).
+    if (movStockCreado) {
+      await db.movimientoStock.update({ where: { id: movStockCreado.id }, data: { movimientoId: movimientoCreado.id } })
+    }
   }
 
   // Alerta inmediata si la venta se hizo con margen negativo
@@ -402,10 +416,33 @@ async function registrarVentaInterno(items: Array<{
       }
     }
 
+    // Descontar stock ANTES de crear el Movimiento (el dinero de la venta),
+    // no después: exigirStockSuficiente hace que esto rechace la operación
+    // completa si el stock real (bajo lock, en el momento exacto de
+    // aplicarlo) ya no alcanza — típicamente porque otra venta del mismo
+    // producto se adelantó por una fracción de segundo. Con el orden
+    // anterior (Movimiento primero, stock después), ese rechazo llegaba
+    // tarde: el Movimiento con el monto completo de la venta ya estaba
+    // creado, así que la venta "se cobraba" igual aunque el producto ya no
+    // estuviera disponible.
+    let movStockItem: { id: string } | null = null
+    if (item.productoId) {
+      const cantidadDescuento = item.cantidadInterna ?? item.cantidad
+      // FIFO automático: si el producto tiene lotes con vencimiento, la
+      // salida se amarra sola al que vence primero — nadie elige nada en
+      // Venta. Si no tiene ningún lote, sigue funcionando igual que siempre.
+      const fechaLoteFIFO = await obtenerLoteFIFO(item.productoId, session.user.id)
+      const resultadoStock = await registrarMovimientoStock({
+        productoId: item.productoId, userId: session.user.id, tipo: "venta",
+        cantidad: -cantidadDescuento, fechaVencimiento: fechaLoteFIFO,
+        exigirStockSuficiente: true,
+      })
+      movStockItem = resultadoStock?.movimiento ?? null
+    }
+
     // Only create movimiento for cash sales - credit sales only create CuentaPorCobrar
-    let movItem: { id: string } | null = null
     if (tipoPago !== "credito") {
-      movItem = await db.movimiento.create({
+      const movItem = await db.movimiento.create({
         data: {
           tipo: "VENTA",
           monto: montoItem,
@@ -421,18 +458,12 @@ async function registrarVentaInterno(items: Array<{
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
         }
       })
-    }
-    if (item.productoId) {
-      const cantidadDescuento = item.cantidadInterna ?? item.cantidad
-      // FIFO automático: si el producto tiene lotes con vencimiento, la
-      // salida se amarra sola al que vence primero — nadie elige nada en
-      // Venta. Si no tiene ningún lote, sigue funcionando igual que siempre.
-      const fechaLoteFIFO = await obtenerLoteFIFO(item.productoId, session.user.id)
-      await registrarMovimientoStock({
-        productoId: item.productoId, userId: session.user.id, tipo: "venta",
-        cantidad: -cantidadDescuento, movimientoId: movItem?.id ?? null,
-        fechaVencimiento: fechaLoteFIFO,
-      })
+      // Conecta el Kardex (creado arriba) con este Movimiento — antes se
+      // pasaba movimientoId en el mismo llamado porque el Movimiento se
+      // creaba primero; el orden se invirtió a propósito (ver comentario arriba).
+      if (movStockItem) {
+        await db.movimientoStock.update({ where: { id: movStockItem.id }, data: { movimientoId: movItem.id } })
+      }
     }
   }
 

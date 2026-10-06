@@ -33,6 +33,24 @@ type RegistrarMovimientoParams = {
   costoUnitario?: number | null
   /** Fecha en que vence este lote específico (solo tiene sentido en entradas de stock — reposición o inventario inicial). Opcional. */
   fechaVencimiento?: Date | null
+  /** Por defecto, una salida que pide más de lo que hay se "clampa" en
+   * silencio a lo que realmente queda (comportamiento histórico — lo
+   * necesitan ajustes/reversiones administrativas, que no deben fallar
+   * solo porque el stock actual ya no calza exacto). En cambio, para una
+   * VENTA real esto debe rechazar la operación completa: si no se rechaza,
+   * el Kardex queda bien pero el dinero de la venta se registra igual por
+   * el monto completo, aunque el producto ya no estuviera disponible —
+   * típicamente porque otra venta del mismo producto se adelantó por una
+   * fracción de segundo. Activar esto en cualquier llamada que represente
+   * una venta real. */
+  exigirStockSuficiente?: boolean
+}
+
+export class StockInsuficienteError extends Error {
+  constructor(public nombreProducto: string, public stockDisponible: number) {
+    super(`Stock insuficiente para "${nombreProducto}" — alguien más acaba de vender las últimas unidades. Intenta de nuevo.`)
+    this.name = "StockInsuficienteError"
+  }
 }
 
 /**
@@ -50,12 +68,12 @@ type RegistrarMovimientoParams = {
  * devuelve null — no se genera Kardex para productos sin stock.
  */
 export async function registrarMovimientoStock(params: RegistrarMovimientoParams) {
-  const { productoId, userId, tipo, cantidad, observacion, proveedorId, movimientoId, costoUnitario, fechaVencimiento } = params
+  const { productoId, userId, tipo, cantidad, observacion, proveedorId, movimientoId, costoUnitario, fechaVencimiento, exigirStockSuficiente } = params
   if (!productoId || !cantidad || cantidad === 0) return null
 
   return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ stock: number | null; controlaInventario: boolean; costo: number | null; precio: number | null; unidadVentaCantidad: number | null }[]>`
-      SELECT stock, "controlaInventario", costo, precio, "unidadVentaCantidad" FROM "Producto" WHERE id = ${productoId} AND "userId" = ${userId} FOR UPDATE
+    const rows = await tx.$queryRaw<{ stock: number | null; controlaInventario: boolean; costo: number | null; precio: number | null; unidadVentaCantidad: number | null; nombre: string }[]>`
+      SELECT stock, "controlaInventario", costo, precio, "unidadVentaCantidad", nombre FROM "Producto" WHERE id = ${productoId} AND "userId" = ${userId} FOR UPDATE
     `
     const row = rows[0]
     if (!row || !row.controlaInventario || row.stock === null) return null
@@ -64,6 +82,9 @@ export async function registrarMovimientoStock(params: RegistrarMovimientoParams
     const stockPosterior = Math.max(0, stockAnterior + cantidad)
     const cantidadReal = stockPosterior - stockAnterior
     if (cantidadReal === 0) return null
+    if (exigirStockSuficiente && cantidad < 0 && cantidadReal !== cantidad) {
+      throw new StockInsuficienteError(row.nombre, stockAnterior)
+    }
 
     // Costo Promedio Ponderado: solo se recalcula en ENTRADAS de inventario
     // con costo unitario informado (reposiciones). Las salidas (ventas,

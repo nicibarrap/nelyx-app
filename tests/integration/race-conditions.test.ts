@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
-import { registrarPagoCuenta, marcarCostoPagado } from "@/app/actions/acciones"
+import { registrarPagoCuenta, marcarCostoPagado, registrarVenta } from "@/app/actions/acciones"
 
 // Mismos stubs que en email-case-insensitive.test.ts: acciones.ts importa
 // NextAuth (vía getSession) y next/cache (revalidatePath), ninguno de los
@@ -88,5 +88,47 @@ describe("marcarCostoPagado bajo concurrencia real", () => {
     const generacionFinal = await db.generacionCosto.findUniqueOrThrow({ where: { id: generacion.id } })
     expect(generacionFinal.pagado).toBe(true)
     expect(generacionFinal.movimientoId).toBe(movimientos[0].id)
+  })
+})
+
+// Bug real encontrado al escribir estos tests: el chequeo de "¿hay stock
+// suficiente?" se hacía ANTES y FUERA del lock que de verdad descuenta el
+// stock (registrarMovimientoStock). Dos ventas del mismo producto casi al
+// mismo tiempo podían ambas leer el mismo stock "viejo", ambas pasar la
+// validación, y ambas quedar registradas con el monto completo — el Kardex
+// (protegido con SELECT FOR UPDATE) nunca quedaba descuadrado, pero el
+// dinero de la venta sí se registraba por más unidades de las que en
+// realidad salieron del inventario. Arreglo: registrarMovimientoStock ahora
+// puede exigir stock suficiente y rechazar la operación ANTES de crear el
+// Movimiento (antes era al revés: Movimiento primero, stock después).
+describe("registrarVenta bajo concurrencia real (venta de inventario)", () => {
+  it("dos ventas simultáneas que juntas superan el stock disponible: una se rechaza, y lo vendido nunca supera lo que había", async () => {
+    const user = await crearUsuario()
+    const STOCK_INICIAL = 5
+    const producto = await db.producto.create({
+      data: { userId: user.id, nombre: "Producto con poco stock", stock: STOCK_INICIAL, precio: 1000, costo: 500, controlaInventario: true, formaVenta: "unidad" },
+    })
+    const item = (cantidad: number) => [{ productoId: producto.id, nombre: producto.nombre, precio: 1000, cantidad }]
+
+    // Dos ventas de 4 unidades cada una compitiendo por 5 de stock: juntas
+    // (8) superan lo disponible, así que al menos una debe ser rechazada.
+    const resultados = await Promise.allSettled([
+      registrarVenta(item(4), new Date().toISOString()),
+      registrarVenta(item(4), new Date().toISOString()),
+    ])
+
+    const exitosas = resultados.filter(r => r.status === "fulfilled").length
+    expect(exitosas).toBe(1)
+    const rechazada = resultados.find(r => r.status === "rejected") as PromiseRejectedResult
+    expect(rechazada.reason.message).toMatch(/Stock insuficiente/)
+
+    // Invariante de negocio: el dinero vendido jamás puede corresponder a
+    // más unidades que las que el producto realmente tenía.
+    const ventas = await db.movimiento.findMany({ where: { userId: user.id, tipo: "VENTA" } })
+    const unidadesVendidas = ventas.reduce((a, v) => a + Number(v.monto) / 1000, 0)
+    expect(unidadesVendidas).toBeLessThanOrEqual(STOCK_INICIAL)
+
+    const productoFinal = await db.producto.findUniqueOrThrow({ where: { id: producto.id } })
+    expect(productoFinal.stock).toBe(STOCK_INICIAL - unidadesVendidas)
   })
 })
