@@ -11,7 +11,11 @@
     "db:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
     "test": "cross-env DATABASE_URL=postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test vitest run",
     "test:watch": "cross-env DATABASE_URL=postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test vitest",
-    "test:db:setup": "cross-env DATABASE_URL=postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test prisma db push --skip-generate"
+    "test:db:setup": "cross-env DATABASE_URL=postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test prisma db push --skip-generate",
+    "test:e2e:seed": "cross-env DATABASE_URL=postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test ts-node --compiler-options '{\"module\":\"CommonJS\"}' tests/e2e/seed.ts",
+    "test:e2e": "playwright test",
+    "datos-sinteticos:generar": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/generar-datos-sinteticos.ts",
+    "datos-sinteticos:limpiar": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/limpiar-datos-sinteticos.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.2",
@@ -33,6 +37,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^18",

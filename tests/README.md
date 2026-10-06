@@ -6,6 +6,10 @@
 específicamente los bugs que ya pasaron una vez: el login que no reconocía un email
 guardado con mayúsculas, y las condiciones de carrera en pagos concurrentes.
 
+`tests/e2e/` — Playwright, navegador real contra el servidor de desarrollo. Login y
+que cada módulo ya auditado cargue sin romperse, más el flujo completo de registrar
+una venta. Ver `tests/e2e/README.md`.
+
 ## Correr los tests localmente
 
 Necesitas una Postgres local corriendo (no la de Supabase/producción — nunca se
