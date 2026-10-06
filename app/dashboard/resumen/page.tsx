@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { generarCostosDelMes } from "@/app/actions/acciones"
 import { esAplicableEnMes } from "@/lib/costos-fijos"
-import { calcularMetricas, prepararGrafico, calcularVariacionPct, formatCLP } from "@/lib/utils"
+import { calcularMetricas, calcularEstadoDeuda, prepararGrafico, calcularVariacionPct, formatCLP } from "@/lib/utils"
 import { hoyEnChile } from "@/lib/timezone"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
@@ -22,6 +22,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   const mes = parseInt(searchParams.mes ?? String(hoy.getMonth() + 1))
   const anio = parseInt(searchParams.anio ?? String(hoy.getFullYear()))
   const esMesActual = mes === hoy.getMonth() + 1 && anio === hoy.getFullYear()
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
 
   const mesAnt = mes === 1 ? 12 : mes - 1
   const anioAnt = mes === 1 ? anio - 1 : anio
@@ -53,8 +54,13 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
       where: { userId: session!.user.id, fecha: { gte: new Date(anioAnt,mesAnt-1,1), lt: new Date(anioAnt,mesAnt,1) } },
       select: { tipo: true, monto: true, utilidad: true },
     }),
-    db.cuentaPorCobrar.count({ where: { userId: session!.user.id, estado: "vencida" } }),
-    db.cuentaPorCobrar.count({ where: { userId: session!.user.id, createdAt: { gte: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) } } }),
+    // No se filtra por estado:"vencida" directo: ese campo solo se
+    // refresca cuando se visita /dashboard/cuentas-cobrar (que corre un
+    // updateMany al cargar) — si el dueño entra primero a Resumen, una
+    // cuenta recién vencida todavía dice "pendiente"/"parcial" y no se
+    // contaba acá. Calculado en vivo por fecha, no depende de esa visita.
+    db.cuentaPorCobrar.count({ where: { userId: session!.user.id, estado: { in: ["pendiente", "parcial", "vencida"] }, fechaVence: { lt: inicioHoy }, saldoPendiente: { gt: 0 } } }),
+    db.cuentaPorCobrar.count({ where: { userId: session!.user.id, createdAt: { gte: inicioHoy } } }),
     db.producto.findMany({
       where: { userId: session!.user.id, activo: true, stock: { not: null } },
       select: { id: true, nombre: true, stock: true, stockMinimo: true },
@@ -73,12 +79,16 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   const totalCostosFijos = costosFijosAplicables.reduce((a, c) => a + Number(c.monto), 0)
 
   // Próximo costo fijo a generarse este mes — para que el KPI no solo diga
-  // "cuántos activos hay", sino también "cuándo viene el próximo".
+  // "cuántos activos hay", sino también "cuándo viene el próximo". Solo
+  // tiene sentido para el mes actual: comparar el día de cobro contra
+  // hoy.getDate() al ver un mes pasado o futuro (vía FiltroPeriodo) no dice
+  // nada real — mostraba un "próximo" inventado para meses ya terminados
+  // o que ni siquiera habían empezado.
   const diasDelMesActual = new Date(anio, mes, 0).getDate()
-  const proximoCostoFijo = costosFijosAplicables
+  const proximoCostoFijo = esMesActual ? costosFijosAplicables
     .map(c => ({ nombre: c.nombre, monto: Number(c.monto), dia: Math.min(c.fechaInicio.getDate(), diasDelMesActual) }))
     .filter(c => c.dia >= hoy.getDate())
-    .sort((a, b) => a.dia - b.dia)[0] ?? null
+    .sort((a, b) => a.dia - b.dia)[0] ?? null : null
 
   const totalPorCobrar = Number(cuentasPorCobrar._sum.saldoPendiente ?? 0)
   const countPorCobrar = cuentasPorCobrar._count
@@ -124,12 +134,15 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   const topProductos = Object.values(conteoProductos).sort((a,b) => b.count-a.count).slice(0,5)
   const totalVentasProductos = Object.values(conteoProductos).reduce((a,p) => a+p.total, 0)
 
-  // Deudas próximas (7 días)
-  const deudasProximas = deudas.filter(d => {
-    if (!d.fechaVence) return false
-    const diff = new Date(d.fechaVence).getTime() - hoy.getTime()
-    return diff <= 7 * 24 * 60 * 60 * 1000 && diff > 0
-  })
+  // Deudas próximas (7 días) — mismo estado que calcula Deudas/Alertas
+  // (calcularEstadoDeuda, con diasEntreChile). Esto tenía su propia
+  // comparación con getTime() crudo: hoyEnChile() no es un timestamp real
+  // (sus getters devuelven la hora de Chile, pero el valor numérico queda
+  // corrido respecto al reloj UTC real), así que restarlo contra
+  // fechaVence.getTime() (un timestamp real) daba una diferencia sin
+  // sentido — y además, al exigir diff > 0 estricto, nunca contaba una
+  // deuda que vence justo hoy, a diferencia del estado "Próxima a vencer".
+  const deudasProximas = deudas.filter(d => calcularEstadoDeuda(d) === "Próxima a vencer")
 
   // Alertas de inventario (para el widget) — mismos datos que usa el módulo Alertas
   const productosAgotados = productosAlerta.filter(p => p.stock === 0)
@@ -153,9 +166,14 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
 
   // Liquidez proyectada: cuántos días te dura el disponible actual al ritmo
   // de gasto de este mes — mismo cálculo que tenía el módulo Flujo de Caja
-  // (ya retirado), reutilizando datos que Resumen ya calcula.
-  const diasTranscurridosMes = hoy.getDate()
-  const tasaDiariaGastos = diasTranscurridosMes > 0 ? m.totalGastos / diasTranscurridosMes : 0
+  // (ya retirado), reutilizando datos que Resumen ya calcula. Reusa
+  // diasParaPromedio (mismos "días transcurridos del mes mostrado") en vez
+  // de volver a usar hoy.getDate() crudo: eso ignoraba qué mes se está
+  // viendo vía FiltroPeriodo — al revisar un mes pasado ya completo, dividía
+  // su gasto total por el día de HOY (ej. 6) en vez de por los días reales
+  // de ese mes (ej. 31), inflando muchísimo el "gasto diario" y mostrando
+  // una Liquidez muchísimo menor a la real.
+  const tasaDiariaGastos = diasParaPromedio > 0 ? m.totalGastos / diasParaPromedio : 0
   const liquidezDias = tasaDiariaGastos > 0 ? Math.min(90, Math.round(disponible / tasaDiariaGastos)) : 90
 
   const cards = [
