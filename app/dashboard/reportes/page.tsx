@@ -95,7 +95,12 @@ export default async function ReportesPage() {
     db.producto.findMany({ where: { userId, activo: true }, select: { id: true } }),
     db.movimiento.groupBy({
       by: ["clienteId"],
-      where: { userId, tipo: "VENTA", clienteId: { not: null }, fecha: { gte: inicioMes, lt: finMes } },
+      // VENTA + INGRESO_EXTRA (no solo VENTA): "totalVentas" más abajo —el
+      // denominador de "concentración top 3"— también suma los pagos de
+      // cuentas por cobrar (INGRESO_EXTRA). Un cliente que compra fiado y
+      // paga después no sumaba nada acá, aunque su pago sí engrosaba el
+      // total del mes: subestimaba su aporte y la concentración real.
+      where: { userId, tipo: { in: ["VENTA", "INGRESO_EXTRA"] }, clienteId: { not: null }, fecha: { gte: inicioMes, lt: finMes } },
       _sum: { monto: true },
       _count: true,
     }),
@@ -113,19 +118,22 @@ export default async function ReportesPage() {
     }),
   ])
 
-  // ── Base: mes actual ──
+  // ── Base: mes actual ── gastosMes incluye RETIRO, igual que calcularMetricas
+  // (usado por /dashboard/resumen) y que el rollup del gráfico anual de más
+  // abajo en esta misma página — antes solo este cálculo lo excluía, así que
+  // la utilidad/margen del resumen ejecutivo y el diagnóstico no coincidía
+  // con la línea de "Resultado neto" del propio gráfico para el mes actual,
+  // cualquier mes en que el dueño hiciera un retiro.
   const ventasMes = movMesActual.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
-  const gastosMes = movMesActual.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO")
+  const gastosMes = movMesActual.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentas = ventasMes.reduce((a, m) => a + Number(m.monto), 0)
   const totalGastos = gastosMes.reduce((a, m) => a + Number(m.monto), 0)
-  const utilidadNeta = totalVentas - totalGastos
 
   // ── Mes anterior ──
   const ventasMesAnt = movMesAnterior.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
-  const gastosMesAnt = movMesAnterior.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO")
+  const gastosMesAnt = movMesAnterior.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentasAnt = ventasMesAnt.reduce((a, m) => a + Number(m.monto), 0)
   const totalGastosAnt = gastosMesAnt.reduce((a, m) => a + Number(m.monto), 0)
-  const utilidadNetaAnt = totalVentasAnt - totalGastosAnt
 
   const pct = calcularVariacionPct
 
@@ -203,7 +211,6 @@ export default async function ReportesPage() {
   }
   const diasOrdenados = Object.entries(ventasPorDiaSemana).sort((a, b) => b[1] - a[1])
   const mejorDia = diasOrdenados[0] ? DIAS_NOMBRE[Number(diasOrdenados[0][0])] : null
-  const peorDia = diasOrdenados.length > 1 ? DIAS_NOMBRE[Number(diasOrdenados[diasOrdenados.length - 1][0])] : null
   // Semanas reales de datos usadas — para avisar con transparencia cuando
   // la muestra todavía es chica (negocio recién empezando en Nelyx).
   const rangoPatron = rangoAgg[0]
@@ -233,26 +240,33 @@ export default async function ReportesPage() {
   // Cada item lleva un href opcional al módulo real que lo explica — antes
   // el diagnóstico y las oportunidades eran texto suelto sin forma de ir a
   // revisar el dato de origen (el producto, el cliente, la cuenta).
+  // Diagnóstico = hechos (sin acción sugerida); Oportunidades = acciones
+  // concretas. Antes se mezclaban: "concentración de clientes" y "% en
+  // efectivo" vivían en Oportunidades sin ninguna acción adjunta, diluyendo
+  // las que sí la tienen — se movieron para acá. "Mejor/peor día" se quitó
+  // directamente: es el mismo dato que ya se ve, más completo, en el mapa
+  // de calor de abajo. El margen/utilidad del mes (antes repetido acá Y en
+  // el resumen ejecutivo) ahora se dice una sola vez, en el resumen ejecutivo.
   type ItemReporte = { texto: string; href?: string; label?: string }
   const diagnostico: ItemReporte[] = []
-  if (totalVentasAnt > 0) {
-    const p = pct(utilidadNeta, utilidadNetaAnt)
-    if (utilidadNetaAnt !== 0) diagnostico.push({ texto: p >= 0 ? `Tu utilidad ${p === 0 ? "se mantuvo estable" : `aumentó un ${p}%`} respecto al mes anterior.` : `Tu utilidad bajó un ${Math.abs(p)}% respecto al mes anterior.` })
-  }
   if (pct(totalGastos, totalGastosAnt) > pct(totalVentas, totalVentasAnt) && totalGastosAnt > 0) {
     diagnostico.push({ texto: `Tus gastos crecieron más rápido (${pct(totalGastos, totalGastosAnt)}%) que tus ventas (${pct(totalVentas, totalVentasAnt)}%).`, href: "/dashboard/movimientos", label: "Ver movimientos" })
   }
   if (pctRecuperacionCxc !== null) {
     diagnostico.push({ texto: `Este mes recuperaste el ${pctRecuperacionCxc}% de las cuentas por cobrar que emitiste.`, href: "/dashboard/cuentas-cobrar", label: "Ver cuentas por cobrar" })
   }
-  if (mejorDia && peorDia && mejorDia !== peorDia) {
-    diagnostico.push({ texto: `Tus ventas de los ${mejorDia}s son las más altas; los ${peorDia}s son las más bajas.` })
+  if (concentracionTop3 > 0) {
+    diagnostico.push({ texto: `Tus 3 clientes más frecuentes representan el ${concentracionTop3}% de tus ingresos este mes.`, href: "/dashboard/clientes", label: "Ver clientes" })
   }
-  diagnostico.push({ texto: `Por cada $100 que vendes, te quedan $${Math.max(0, margenPor100)} de utilidad, después de costos y gastos.` })
-  if (diagnostico.length === 0) diagnostico.push({ texto: "Aún no hay suficiente historial este mes para generar un diagnóstico detallado." })
+  if (pctEfectivo !== null) {
+    diagnostico.push({ texto: `Aproximadamente el ${pctEfectivo}% de tus ventas (por clientes registrados) son en efectivo.` })
+  }
+  // Un diagnóstico vacío ya no significa "falta historial" — puede que
+  // simplemente no haya nada atípico que reportar este período.
+  if (diagnostico.length === 0) diagnostico.push({ texto: "Sin novedades particulares este período." })
 
   // ══════════════════════════════════════════
-  // OPORTUNIDADES DETECTADAS
+  // OPORTUNIDADES DETECTADAS — solo ítems con una acción concreta sugerida.
   // ══════════════════════════════════════════
   const oportunidades: ItemReporte[] = []
   if (productosRanking.length >= 1) {
@@ -262,15 +276,9 @@ export default async function ReportesPage() {
   if (productoBajoMargenAltoVolumen) {
     oportunidades.push({ texto: `"${productoBajoMargenAltoVolumen.nombre}" se vende mucho pero tiene margen bajo — revisa su precio o su costo.`, href: "/dashboard/productos", label: "Ver productos" })
   }
-  if (concentracionTop3 > 0) {
-    oportunidades.push({ texto: `Tus 3 clientes más frecuentes representan el ${concentracionTop3}% de tus ingresos este mes.`, href: "/dashboard/clientes", label: "Ver clientes" })
-  }
   if (mejorDia) oportunidades.push({ texto: `Los ${mejorDia}s son tu mejor día para vender — considera promociones o mayor stock ese día.` })
   if (productosSinMovimiento.length > 0) {
     oportunidades.push({ texto: `${productosSinMovimiento.length} producto${productosSinMovimiento.length > 1 ? "s" : ""} sin ventas hace más de 45 días — evalúa una promoción o descontinuarlos.`, href: "/dashboard/productos", label: "Ver productos" })
-  }
-  if (pctEfectivo !== null) {
-    oportunidades.push({ texto: `Aproximadamente el ${pctEfectivo}% de tus ventas (por clientes registrados) son en efectivo.` })
   }
   if (oportunidades.length === 0) oportunidades.push({ texto: "Sigue registrando movimientos para que aparezcan oportunidades personalizadas." })
 
@@ -309,10 +317,22 @@ export default async function ReportesPage() {
   const pctGastos = pct(totalGastos, totalGastosAnt)
   const partes: string[] = []
   partes.push(`Durante este período el negocio ${pctVentas >= 0 ? `aumentó sus ventas un ${pctVentas}%` : `disminuyó sus ventas un ${Math.abs(pctVentas)}%`}${totalGastosAnt > 0 ? `, mientras los gastos ${pctGastos >= 0 ? `crecieron un ${pctGastos}%` : `bajaron un ${Math.abs(pctGastos)}%`}` : ""}.`)
-  partes.push(utilidadNeta >= 0 ? `La utilidad se mantiene positiva, con ${Math.abs(margenPor100)}% de margen sobre las ventas.` : `La utilidad fue negativa este período — los gastos superaron a las ventas.`)
+  // Único lugar donde se dice la utilidad/margen del mes — antes se repetía
+  // (con otras palabras) en Diagnóstico. El signo y el monto salen de
+  // margenPor100 (que ya descuenta el costo de los productos vendidos, no
+  // solo gastos registrados) — antes esta frase decidía "positiva/negativa"
+  // mirando utilidadNeta (sin descontar costo de productos) pero mostraba
+  // el % de margenPor100 con Math.abs(), así que un margen realmente
+  // negativo (una vez descontado el costo real de lo vendido) podía
+  // mostrarse como un % positivo.
+  partes.push(margenPor100 >= 0
+    ? `La utilidad se mantiene positiva — por cada $100 que vendes, te quedan $${margenPor100} después de costos y gastos.`
+    : `La utilidad fue negativa este período — por cada $100 que vendes, pierdes $${Math.abs(margenPor100)} una vez descontado el costo de los productos vendidos y los gastos.`)
   if (productoMasRentable) partes.push(`El producto con mayor margen fue ${productoMasRentable}.`)
   if (clienteTop) partes.push(`El cliente más valioso fue ${clienteTop.nombre}, con ${formatearMonto(clienteTop.monto)} en compras.`)
-  partes.push(oportunidades[0]?.texto ?? "")
+  // No se repite oportunidades[0] acá: ese mismo texto ya es el primer ítem
+  // de la tarjeta "Oportunidades detectadas", justo debajo — antes aparecía
+  // dos veces, palabra por palabra, en la misma pantalla.
   const resumenEjecutivo = partes.filter(Boolean).join(" ")
 
   function formatearMonto(n: number) { return `$${Math.round(n).toLocaleString("es-CL")}` }
