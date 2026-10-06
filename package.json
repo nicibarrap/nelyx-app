@@ -15,7 +15,8 @@
     "test:e2e:seed": "cross-env DATABASE_URL=postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test ts-node --compiler-options '{\"module\":\"CommonJS\"}' tests/e2e/seed.ts",
     "test:e2e": "playwright test",
     "datos-sinteticos:generar": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/generar-datos-sinteticos.ts",
-    "datos-sinteticos:limpiar": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/limpiar-datos-sinteticos.ts"
+    "datos-sinteticos:limpiar": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/limpiar-datos-sinteticos.ts",
+    "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.2",
@@ -57,5 +58,9 @@
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+  },
+  "overrides": {
+    "sharp": "^0.35.5",
+    "source-map-js": "^1.2.2"
   }
 }
