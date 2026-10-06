@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic"
 export default async function ReponerInventarioPage() {
   const session = await auth()
 
-  const [productos, proveedores] = await Promise.all([
+  const [productosRaw, proveedores] = await Promise.all([
     db.producto.findMany({
       where: { userId: session!.user.id, activo: true, controlaInventario: true },
       select: { id: true, nombre: true, sku: true, codigoBarras: true, stock: true, costo: true, formaVenta: true, unidadMedida: true, unidadPersonalizada: true, unidadVentaCantidad: true },
@@ -18,6 +18,10 @@ export default async function ReponerInventarioPage() {
     }),
     db.proveedor.findMany({ where: { userId: session!.user.id, activo: true }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
   ])
+
+  // costo es Decimal de Prisma — no se puede pasar tal cual de un Server
+  // Component a un Client Component (ReponerInventarioClient es "use client").
+  const productos = productosRaw.map(p => ({ ...p, costo: p.costo ? Number(p.costo) : null }))
 
   return (
     <div className="space-y-5">
