@@ -123,6 +123,9 @@ no una que garantice que el módulo queda perfecto. Ver la sección final
 - [ ] Cualquier HTML generado con datos de usuario (correos, exportaciones)
       escapa ese dato, aunque el destinatario parezca ser siempre la misma
       persona que lo escribió.
+- [ ] `npm run audit:prod` sin hallazgos `critical` nuevos (ver
+      `docs/NPM_AUDIT_*.md` para el estado aceptado de los que ya quedan
+      documentados) — CI ya lo corre en cada PR.
 
 ## 9. Automatización disponible (correr, no solo leer)
 
@@ -150,6 +153,6 @@ no una que garantice que el módulo queda perfecto. Ver la sección final
 - **Todo bug de UI/UX** que no sea un error de cálculo o de permisos (layout
   roto en un dispositivo específico, flujo confuso pero funcionalmente
   correcto).
-- **Vulnerabilidades de día cero** en dependencias de terceros — Semgrep
-  escanea el código propio, no corre un SCA (`npm audit`/Dependabot) de las
-  librerías.
+- **Vulnerabilidades de día cero** en dependencias de terceros — ya cubierto
+  por `npm run audit:prod` (ver `docs/NPM_AUDIT_*.md`), pero solo detecta lo
+  que ya está reportado públicamente, no fallas sin descubrir aún.

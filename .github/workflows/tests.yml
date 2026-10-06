@@ -42,6 +42,17 @@ jobs:
       - name: Verificar tipos (TypeScript)
         run: npx tsc --noEmit -p .
 
+      # Solo las dependencias de producción (--omit=dev): el toolchain de
+      # desarrollo (vitest/tailwind/eslint) nunca corre en el servidor real,
+      # así que sus vulnerabilidades no son parte de la superficie de ataque
+      # de la app. Solo falla en "critical" — los hallazgos "high" conocidos
+      # (xlsx: solo corre en el navegador del propio dueño sobre su propio
+      # archivo; postcss/next: solo en build, sin fix sin un salto de major
+      # versión) quedan documentados en docs/SECURITY_SCAN_2026-10-06.md en
+      # vez de bloquear cada PR con ruido ya aceptado.
+      - name: Auditoría de dependencias de producción
+        run: npm audit --omit=dev --audit-level=critical
+
       - name: Aplicar el schema a la base de datos de pruebas
         run: npx prisma db push --skip-generate
 
