@@ -18,7 +18,8 @@ export default async function CalendarioPage() {
 
   // Extiende el horizonte materializado de tareas recurrentes antes de leer
   // eventosCalendario — mismo patrón perezoso que generarCostosDelMes.
-  await generarOcurrenciasPendientes(userId)
+  // (Deriva su propio userId de la sesión, no lo recibe como parámetro.)
+  await generarOcurrenciasPendientes()
 
   const [costosFijos, deudas, cuentasPorCobrar, eventosCalendario, proyectosTarea] = await Promise.all([
     db.costoFijoRecurrente.findMany({

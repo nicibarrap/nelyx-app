@@ -9,7 +9,7 @@ import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unid
 import { registrarMovimientoStock, type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerLoteFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
-import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
+import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
 import { hoyEnChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 
@@ -1711,7 +1711,7 @@ export async function eliminarCuentaPorCobrar(id: string) {
 // ─── CALENDARIO ──────────────────────────────────────────────────────────────
 
 export async function crearEventoCalendario(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   const titulo = (formData.get("titulo") as string)?.trim()
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const fecha = formData.get("fecha") as string
@@ -1761,7 +1761,7 @@ export async function crearEventoCalendario(formData: FormData) {
 }
 
 export async function actualizarEventoCalendario(id: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   const titulo = (formData.get("titulo") as string)?.trim()
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const fecha = formData.get("fecha") as string
@@ -1793,7 +1793,7 @@ export async function actualizarEventoCalendario(id: string, formData: FormData)
 // Mueve una sola ocurrencia a otro día (drag & drop en el Calendario). Igual
 // que editar el evento, se desengancha de su serie recurrente si tenía una.
 export async function moverEventoCalendario(id: string, nuevaFecha: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   if (!nuevaFecha) throw new Error("Fecha inválida")
   await db.eventoCalendario.updateMany({
     where: { id, userId: session.user.id },
@@ -1842,7 +1842,9 @@ function calcularOcurrencias(serie: { frecuencia: string; diasSemana: number[]; 
 // Se llama al entrar a /dashboard/calendario (mismo patrón perezoso que
 // generarCostosDelMes): si el horizonte materializado de alguna serie del
 // usuario quedó corto, genera el siguiente tramo de ocurrencias.
-export async function generarOcurrenciasPendientes(userId: string) {
+export async function generarOcurrenciasPendientes() {
+  const session = await getSession()
+  const userId = session.user.id
   const hoy = new Date()
   const colchon = new Date(hoy)
   colchon.setUTCDate(colchon.getUTCDate() + COLCHON_DIAS_MINIMO)
@@ -1895,6 +1897,12 @@ export async function generarOcurrenciasPendientes(userId: string) {
 
 export async function obtenerProyectosTarea() {
   const session = await getSession()
+  // Esta acción también se usa desde Configuración (selector de categorías),
+  // que no requiere acceso al módulo Calendario — pero las tareas anidadas
+  // de cada proyecto (títulos, fechas, estado) sí son datos de Calendario.
+  // Un empleado con Configuración pero sin Calendario solo recibe nombre y
+  // color de cada proyecto, nunca sus tareas.
+  const puedeVerTareas = tieneAcceso(session.user.modulosPermitidos, "calendario")
   const proyectos = await db.proyectoTarea.findMany({
     where: { userId: session.user.id },
     include: {
@@ -1908,12 +1916,12 @@ export async function obtenerProyectosTarea() {
   })
   return proyectos.map(p => ({
     id: p.id, nombre: p.nombre, descripcion: p.descripcion, color: p.color,
-    tareas: p.eventos.map(e => ({ id: e.id, titulo: e.titulo, estado: e.estado, fecha: e.fecha.toISOString(), horaLimite: e.horaLimite })),
+    tareas: puedeVerTareas ? p.eventos.map(e => ({ id: e.id, titulo: e.titulo, estado: e.estado, fecha: e.fecha.toISOString(), horaLimite: e.horaLimite })) : [],
   }))
 }
 
 export async function crearProyectoTarea(formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   const nombre = (formData.get("nombre") as string)?.trim()
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const color = (formData.get("color") as string) || "azul"
@@ -1928,7 +1936,7 @@ export async function crearProyectoTarea(formData: FormData) {
 }
 
 export async function editarProyectoTarea(id: string, formData: FormData) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   const nombre = (formData.get("nombre") as string)?.trim()
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const color = (formData.get("color") as string) || "azul"
@@ -1943,7 +1951,7 @@ export async function editarProyectoTarea(id: string, formData: FormData) {
 }
 
 export async function eliminarProyectoTarea(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   // Las tareas que tenían este proyecto asignado NO se eliminan — solo
   // quedan sin categoría (onDelete: SetNull en el schema).
   await db.proyectoTarea.deleteMany({ where: { id, userId: session.user.id } })
@@ -1952,7 +1960,7 @@ export async function eliminarProyectoTarea(id: string) {
 }
 
 export async function eliminarEventoCalendario(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   await db.eventoCalendario.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`evt:${id}:`)
   await cancelarNotificacionesPorPrefijo(`tarea:${id}:`)
@@ -1960,7 +1968,7 @@ export async function eliminarEventoCalendario(id: string) {
 }
 
 export async function actualizarEstadoEventoCalendario(id: string, estado: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("calendario")
   await db.eventoCalendario.updateMany({ where: { id, userId: session.user.id }, data: { estado } })
   if (estado === "completada" || estado === "cancelada") {
     await cancelarNotificacionesPorPrefijo(`evt:${id}:`)
