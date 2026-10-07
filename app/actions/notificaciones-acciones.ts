@@ -51,6 +51,13 @@ export async function obtenerConfigNotificaciones() {
   return cfg
 }
 
+// Esta acción (y marcarPermisoDecidido) a propósito NO exige
+// getSessionEscritura("configuracion"): qué categorías de notificación
+// recibe un usuario es una preferencia personal suya (mismo tipo de cosa
+// que marcarLeida/marcarTodasLeidas más arriba), no un dato del negocio que
+// el dueño necesite poder bloquear restringiendo Configuración a solo
+// lectura. Un empleado con Configuración en solo lectura sigue pudiendo
+// elegir qué le notifica la app a ÉL, nunca cambiar algo que afecte a otros.
 export async function actualizarConfigNotificaciones(formData: FormData) {
   const session = await getSession()
   const campos = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales","soporte"] as const

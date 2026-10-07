@@ -1,45 +1,10 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
-import { enviarPushAUsuario } from "@/lib/push"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
-import { reemplazarVariables, calcularNivelSugerido, PLANTILLAS_DEFAULT } from "@/lib/cobranza"
-import { enviarEmail } from "@/lib/email"
-import { formatCLP } from "@/lib/utils"
 import { sincronizarSuscripciones } from "@/lib/suscripciones"
 import * as Sentry from "@sentry/nextjs"
-
-/**
- * Reserva el procesamiento de un evento recurrente (idempotencia por
- * claveUnica, mismo mecanismo que notificar()) SIN pasar por el filtro de
- * preferencias de notificaciones push del dueño — a diferencia de un aviso
- * interno, esto decide si se le manda o no un correo a un CLIENTE, así que
- * no debe depender de si el dueño tiene apagadas las notificaciones push
- * de la categoría "clientes" en Configuración.
- *
- * Se reserva ANTES de intentar el envío real (para que dos corridas del
- * cron el mismo día nunca dupliquen el correo), pero el título/mensaje se
- * completan DESPUÉS con completarNotificacionCliente() — así el aviso que
- * ve el dueño nunca dice "enviado" cuando en realidad falló (ej. porque no
- * hay RESEND_API_KEY configurada).
- */
-async function reservarNotificacionCliente(params: { userId: string; claveUnica: string; accionUrl: string }) {
-  try {
-    await db.notificacion.create({
-      data: { userId: params.userId, categoria: "clientes", prioridad: "baja", titulo: "Procesando recordatorio…", mensaje: "", accionUrl: params.accionUrl, claveUnica: params.claveUnica },
-    })
-  } catch (err: any) {
-    if (err?.code === "P2002") return false // ya se había procesado — no reintentar hoy
-    throw err
-  }
-  return true
-}
-
-async function completarNotificacionCliente(claveUnica: string, params: { userId: string; titulo: string; mensaje: string; accionUrl: string }) {
-  await db.notificacion.update({ where: { claveUnica }, data: { titulo: params.titulo, mensaje: params.mensaje } })
-  await enviarPushAUsuario(params.userId, { titulo: params.titulo, mensaje: params.mensaje, url: params.accionUrl })
-}
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -234,117 +199,44 @@ async function ejecutarCron() {
     })
   }
 
-  // ── 8) COBRANZA AUTOMÁTICA POR CORREO (solo dueños que lo activaron) ───
-  const usuariosCobranzaAuto = await db.user.findMany({
-    where: { recordatoriosCobranzaAutoActivo: true },
-    select: { id: true, nombre: true, negocio: true, recordatoriosCobranzaDiasAntes: true },
-  })
-  let cuentasParaEmail: Awaited<ReturnType<typeof db.cuentaPorCobrar.findMany>> = []
-  if (usuariosCobranzaAuto.length > 0) {
-    const idsActivos = usuariosCobranzaAuto.map(u => u.id)
-    const [cuentasRaw, plantillasTodas] = await Promise.all([
-      db.cuentaPorCobrar.findMany({
-        where: { userId: { in: idsActivos }, estado: { in: ["pendiente", "parcial", "vencida"] }, fechaVence: { not: null } },
-        include: { cliente: { select: { nombre: true, apellido: true, email: true } } },
-      }),
-      db.plantillaCobranza.findMany({ where: { userId: { in: idsActivos } } }),
-    ])
-    cuentasParaEmail = cuentasRaw
-    const mapaUsuarios = new Map(usuariosCobranzaAuto.map(u => [u.id, u]))
-    const mapaPlantillas = new Map(plantillasTodas.map(p => [`${p.userId}:${p.nivel}`, p.mensaje]))
-
-    enviadas += await procesarEnLotes(cuentasRaw, 10, async (cc) => {
-      if (!cc.fechaVence || !cc.cliente?.email) return false
-      const usuario = mapaUsuarios.get(cc.userId)
-      if (!usuario) return false
-      // Mismo signo que ya usa la sección 5 de este cron: positivo = faltan
-      // días para vencer, negativo = días de atraso.
-      const diff = diasEntreChile(ahora, cc.fechaVence)
-      // El aviso previo al vencimiento usa los días que cada dueño configuró
-      // en Configuración → Automatizaciones de clientes (antes venía fijo en
-      // 2 días, lo que se saltaba por completo una cuenta creada con
-      // vencimiento "mañana" — nunca pasaba por diff===2). Los avisos de
-      // atraso sí quedan en un calendario fijo: al día siguiente de vencer
-      // y cada semana, para no bombardear al cliente a diario.
-      const diasAntes = usuario.recordatoriosCobranzaDiasAntes ?? 2
-      const trigger = diff === diasAntes ? `pre${diasAntes}` : diff === -1 ? "atraso1" : [-7, -14, -21, -30].includes(diff) ? `atraso${-diff}` : null
-      if (!trigger) return false
-
-      const diasAtraso = Math.max(0, -diff)
-      const nivel = calcularNivelSugerido(diasAtraso)
-      const nombreCliente = `${cc.cliente.nombre} ${cc.cliente.apellido ?? ""}`.trim()
-      const vars = {
-        nombreCliente,
-        montoPendiente: formatCLP(Number(cc.saldoPendiente)),
-        fechaVenta: new Date(cc.fechaVenta).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
-        fechaVencimiento: cc.fechaVence.toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
-        numeroDocumento: `Factura #${cc.numero}`,
-        nombreNegocio: usuario.negocio || usuario.nombre,
-        usuarioEnvia: usuario.nombre,
-        diasAtraso: String(diasAtraso),
-      }
-      const plantilla = mapaPlantillas.get(`${cc.userId}:${nivel}`) ?? PLANTILLAS_DEFAULT[nivel]
-      const mensaje = reemplazarVariables(plantilla, vars)
-      const claveUnica = `cobranza-auto:${cc.id}:${trigger}`
-      const accionUrl = "/dashboard/cuentas-cobrar"
-
-      const reservado = await reservarNotificacionCliente({ userId: cc.userId, claveUnica, accionUrl })
-      if (!reservado) return false
-
-      const enviado = await enviarEmail({ to: cc.cliente.email, subject: `${vars.numeroDocumento} — Saldo pendiente ${vars.montoPendiente}`, text: mensaje })
-      if (enviado) {
-        await db.contactoCobranza.create({ data: { cuentaId: cc.id, clienteId: cc.clienteId, userId: cc.userId, canal: "email", nivel, mensaje } }).catch(() => {})
-        await completarNotificacionCliente(claveUnica, { userId: cc.userId, accionUrl, titulo: `Recordatorio automático enviado a ${nombreCliente}`, mensaje: `Correo de cobranza (Nivel ${nivel}) por ${vars.montoPendiente}.` })
-      } else {
-        await completarNotificacionCliente(claveUnica, { userId: cc.userId, accionUrl, titulo: `⚠️ No se pudo enviar el recordatorio a ${nombreCliente}`, mensaje: `Revisa la configuración de correo (RESEND_API_KEY) en Vercel — el recordatorio de cobranza no salió.` })
-      }
-      return enviado
-    })
-  }
-
-  // ── 9) CUMPLEAÑOS DE CLIENTES (solo dueños que lo activaron) ────────────
+  // ── 8) CUMPLEAÑOS DE CLIENTES: aviso al dueño para que salude a mano ────
+  // Decisión explícita (ver docs/AUDITORIA_CHECKLIST.md / auditoría de
+  // Configuración): Nelyx nunca le escribe directo a los clientes del
+  // dueño en su nombre sin que él lo sepa. Esto antes le mandaba un correo
+  // automático al cliente; ahora solo avisa ADENTRO de la app (notificación
+  // + push al dueño) para que salude personalmente por el canal que
+  // prefiera. El recordatorio automático de cobranza por correo se retiró
+  // por completo por el mismo motivo.
   const usuariosCumpleanosAuto = await db.user.findMany({
     where: { recordatoriosCumpleanosAutoActivo: true },
-    select: { id: true, nombre: true, negocio: true },
+    select: { id: true },
   })
   let clientesCumpleanos: Awaited<ReturnType<typeof db.cliente.findMany>> = []
   if (usuariosCumpleanosAuto.length > 0) {
-    const mapaUsuariosCumple = new Map(usuariosCumpleanosAuto.map(u => [u.id, u]))
     clientesCumpleanos = await db.cliente.findMany({
-      where: { userId: { in: usuariosCumpleanosAuto.map(u => u.id) }, activo: true, email: { not: null }, cumpleanos: { not: null } },
+      where: { userId: { in: usuariosCumpleanosAuto.map(u => u.id) }, activo: true, cumpleanos: { not: null } },
     })
     enviadas += await procesarEnLotes(clientesCumpleanos, 10, async (cl) => {
-      if (!cl.cumpleanos || !cl.email) return false
+      if (!cl.cumpleanos) return false
       // Igual que fechaVence en Cuentas por Cobrar: la fecha se guarda como
       // "medianoche UTC de ese día", y ahora (hoyEnChile) ya representa el
       // calendario correcto de Chile — comparar mes/día directo funciona
       // porque el servidor corre en UTC en producción.
       if (cl.cumpleanos.getMonth() !== ahora.getMonth() || cl.cumpleanos.getDate() !== ahora.getDate()) return false
 
-      const usuario = mapaUsuariosCumple.get(cl.userId)
-      if (!usuario) return false
       const nombreCliente = `${cl.nombre} ${cl.apellido ?? ""}`.trim()
-      const nombreNegocio = usuario.negocio || usuario.nombre
-      const mensaje = `Hola ${nombreCliente}.\n\n¡Feliz cumpleaños! Todo el equipo de ${nombreNegocio} te desea un excelente día.\n\nGracias por confiar en nosotros.\n${nombreNegocio}`
-      const claveUnica = `cumple-auto:${cl.id}:${ahora.getFullYear()}`
-      const accionUrl = "/dashboard/clientes"
-
-      const reservado = await reservarNotificacionCliente({ userId: cl.userId, claveUnica, accionUrl })
-      if (!reservado) return false
-
-      const enviado = await enviarEmail({ to: cl.email, subject: `🎉 ¡Feliz cumpleaños de parte de ${nombreNegocio}!`, text: mensaje })
-      if (enviado) {
-        await completarNotificacionCliente(claveUnica, { userId: cl.userId, accionUrl, titulo: `🎂 Saludo de cumpleaños enviado a ${nombreCliente}`, mensaje: "Se envió un correo automático de cumpleaños." })
-      } else {
-        await completarNotificacionCliente(claveUnica, { userId: cl.userId, accionUrl, titulo: `⚠️ No se pudo enviar el saludo de cumpleaños a ${nombreCliente}`, mensaje: "Revisa la configuración de correo (RESEND_API_KEY) en Vercel." })
-      }
-      return enviado
+      return await notificar({
+        userId: cl.userId, categoria: "clientes", prioridad: "media",
+        titulo: `🎂 Hoy es el cumpleaños de ${nombreCliente}`,
+        mensaje: "Aprovecha de saludarlo — un gesto así fortalece la relación.",
+        accionUrl: "/dashboard/clientes", claveUnica: `cumple-auto:${cl.id}:${ahora.getFullYear()}`,
+      })
     })
   }
 
   return NextResponse.json({
     ok: true,
-    revisadas: eventosHoy.length + tareasHoy.length + costosFijos.length + deudas.length + cuentas.length + productos.length + cuentasParaEmail.length + clientesCumpleanos.length,
+    revisadas: eventosHoy.length + tareasHoy.length + costosFijos.length + deudas.length + cuentas.length + productos.length + clientesCumpleanos.length,
     enviadas,
   })
 }

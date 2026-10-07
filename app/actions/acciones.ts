@@ -555,9 +555,11 @@ export async function obtenerTodasCategoriasPersonalizadas() {
 /** Elimina una categoría de la lista de sugerencias — no afecta a ningún
  * producto/movimiento que ya la tenga asignada (el campo es texto libre,
  * así que sigue mostrándose igual ahí), solo deja de aparecer como opción
- * rápida al crear algo nuevo. */
+ * rápida al crear algo nuevo. Solo se usa desde Configuración (a diferencia
+ * de crearCategoriaPersonalizada, que también se llama desde Productos/
+ * Movimientos/Costos Fijos), así que exige escritura en ese módulo. */
 export async function eliminarCategoriaPersonalizada(id: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("configuracion")
   const cat = await db.categoriaPersonalizada.findFirst({ where: { id, userId: session.user.id } })
   if (!cat) throw new Error("Categoría no encontrada")
   await db.categoriaPersonalizada.delete({ where: { id } })
@@ -571,9 +573,11 @@ export async function eliminarCategoriaPersonalizada(id: string) {
 /** Renombra una categoría de la lista de sugerencias — igual que eliminar,
  * no toca a ningún producto/movimiento que ya tenga asignado el nombre
  * anterior (el campo es texto libre), solo cambia cómo aparece de ahí en
- * adelante como opción rápida al crear algo nuevo. */
+ * adelante como opción rápida al crear algo nuevo. Solo se usa desde
+ * Configuración, así que exige escritura en ese módulo (ver
+ * eliminarCategoriaPersonalizada). */
 export async function renombrarCategoriaPersonalizada(id: string, nuevoNombre: string) {
-  const session = await getSession()
+  const session = await getSessionEscritura("configuracion")
   const nombreLimpio = nuevoNombre.trim()
   if (!nombreLimpio) throw new Error("El nombre no puede quedar vacío")
   const cat = await db.categoriaPersonalizada.findFirst({ where: { id, userId: session.user.id } })
