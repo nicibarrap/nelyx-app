@@ -50,10 +50,20 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
   const [zoom, setZoom] = useState(1)
   const [zoomMax, setZoomMax] = useState(1)
   const [resolucion, setResolucion] = useState<string | null>(null)
+  // Si pasan varios segundos sin lograr una lectura, lo más probable no es
+  // un problema de software sino que el celular está más cerca del producto
+  // que la distancia mínima de enfoque del lente (~10-15cm en la mayoría de
+  // cámaras traseras sin lente macro) — ningún reenfoque por software puede
+  // compensar eso, así que se lo decimos directo al usuario.
+  const [sugerenciaDistancia, setSugerenciaDistancia] = useState(false)
+  // Breve anillo animado donde se tocó, para que quede claro que el toque
+  // sí hizo algo (antes no había ninguna confirmación visual del reenfoque).
+  const [puntoEnfoque, setPuntoEnfoque] = useState<{ x: number; y: number; key: number } | null>(null)
 
   const reportarDetectado = useCallback((texto: string) => {
     if (detectadoRef.current) return
     detectadoRef.current = true
+    setSugerenciaDistancia(false)
     if (navigator.vibrate) navigator.vibrate(80)
     onDetectado(texto)
   }, [onDetectado])
@@ -83,6 +93,7 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
 
     let cancelado = false
     let intervaloReenfoque: ReturnType<typeof setInterval> | null = null
+    let timeoutDistancia: ReturnType<typeof setTimeout> | null = null
 
     // Algunos celulares de gama baja no pueden cumplir el mínimo de
     // 1280×720 y el navegador rechaza el pedido entero con
@@ -147,14 +158,25 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
       // a un punto borroso y no vuelve a ajustar por su cuenta, sobre todo
       // apuntando de cerca a un código de barras. Mismo truco que el toque
       // manual (handleTapEnfoque), pero automático mientras no hay lectura.
+      // Intervalo corto (antes 3.5s) porque mientras no hay lectura esto es
+      // lo único que puede destrabar un enfoque continuo "pegado".
       if (capacidades?.focusMode?.includes?.("continuous")) {
         intervaloReenfoque = setInterval(() => {
           if (cancelado || detectadoRef.current) return
           track.applyConstraints({ advanced: [{ focusMode: "manual" } as any] })
             .then(() => track.applyConstraints({ advanced: [{ focusMode: "continuous" } as any] }))
             .catch(() => {})
-        }, 3500)
+        }, 1600)
       }
+
+      // Pasados unos segundos sin lograr una lectura, lo más probable es que
+      // el celular esté más cerca del código que la distancia mínima de
+      // enfoque del lente — ahí ningún reenfoque por software ayuda, así
+      // que se sugiere alejar el celular en vez de seguir reintentando a
+      // ciegas.
+      timeoutDistancia = setTimeout(() => {
+        if (!cancelado && !detectadoRef.current) setSugerenciaDistancia(true)
+      }, 4000)
     }).catch(() => {
       if (!cancelado) setError("No se pudo acceder a la cámara. Revisa los permisos del navegador.")
     })
@@ -216,6 +238,7 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
       cancelado = true
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (intervaloReenfoque) clearInterval(intervaloReenfoque)
+      if (timeoutDistancia) clearTimeout(timeoutDistancia)
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,11 +262,13 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
   // se apaga y prende el enfoque continuo, un truco conocido para forzar
   // que la cámara vuelva a enfocar desde cero en vez de quedarse "pegada".
   async function handleTapEnfoque(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setPuntoEnfoque({ x: e.clientX - rect.left, y: e.clientY - rect.top, key: Date.now() })
+
     const track = streamRef.current?.getVideoTracks()[0]
     if (!track) return
     const capacidades = track.getCapabilities?.() as any
     if (capacidades?.pointsOfInterest) {
-      const rect = e.currentTarget.getBoundingClientRect()
       const x = (e.clientX - rect.left) / rect.width
       const y = (e.clientY - rect.top) / rect.height
       track.applyConstraints({ advanced: [{ pointsOfInterest: [{ x, y }] } as any] }).catch(() => {})
@@ -262,6 +287,13 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
       <div className="absolute inset-0" onClick={handleTapEnfoque}>
         <video ref={videoRef} className="w-full h-full object-cover" muted playsInline autoPlay />
         <canvas ref={canvasRef} className="hidden" />
+        {puntoEnfoque && (
+          <div
+            key={puntoEnfoque.key}
+            className="absolute w-16 h-16 border-2 border-sky-300 rounded-full pointer-events-none animate-enfoque-tap"
+            style={{ left: puntoEnfoque.x - 32, top: puntoEnfoque.y - 32 }}
+          />
+        )}
       </div>
 
       {!error && (
@@ -309,9 +341,15 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
             <input type="range" min={1} max={zoomMax} step={0.1} value={zoom} onChange={e => cambiarZoom(parseFloat(e.target.value))} className="flex-1" />
           </div>
         )}
-        <p className="text-xs text-white/70 text-center max-w-xs mx-auto">
-          Centra el código dentro del recuadro. Toca la pantalla para reenfocar si se ve borroso.
-        </p>
+        {sugerenciaDistancia ? (
+          <p className="text-xs text-amber-300 text-center max-w-xs mx-auto font-medium animate-fade-in">
+            📏 ¿Se ve borroso? Aleja el celular unos 10-15 cm del código — más cerca que eso, la cámara no puede enfocar.
+          </p>
+        ) : (
+          <p className="text-xs text-white/70 text-center max-w-xs mx-auto">
+            Centra el código dentro del recuadro. Toca la pantalla para reenfocar si se ve borroso.
+          </p>
+        )}
       </div>
     </div>,
     document.body
