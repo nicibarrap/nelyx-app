@@ -33,6 +33,20 @@ export async function enviarEmail(params: { to: string; subject: string; text: s
 
 const LOGO_URL = `${process.env.NEXT_PUBLIC_APP_URL || "https://nelyx.vercel.app"}/nelyx-x-logo.png`
 
+/** Escapa los caracteres especiales de HTML — todo valor de usuario (ej.
+ * user.nombre) que se interpole en el HTML de un correo debe pasar por acá
+ * antes. Hallazgo de Semgrep (lang.security.html-in-template-string,
+ * docs/SECURITY_SCAN_2026-10-06.md): bajo impacto hoy porque el correo
+ * siempre llega al mismo usuario dueño de ese nombre, pero es gratis cerrarlo. */
+function escaparHtml(valor: string): string {
+  return valor
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 /** Envuelve el contenido de un correo transaccional en una plantilla HTML
  * simple y consistente (logo + tarjeta + pie de página) — solo tablas y
  * estilos en línea, para que se vea igual en cualquier cliente de correo. */
@@ -84,9 +98,10 @@ function botonCorreo(url: string, texto: string): string {
 
 export function correoInvitacion(params: { nombre: string; link: string; diasValidez: number }): { text: string; html: string } {
   const { nombre, link, diasValidez } = params
+  const nombreHtml = escaparHtml(nombre)
   const text = `Hola ${nombre},\n\nTu cuenta en Nelyx ya está lista. Para activarla, crea tu contraseña en este link (válido por ${diasValidez} días):\n\n${link}\n\nUna vez que la crees, vas a poder ingresar con tu correo y esa contraseña.`
   const html = plantillaCorreo(`
-    <p style="margin:0 0 16px;font-size:16px;font-weight:600;">Hola ${nombre} 👋</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;">Hola ${nombreHtml} 👋</p>
     <p style="margin:0 0 20px;">Tu cuenta en Nelyx ya está lista. Para activarla, crea tu contraseña haciendo clic en el siguiente botón — el link es válido por ${diasValidez} días.</p>
     ${botonCorreo(link, "Crear mi contraseña")}
     <p style="margin:0;color:#5b6473;font-size:13px;">Una vez que la crees, vas a poder ingresar con tu correo y esa contraseña.</p>
@@ -96,9 +111,10 @@ export function correoInvitacion(params: { nombre: string; link: string; diasVal
 
 export function correoRecuperarPassword(params: { nombre: string; link: string; minutosValidez: number }): { text: string; html: string } {
   const { nombre, link, minutosValidez } = params
+  const nombreHtml = escaparHtml(nombre)
   const text = `Hola ${nombre},\n\nRecibimos una solicitud para restablecer tu contraseña de Nelyx. Este link es válido por ${minutosValidez} minutos:\n\n${link}\n\nSi no solicitaste este cambio, puedes ignorar este mensaje — tu contraseña actual seguirá funcionando.`
   const html = plantillaCorreo(`
-    <p style="margin:0 0 16px;font-size:16px;font-weight:600;">Hola ${nombre},</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;">Hola ${nombreHtml},</p>
     <p style="margin:0 0 20px;">Recibimos una solicitud para restablecer tu contraseña de Nelyx. Este link es válido por ${minutosValidez} minutos.</p>
     ${botonCorreo(link, "Restablecer contraseña")}
     <p style="margin:0;color:#5b6473;font-size:13px;">Si no solicitaste este cambio, puedes ignorar este mensaje — tu contraseña actual seguirá funcionando.</p>

@@ -13,7 +13,11 @@ export function RecuperarForm() {
     const form = new FormData(e.currentTarget)
     const email = form.get("email") as string
     const { mensaje } = await solicitarResetPassword(email)
-    setMensaje(mensaje)
+    // "mensaje" acá es el const recién desestructurado de la respuesta del
+    // server action (hace sombra al useState del mismo nombre), no el
+    // estado actual: esto SÍ actualiza el estado con el mensaje nuevo, no
+    // es un no-op.
+    setMensaje(mensaje) // nosemgrep: calling-set-state-on-current-state
     setEnviado(true)
     setLoading(false)
   }
