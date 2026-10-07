@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { buscarProductoPorCodigoBarras } from "@/app/actions/openfoodfacts-acciones"
+import { obtenerEmojiSugeridoIA } from "@/app/actions/emoji-ia-acciones"
 import { generarPlantillaDesdeEscaneo, type ItemEscaneado } from "@/lib/importacion-productos"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
@@ -19,6 +20,10 @@ type ItemLista = ItemEscaneado & {
   id: string
   origen: "openfoodfacts" | "manual"
   editando: boolean
+  // Respaldo por IA cuando el nombre no calza con ninguna palabra clave
+  // local (getEmojiProducto cae al 📦 genérico) — se pide una sola vez por
+  // producto y se guarda acá para no repetir la llamada en cada render.
+  emojiIA?: string | null
 }
 
 const inp = "w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
@@ -52,6 +57,26 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   const codigosExistentes = new Set(productosExistentes.map(p => p.codigoBarras).filter(Boolean))
   const codigosYaEscaneados = new Set(items.map(it => it.codigoBarras))
 
+  // Solo se llama a la IA cuando el nombre no calzó con ninguna palabra
+  // clave local — la mayoría de los productos (los que sí dicen "arroz",
+  // "yogurt", etc. en el nombre) nunca generan esta llamada, así que el
+  // costo real es bajo. "Fire and forget": no bloquea la UI ni el flujo de
+  // escaneo siguiente, el emoji aparece solo cuando la respuesta llega.
+  async function pedirEmojiIASiHaceFalta(id: string, nombre: string, categoria: string | null) {
+    if (getEmojiProducto(nombre, categoria) !== "📦") return
+    const sugerido = await obtenerEmojiSugeridoIA(nombre).catch(() => null)
+    if (!sugerido) return
+    setItems(prev => prev.map(it => it.id === id ? { ...it, emojiIA: sugerido } : it))
+  }
+
+  // El match local (si existe) siempre gana sobre una sugerencia de IA
+  // previa que pueda haber quedado desactualizada tras una edición — es
+  // instantáneo, gratis y determinístico.
+  function emojiVisible(it: ItemLista): string {
+    const local = getEmojiProducto(it.nombre, it.categoria)
+    return local !== "📦" ? local : (it.emojiIA ?? local)
+  }
+
   async function handleCodigoDetectado(codigo: string, viaCamara = true) {
     setMostrarEscaner(false)
 
@@ -83,6 +108,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
       }
       setItems(prev => [...prev, nuevo])
       toast.success(`✨ ${resultado.nombre}`, { description: "Reconocido automáticamente" })
+      pedirEmojiIASiHaceFalta(nuevo.id, nuevo.nombre, nuevo.categoria)
       if (viaCamara) reabrirEscaner(); else reenfocarInputPistola()
     } else {
       // No lo encontró — pide el nombre antes de seguir, sin excepción.
@@ -109,6 +135,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
     }
     setItems(prev => [...prev, nuevo])
     setPendienteNombre(null)
+    pedirEmojiIASiHaceFalta(nuevo.id, nuevo.nombre, nuevo.categoria)
     if (pendienteViaCamara) reabrirEscaner(); else reenfocarInputPistola()
   }
 
@@ -117,7 +144,11 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   }
 
   function toggleEditar(id: string) {
+    const item = items.find(it => it.id === id)
     setItems(prev => prev.map(it => it.id === id ? { ...it, editando: !it.editando } : it))
+    // item?.editando === true acá significa que se estaba editando y se
+    // acaba de cerrar — reintenta el emoji IA por si el nombre cambió.
+    if (item?.editando) pedirEmojiIASiHaceFalta(id, item.nombre, item.categoria)
   }
 
   function actualizarItem(id: string, cambios: Partial<ItemLista>) {
@@ -169,7 +200,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
                   <span className="text-xs font-bold text-[var(--c-text4)] w-5 flex-shrink-0 mt-1">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-[var(--c-text)] flex items-center gap-1.5">
-                      {getEmojiProducto(it.nombre, it.categoria)} {it.nombre}
+                      {emojiVisible(it)} {it.nombre}
                       {it.origen === "openfoodfacts" && <span className="text-[10px] text-emerald-400">✨</span>}
                     </p>
                     <p className="text-[11px] text-[var(--c-text4)] font-mono">{it.codigoBarras}</p>
