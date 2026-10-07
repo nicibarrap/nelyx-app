@@ -2,11 +2,13 @@ import type { Metadata } from "next"
 import { obtenerConfigNotificaciones } from "@/app/actions/notificaciones-acciones"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
 import { obtenerConexionesPago } from "@/app/actions/pagos-acciones"
+import { obtenerAutomatizacionesCliente } from "@/app/actions/automatizaciones-acciones"
 import { obtenerProyectosTarea, obtenerTodasCategoriasPersonalizadas } from "@/app/actions/acciones"
 import { ConfigNotificacionesClient } from "@/components/configuracion/config-notificaciones-client"
 import { DiagnosticoPushClient } from "@/components/configuracion/diagnostico-push-client"
 import { PlantillasCobranzaClient } from "@/components/configuracion/plantillas-cobranza-client"
 import { ConexionMaquinaPagoClient } from "@/components/configuracion/conexion-maquina-pago-client"
+import { AutomatizacionesClienteClient } from "@/components/configuracion/automatizaciones-cliente-client"
 import { ProyectosTareaClient } from "@/components/configuracion/proyectos-tarea-client"
 import { CategoriasConfigClient } from "@/components/configuracion/categorias-config-client"
 import { SeccionColapsable } from "@/components/configuracion/seccion-colapsable"
@@ -17,7 +19,7 @@ export const dynamic = "force-dynamic"
 const CAMPOS = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales","soporte"] as const
 
 export default async function ConfiguracionPage() {
-  const [cfgRaw, plantillas, conexionesPago, proyectosTarea, categorias] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerProyectosTarea(), obtenerTodasCategoriasPersonalizadas()])
+  const [cfgRaw, plantillas, conexionesPago, automatizaciones, proyectosTarea, categorias] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerAutomatizacionesCliente(), obtenerProyectosTarea(), obtenerTodasCategoriasPersonalizadas()])
   const cfg: Record<string, boolean> = {}
   for (const campo of CAMPOS) cfg[campo] = cfgRaw[campo]
 
@@ -42,14 +44,13 @@ export default async function ConfiguracionPage() {
           desparejas. Una sola columna se ve igual de ordenada en
           cualquier tamaño de pantalla.
 
-          "Automatizaciones de clientes" (correos automáticos de cobranza
-          y cumpleaños) queda oculta por ahora: requiere un dominio propio
-          verificado en Resend que todavía no existe, y sin eso el envío
-          automático simplemente falla. El código (cron, server actions,
-          componente) sigue intacto y listo para reactivarse — basta con
-          devolver este bloque — el día que se configure el dominio. Por
-          ahora el envío manual vía Gmail (botón "Email" en el centro de
-          cobranza) sigue funcionando igual que siempre. */}
+          "Automatizaciones de clientes" ya no manda correos a nombre del
+          dueño (decisión explícita: Nelyx no le escribe a los clientes sin
+          que el dueño lo sepa) — el recordatorio de cobranza automática se
+          retiró por completo, y el de cumpleaños ahora solo avisa adentro
+          de la app para que el dueño salude a mano. El envío manual vía
+          Gmail (botón "Email" en el centro de cobranza) sigue funcionando
+          igual que siempre. */}
       <div className="space-y-5 max-w-2xl">
         <SeccionColapsable icon="🔔" titulo="Notificaciones" defaultOpen>
           <ConfigNotificacionesClient cfg={cfg} />
@@ -59,6 +60,9 @@ export default async function ConfiguracionPage() {
         </SeccionColapsable>
         <SeccionColapsable icon="💳" titulo="Pagos">
           <ConexionMaquinaPagoClient conexiones={conexionesPago} />
+        </SeccionColapsable>
+        <SeccionColapsable icon="🎂" titulo="Automatizaciones de clientes">
+          <AutomatizacionesClienteClient valores={automatizaciones} />
         </SeccionColapsable>
         <SeccionColapsable icon="🗂️" titulo="Tareas">
           <ProyectosTareaClient proyectos={proyectosTarea} />
