@@ -41,6 +41,15 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
   const streamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number | null>(null)
   const detectadoRef = useRef(false)
+  // Candidato a confirmar: mientras la cámara está desenfocada (sobre todo
+  // apuntando de cerca, justo cuando recién se abre el escáner), un solo
+  // cuadro puede decodificar un código con un dígito corrido y aceptarlo de
+  // inmediato — "coloca cualquier código". Exigir el mismo valor en dos
+  // lecturas seguidas (resuelto en ~66-100ms cuando el código sí es
+  // correcto, imperceptible) filtra casi todas esas lecturas falsas: un
+  // error de decodificación cambia el valor completo, así que acertar el
+  // mismo valor erróneo dos veces seguidas es estadísticamente muy raro.
+  const candidatoRef = useRef<{ texto: string; veces: number } | null>(null)
 
   const [error, setError] = useState<string | null>(null)
   const [listo, setListo] = useState(false)
@@ -67,6 +76,18 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
     if (navigator.vibrate) navigator.vibrate(80)
     onDetectado(texto)
   }, [onDetectado])
+
+  const LECTURAS_REQUERIDAS = 2
+  const confirmarLectura = useCallback((texto: string) => {
+    if (detectadoRef.current) return
+    const candidato = candidatoRef.current
+    if (candidato && candidato.texto === texto) {
+      candidato.veces++
+      if (candidato.veces >= LECTURAS_REQUERIDAS) reportarDetectado(texto)
+    } else {
+      candidatoRef.current = { texto, veces: 1 }
+    }
+  }, [reportarDetectado])
 
   useEffect(() => {
     const original = document.body.style.overflow
@@ -213,7 +234,7 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
               if (detectorNativo) {
                 procesando = true
                 detectorNativo.detect(canvas)
-                  .then(resultados => { if (resultados.length > 0) reportarDetectado(resultados[0].rawValue) })
+                  .then(resultados => { if (resultados.length > 0) confirmarLectura(resultados[0].rawValue) })
                   .catch(() => { /* se reintenta en el próximo cuadro */ })
                   .finally(() => { procesando = false })
               } else {
@@ -221,7 +242,7 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
                   const luminancia = new HTMLCanvasElementLuminanceSource(canvas)
                   const bitmap = new BinaryBitmap(new HybridBinarizer(luminancia))
                   const resultado = reader.decode(bitmap)
-                  if (resultado) reportarDetectado(resultado.getText())
+                  if (resultado) confirmarLectura(resultado.getText())
                 } catch (e) {
                   if (!(e instanceof NotFoundException)) { /* se reintenta en el próximo cuadro */ }
                 }
