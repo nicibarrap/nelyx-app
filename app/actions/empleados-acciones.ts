@@ -1,9 +1,20 @@
 "use server"
-import { auth } from "@/lib/auth"
+import { auth, demasiadosIntentosDesdeIp, registrarIntentoFallido } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
+import { headers } from "next/headers"
 import { notificar } from "@/lib/notificaciones"
+
+// next/headers(), no el Request de NextAuth — igual que en
+// password-reset-acciones.ts (acá estamos en un Server Action, no en el
+// callback authorize() de lib/auth.ts).
+async function ipActual(): Promise<string> {
+  const h = await headers()
+  const xff = h.get("x-forwarded-for")
+  if (xff) return xff.split(",")[0].trim()
+  return h.get("x-real-ip")?.trim() || "desconocida"
+}
 
 /** Solo el dueño puede administrar empleados — nunca un empleado, sin
  * importar qué módulos tenga habilitados. Esta restricción vive acá, no
@@ -101,6 +112,14 @@ export async function toggleActivoEmpleado(empleadoId: string) {
  * error de autorización hasta el cliente.
  */
 export async function verificarBloqueoPin(empleadoId: string) {
+  // Esta acción es pública y antes no tenía límite propio — se podía
+  // llamar directo (sin pasar por el signIn real de empleado-pin en
+  // lib/auth.ts) sin gastar nada del límite por IP que sí protege ese
+  // login. Se la cuenta como un intento más del mismo contador.
+  const ip = await ipActual()
+  if (await demasiadosIntentosDesdeIp(ip)) return { bloqueado: true, minutosRestantes: 15 }
+  await registrarIntentoFallido(ip)
+
   const empleado = await db.user.findUnique({ where: { id: empleadoId }, select: { nombre: true, cuentaPrincipalId: true, bloqueadoHastaPin: true } })
   if (!empleado?.bloqueadoHastaPin || empleado.bloqueadoHastaPin <= new Date()) {
     return { bloqueado: false, minutosRestantes: 0 }
@@ -133,6 +152,15 @@ export async function verificarBloqueoPin(empleadoId: string) {
  */
 export async function verificarBloqueoLogin(email: string) {
   const emailEscrito = email.trim()
+  // Igual que verificarBloqueoPin: esta acción es pública y antes no
+  // tenía límite propio — alguien podía llamarla directo para probar
+  // miles de correos y enterarse cuáles existen en Nelyx (el campo
+  // "registrado"), sin pasar por el signIn real ni gastar nada de su
+  // límite por IP. Se la cuenta como un intento más del mismo contador.
+  const ip = await ipActual()
+  if (await demasiadosIntentosDesdeIp(ip)) return { registrado: false, bloqueado: false, minutosRestantes: 0 }
+  await registrarIntentoFallido(ip)
+
   // Mismo criterio "insensitive" que usa el login real (lib/auth.ts) —
   // si acá se buscara distinto, este chequeo podría decir "no existe"
   // para una cuenta que el login sí reconoce, o viceversa.
