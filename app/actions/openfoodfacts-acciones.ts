@@ -9,6 +9,7 @@
 // que reconozca el código. Ninguna cubre todo lo que vende un almacén
 // chileno, así que el resultado "no encontrado" sigue siendo normal.
 // ══════════════════════════════════════════════════════════════════════
+import { auth } from "@/lib/auth"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
 
 const USER_AGENT = "Nelyx - Plataforma de gestion para almacenes chilenos - https://nelyx.vercel.app"
@@ -84,6 +85,14 @@ async function buscarEnFuente(base: string, codigo: string): Promise<ProductoEnc
 }
 
 export async function buscarProductoPorCodigoBarras(codigoBarras: string): Promise<ProductoEncontrado | null> {
+  // Sin esto, esta Server Action quedaba como un proxy abierto: cualquiera
+  // en internet (sin cuenta en Nelyx) podía llamarla directo para hacer
+  // consultas gratis a Open Food Facts/Open Beauty Facts/Open Products
+  // Facts a través del servidor de Nelyx, sin límite — arriesgando que esos
+  // servicios terminen bloqueando el User-Agent/IP de Nelyx por volumen
+  // ajeno al uso real de la app.
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("No autorizado")
   const codigo = codigoBarras.trim()
   if (!codigo) return null
   for (const base of FUENTES) {

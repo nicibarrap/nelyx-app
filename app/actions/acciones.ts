@@ -1688,18 +1688,6 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
   })
 }
 
-export async function actualizarEstadoCuenta(id: string) {
-  const session = await getSessionEscritura("cuentas-cobrar")
-  const cuenta = await db.cuentaPorCobrar.findFirst({ where: { id, userId: session.user.id } })
-  if (!cuenta) return
-  const hoy = new Date()
-  let estado = cuenta.estado
-  if (Number(cuenta.saldoPendiente) === 0) estado = "pagada"
-  else if (cuenta.fechaVence && cuenta.fechaVence < hoy) estado = "vencida"
-  await db.cuentaPorCobrar.update({ where: { id }, data: { estado } })
-  revalidatePath("/dashboard/cuentas-cobrar")
-}
-
 export async function eliminarCuentaPorCobrar(id: string) {
   const session = await getSessionEscritura("cuentas-cobrar")
   await db.cuentaPorCobrar.deleteMany({ where: { id, userId: session.user.id } })
