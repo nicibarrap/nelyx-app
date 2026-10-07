@@ -66,6 +66,7 @@ const REGLAS_EMOJI: [string[], string][] = [
   [["cigarro", "tabaco", "pucho"], "🚬"],
   [["detergente", "lavaloza", "cloro", "desinfectante", "limpiador", "quitamanchas"], "🧴"],
   [["jabon", "jabón", "shampoo", "champú", "acondicionador"], "🧼"],
+  [["desodorante", "perfume", "colonia", "locion", "loción"], "🧴"],
   [["papel higienico", "papel higiénico", "confort", "toalla nova", "servilleta"], "🧻"],
   [["escoba", "trapero", "esponja"], "🧹"],
   [["pila", "bateria", "batería", "cargador"], "🔋"],
@@ -96,10 +97,27 @@ const EMOJI_POR_CATEGORIA: Record<string, string> = {
   "Accesorios": "🧰", "Otros": "📦",
 }
 
+// Exige que la palabra clave empiece en un borde de palabra (justo después
+// de un espacio) — un simple "texto.includes(clave)" hacía calzar "te "
+// dentro de "desodora[te ]" (emoji de té para un desodorante) o "sal "
+// dentro de "univer[sal ]" (emoji de sal para cualquier cosa "universal").
+// El lado derecho de la clave queda sin exigir borde a propósito: varias
+// (ej. "queso", "manzana") dependen de calzar también como prefijo de su
+// plural ("quesos", "manzanas").
+function contieneComoPalabra(texto: string, clave: string): boolean {
+  let desde = 0
+  while (true) {
+    const i = texto.indexOf(clave, desde)
+    if (i === -1) return false
+    if (/\s/.test(texto[i - 1] ?? "")) return true
+    desde = i + 1
+  }
+}
+
 export function getEmojiProducto(nombre: string, categoriaFallback?: string | null): string {
   const texto = ` ${nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")} `
   for (const [palabras, emoji] of REGLAS_EMOJI) {
-    if (palabras.some(p => texto.includes(p.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))) return emoji
+    if (palabras.some(p => contieneComoPalabra(texto, p.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))) return emoji
   }
   if (categoriaFallback && EMOJI_POR_CATEGORIA[categoriaFallback]) return EMOJI_POR_CATEGORIA[categoriaFallback]
   return "📦"
