@@ -20,14 +20,14 @@ const MAX_INTENTOS_POR_IP = 10
  * cuenta (User.bloqueadoHastaPin, que es por email). Complementario, no
  * un reemplazo de ese bloqueo.
  */
-async function demasiadosIntentosDesdeIp(ip: string): Promise<boolean> {
+export async function demasiadosIntentosDesdeIp(ip: string): Promise<boolean> {
   if (ip === "desconocida") return false // sin IP no hay contra qué contar — no bloquear a ciegas
   const desde = new Date(Date.now() - VENTANA_IP_MINUTOS * 60 * 1000)
   const intentos = await db.intentoLoginFallido.count({ where: { ip, createdAt: { gte: desde } } }).catch(() => 0)
   return intentos >= MAX_INTENTOS_POR_IP
 }
 
-async function registrarIntentoFallido(ip: string) {
+export async function registrarIntentoFallido(ip: string) {
   if (ip === "desconocida") return
   await db.intentoLoginFallido.create({ data: { ip } }).catch(() => {})
   // Limpieza oportunista y barata (no en cada intento) para que la tabla

@@ -8,8 +8,20 @@ import { verificarBloqueoLogin } from "@/app/actions/empleados-acciones"
 // (next/server) que solo existen bajo el bundler de Next, no en un test
 // de Node plano. Se reemplaza por un stub mínimo. vi.mock se "hoistea"
 // automáticamente antes que el import de arriba, así que esto alcanza
-// sin necesitar un import dinámico.
-vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
+// sin necesitar un import dinámico. demasiadosIntentosDesdeIp queda
+// mockeado en "false" (nunca bloqueado) porque este archivo prueba la
+// búsqueda insensible a mayúsculas, no el límite por IP — probar ESE
+// límite de verdad requeriría la cadena real de NextAuth, que es
+// justamente lo que este mock evita para poder correr en Node plano.
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
+  demasiadosIntentosDesdeIp: vi.fn(() => Promise.resolve(false)),
+  registrarIntentoFallido: vi.fn(() => Promise.resolve()),
+}))
+// verificarBloqueoLogin ahora también lee la IP con next/headers() — fuera
+// del runtime real de Next esto lanza "headers outside a request scope".
+// Un Map básico alcanza: igual que Headers, soporta .get(clave).
+vi.mock("next/headers", () => ({ headers: vi.fn(() => Promise.resolve(new Map())) }))
 
 // Regresión directa del incidente del 22/09: una cuenta guardada con
 // mayúsculas dejó de encontrarse porque el login forzaba el correo
