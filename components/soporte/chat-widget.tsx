@@ -224,7 +224,7 @@ export function ChatSoporteWidget() {
           return (
             <div key={m.id} className={`flex ${esCliente ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-2xl px-3 py-2 ${
-                esCliente ? "rounded-br-sm" : esSistema ? "rounded-bl-sm" : "rounded-bl-sm"
+                esCliente ? "rounded-br-sm" : "rounded-bl-sm"
               }`} style={{
                 background: esCliente ? "linear-gradient(135deg,#2563eb,#3b82f6)" : esSistema ? "var(--c-hover)" : "var(--c-card2, var(--c-hover))",
                 color: esCliente ? "#fff" : "var(--c-text)",

@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
+import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 // El tipo NO se re-exporta desde acá a propósito — un archivo "use server"
 // solo debe exportar funciones async. Bajo Turbopack (Next 15), mezclar un
 // "export type" en un archivo de Server Actions rompe el bundle cliente
@@ -32,6 +33,8 @@ async function getSessionEscritura(moduloKey: ModuloKey) {
 export async function obtenerConexionesPago() {
   const session = await getSession()
   const conexiones = await db.conexionPago.findMany({ where: { userId: session.user.id } })
+  // accessToken nunca sale de acá — ni cifrado ni descifrado. La UI solo
+  // necesita saber que la conexión existe y con qué terminal, nunca el token.
   return conexiones.map(c => ({ id: c.id, proveedor: c.proveedor, terminalId: c.terminalId, activo: c.activo, ultimaConexionOk: c.ultimaConexionOk?.toISOString() ?? null }))
 }
 
@@ -43,13 +46,16 @@ export async function listarTerminalesParaConectar(accessToken: string): Promise
   return listarTerminalesMercadoPago(accessToken)
 }
 
-/** Paso 2: guarda la conexión ya con la terminal elegida. */
+/** Paso 2: guarda la conexión ya con la terminal elegida. El access token se
+ * cifra antes de guardarlo (ver lib/crypto-pagos.ts) — nunca se guarda en
+ * texto plano, ni aquí ni en ningún otro punto de entrada. */
 export async function conectarMercadoPago(accessToken: string, terminalId: string) {
   const session = await getSessionEscritura("configuracion")
+  const accessTokenCifrado = cifrarToken(accessToken)
   await db.conexionPago.upsert({
     where: { userId_proveedor: { userId: session.user.id, proveedor: "mercadopago" } },
-    create: { userId: session.user.id, proveedor: "mercadopago", accessToken, terminalId, activo: true, ultimaConexionOk: new Date() },
-    update: { accessToken, terminalId, activo: true, ultimaConexionOk: new Date() },
+    create: { userId: session.user.id, proveedor: "mercadopago", accessToken: accessTokenCifrado, terminalId, activo: true, ultimaConexionOk: new Date() },
+    update: { accessToken: accessTokenCifrado, terminalId, activo: true, ultimaConexionOk: new Date() },
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
@@ -69,7 +75,7 @@ export async function iniciarCobroMaquina(monto: number, referenciaVenta: string
   const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "mercadopago", activo: true } })
   if (!conexion || !conexion.terminalId) throw new Error("No tienes ninguna máquina de pago conectada. Ve a Configuración para conectarla.")
 
-  const { orderId } = await crearOrdenMercadoPago(conexion.accessToken, conexion.terminalId, monto, referenciaVenta)
+  const { orderId } = await crearOrdenMercadoPago(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
   return { orderId }
 }
 
@@ -79,5 +85,5 @@ export async function consultarCobroMaquina(orderId: string) {
   const session = await getSession()
   const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "mercadopago", activo: true } })
   if (!conexion) throw new Error("No hay ninguna máquina conectada")
-  return consultarOrdenMercadoPago(conexion.accessToken, orderId)
+  return consultarOrdenMercadoPago(descifrarToken(conexion.accessToken), orderId)
 }

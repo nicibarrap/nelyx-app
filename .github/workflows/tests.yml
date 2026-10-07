@@ -53,6 +53,18 @@ jobs:
       - name: Auditoría de dependencias de producción
         run: npm audit --omit=dev --audit-level=critical
 
+      # Mismas reglas community que el escaneo manual original (ver
+      # docs/SECURITY_SCAN_2026-10-06.md), pero corriendo en cada PR en vez
+      # de una sola vez a mano. CLI directo (pip install) en vez de una
+      # Action de terceros, para controlar exactamente los flags. Solo
+      # falla en severidad ERROR (--severity repetible + --error): de las
+      # ~47 coincidencias reales de esa auditoría ninguna era ERROR, y la
+      # regla ruidosa (jsx-not-internationalized, 640 de 687 hallazgos) es INFO.
+      - name: Escaneo de seguridad estático (Semgrep)
+        run: |
+          pip install semgrep
+          semgrep scan --config=p/javascript --config=p/typescript --config=p/secrets --severity=ERROR --error app lib components middleware.ts
+
       - name: Aplicar el schema a la base de datos de pruebas
         run: npx prisma db push --skip-generate
 

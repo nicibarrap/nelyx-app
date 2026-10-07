@@ -122,7 +122,10 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
   // Costo/precio FINAL a guardar (según si hay presentación fija o no)
   const usaPresentacionFinal = esPesoOVolumen && usaPresentacion
   const costoFinal = usaPresentacionFinal ? costoPresentacion : costoUnitarioNum
-  const precioFinal = usaPresentacionFinal ? precioVentaNum : precioVentaNum
+  // El precio de venta es el mismo número que el usuario escribió, haya o
+  // no presentación fija — a diferencia de costo/margen, no hay un "precio
+  // sin presentación" distinto que calcular.
+  const precioFinal = precioVentaNum
   const margenFinal = usaPresentacionFinal ? margenPresentacion : (calcularMargenPorcentual(precioVentaNum, costoUnitarioNum)?.margen ?? 0)
 
   function handleNombreChange(valor: string) {
