@@ -180,35 +180,42 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
         Sentry.captureException(err, { extra: { conversacionId, etapa: "auto-respuesta" } })
       }
     }
-    try {
-      const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
-      await Promise.all(admins.map(async (admin) => {
-        // Separados: si notificar() (in-app + push) falla para un admin, no
-        // debe impedir que igual le llegue el correo — antes un error acá
-        // cortaba la cadena antes de intentar el envío de email.
-        await notificar({
-          userId: admin.id,
-          categoria: "soporte",
-          prioridad: urgente ? "alta" : "media",
-          titulo: `${urgente ? "🔴 " : ""}Nuevo mensaje de ${negocio}`,
-          mensaje: previa,
-          accionUrl: `/admin/soporte?c=${conversacionId}`,
-          claveUnica: `soporte-${conversacionId}-${Date.now()}`,
-        }).catch((err) => Sentry.captureException(err, { extra: { conversacionId, adminId: admin.id, etapa: "notificar" } }))
+    // Solo avisa (push + correo) por el primer mensaje de la conversación,
+    // o por cualquier mensaje posterior que se detecte urgente — un hilo con
+    // varios mensajes normales seguidos ya no manda un correo por cada uno.
+    // El mensaje de todas formas queda guardado y visible en el panel de
+    // Soporte apenas se abra esa conversación, aunque no haya notificación.
+    if (esPrimerMensaje || urgente) {
+      try {
+        const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true, email: true } })
+        await Promise.all(admins.map(async (admin) => {
+          // Separados: si notificar() (in-app + push) falla para un admin, no
+          // debe impedir que igual le llegue el correo — antes un error acá
+          // cortaba la cadena antes de intentar el envío de email.
+          await notificar({
+            userId: admin.id,
+            categoria: "soporte",
+            prioridad: urgente ? "alta" : "media",
+            titulo: `${urgente ? "🔴 " : ""}Nuevo mensaje de ${negocio}`,
+            mensaje: previa,
+            accionUrl: `/admin/soporte?c=${conversacionId}`,
+            claveUnica: `soporte-${conversacionId}-${Date.now()}`,
+          }).catch((err) => Sentry.captureException(err, { extra: { conversacionId, adminId: admin.id, etapa: "notificar" } }))
 
-        if (admin.email) {
-          await enviarEmail({
-            to: admin.email,
-            subject: `${urgente ? "[URGENTE] " : ""}Nuevo mensaje de soporte — ${negocio}`,
-            text: `${nombre} (${negocio}) escribió:\n\n"${texto}"\n\nResponder: ${process.env.NEXT_PUBLIC_APP_URL || ""}/admin/soporte?c=${conversacionId}`,
-          })
-        }
-      }))
-    } catch (err) {
-      // Red de seguridad: un after() que lanza una excepción no capturada
-      // puede no quedar registrado en ningún lado — con esto, sí.
-      console.error("Error notificando mensaje de soporte a admins:", err)
-      Sentry.captureException(err, { extra: { conversacionId } })
+          if (admin.email) {
+            await enviarEmail({
+              to: admin.email,
+              subject: `${urgente ? "[URGENTE] " : ""}Nuevo mensaje de soporte — ${negocio}`,
+              text: `${nombre} (${negocio}) escribió:\n\n"${texto}"\n\nResponder: ${process.env.NEXT_PUBLIC_APP_URL || ""}/admin/soporte?c=${conversacionId}`,
+            })
+          }
+        }))
+      } catch (err) {
+        // Red de seguridad: un after() que lanza una excepción no capturada
+        // puede no quedar registrado en ningún lado — con esto, sí.
+        console.error("Error notificando mensaje de soporte a admins:", err)
+        Sentry.captureException(err, { extra: { conversacionId } })
+      }
     }
   })
 
