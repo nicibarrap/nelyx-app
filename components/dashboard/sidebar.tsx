@@ -2,6 +2,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
+import { ChevronLeft } from "lucide-react"
 import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 import { contarNoLeidosAdmin } from "@/app/actions/soporte-acciones"
 
@@ -140,9 +141,14 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
           </button>
         )}
         {!isMobile && !collapsed && (
-          <button onClick={() => setCollapsed(true)} title="Ocultar menú"
-            className="text-[var(--c-text4)] hover:text-[var(--c-text2)] transition-colors ml-auto p-1 rounded-lg hover:bg-[var(--c-card2)]">
-            <span className="text-xs">◀</span>
+          // Sin fondo ni caja a propósito — solo la flecha, para que lea
+          // como un control sutil de la cabecera y no como un botón más.
+          // El color usa las mismas variables de texto que el resto del
+          // sidebar, así que ya se adapta solo: más clara en modo oscuro,
+          // más oscura en modo claro.
+          <button onClick={() => setCollapsed(true)} title="Ocultar menú" aria-label="Ocultar menú"
+            className="ml-auto flex items-center justify-center w-6 h-6 text-[var(--c-text4)] hover:text-[var(--c-text2)] transition-all duration-200 hover:-translate-x-0.5">
+            <ChevronLeft className="w-4 h-4" strokeWidth={2.5} />
           </button>
         )}
         {isMobile && (

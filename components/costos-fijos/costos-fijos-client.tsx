@@ -8,6 +8,7 @@ import { crearCostoRecurrente, crearCostoUnico, actualizarEstadoCosto, eliminarC
 import { formatCLP, formatFechaCorta } from "@/lib/utils"
 import { getColorCategoria } from "@/lib/categorias"
 import { CampoFecha } from "@/components/shared/campo-fecha"
+import { InfoTooltip } from "@/components/shared/kpi-tooltip"
 
 const CATEGORIAS = ["Arriendo","Internet","Agua","Luz","Gas","Software","Teléfono","Transporte","Seguro","Publicidad","Sueldos","Contador","Otros"]
 
@@ -50,24 +51,6 @@ const ESTADO_CONFIG: Record<EstadoDerivado, { label: string; emoji: string; cls:
   finalizado: { label: "Finalizado", emoji: "✓",  cls: "bg-[var(--c-card2)] text-[var(--c-text3)] border-[var(--c-border)]" },
 }
 
-function InfoTip({ text }: { text: string }) {
-  const [show, setShow] = useState(false)
-  return (
-    <span className="relative inline-block ml-1.5 align-middle">
-      <button type="button"
-        onClick={(e) => { e.preventDefault(); setShow(s => !s) }}
-        onBlur={() => setTimeout(() => setShow(false), 150)}
-        className="w-4 h-4 rounded-full bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text3)] text-[10px] inline-flex items-center justify-center hover:border-sky-500/40 hover:text-sky-400 transition-all">
-        ⓘ
-      </button>
-      {show && (
-        <span className="absolute z-30 left-1/2 -translate-x-1/2 top-6 w-56 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl p-3 text-[11px] text-[var(--c-text2)] shadow-2xl leading-relaxed">
-          {text}
-        </span>
-      )}
-    </span>
-  )
-}
 
 function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; dbCategorias?: string[] }) {
   const [isPending, start] = useTransition()
@@ -248,14 +231,14 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center">
                 Fecha de inicio *
-                <InfoTip text="El día del mes de esta fecha es el día en que se repetirá siempre (ej: si eliges el 5, se repite cada día 5)." />
+                <InfoTooltip tip="El día del mes de esta fecha es el día en que se repetirá siempre (ej: si eliges el 5, se repite cada día 5)." />
               </label>
               <CampoFecha required value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className={`${inp} mt-1`} />
             </div>
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center">
                 Fecha de término
-                <InfoTip text="Opcional — si la dejas vacía, este costo se repite indefinidamente hasta que lo pauses o elimines." />
+                <InfoTooltip tip="Opcional — si la dejas vacía, este costo se repite indefinidamente hasta que lo pauses o elimines." />
               </label>
               <CampoFecha value={fechaTermino} min={fechaInicio} onChange={e => setFechaTermino(e.target.value)} className={`${inp} mt-1`} />
               <p className="text-[10px] text-[var(--c-text4)] mt-1">Opcional — déjalo vacío si no tiene fecha de fin</p>
@@ -389,7 +372,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 card-hover">
           <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 inline-flex items-center">
             Total mensual
-            <InfoTip text="Suma de los costos activos que aplican este mes. Los costos programados para meses futuros no se incluyen aquí." />
+            <InfoTooltip tip="Suma de los costos activos que aplican este mes. Los costos programados para meses futuros no se incluyen aquí." />
           </p>
           <p className="text-xl font-bold text-orange-400">{formatCLP(totalMes)}</p>
           <p className="text-[11px] text-[var(--c-text3)] mt-1">{activos.length - conteoEstados.programado} activos este mes</p>
@@ -397,7 +380,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 card-hover">
           <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 inline-flex items-center">
             Pagado
-            <InfoTip text="Suma de los costos de este mes cuyo pago ya fue confirmado. Este monto es el que realmente impacta tu flujo de caja." />
+            <InfoTooltip tip="Suma de los costos de este mes cuyo pago ya fue confirmado. Este monto es el que realmente impacta tu flujo de caja." />
           </p>
           <p className="text-xl font-bold text-emerald-400">{formatCLP(pagadoMonto)}</p>
           <p className="text-[11px] text-[var(--c-text3)] mt-1">{MESES[mes]} {anio}</p>
@@ -437,7 +420,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-[var(--c-text)] inline-flex items-center">
               Cobertura financiera de costos fijos
-              <InfoTip text="Compara lo que realmente te queda disponible (ingresos menos gastos variables) contra tus costos fijos del mes. A diferencia de mirar solo las ventas, esto evita mostrar 'cubierto' cuando en realidad el negocio está perdiendo dinero por gastos altos." />
+              <InfoTooltip tip="Compara lo que realmente te queda disponible (ingresos menos gastos variables) contra tus costos fijos del mes. A diferencia de mirar solo las ventas, esto evita mostrar 'cubierto' cuando en realidad el negocio está perdiendo dinero por gastos altos." />
             </p>
             <span className="text-lg">{cubierto ? "✅" : "⚠️"}</span>
           </div>
@@ -475,7 +458,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
           <p className="text-sm font-semibold text-[var(--c-text)] mb-1 inline-flex items-center">
             📊 Proyección — próximos 3 meses
-            <InfoTip text="Suma de tus costos fijos recurrentes activos en cada uno de los próximos meses, según su fecha de inicio y término. No incluye costos únicos ni gastos variables — solo lo que ya sabes que se va a repetir." />
+            <InfoTooltip tip="Suma de tus costos fijos recurrentes activos en cada uno de los próximos meses, según su fecha de inicio y término. No incluye costos únicos ni gastos variables — solo lo que ya sabes que se va a repetir." />
           </p>
           <p className="text-xs text-[var(--c-text3)] mb-4">Planifica tu caja con anticipación, no mes a mes.</p>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
