@@ -229,14 +229,14 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
           <p className="text-sm font-semibold text-[var(--c-text)]">¿Cuándo se repite?</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center">
+              <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center gap-1.5">
                 Fecha de inicio *
                 <InfoTooltip tip="El día del mes de esta fecha es el día en que se repetirá siempre (ej: si eliges el 5, se repite cada día 5)." />
               </label>
               <CampoFecha required value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className={`${inp} mt-1`} />
             </div>
             <div>
-              <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center">
+              <label className="text-[11px] text-[var(--c-text3)] font-semibold inline-flex items-center gap-1.5">
                 Fecha de término
                 <InfoTooltip tip="Opcional — si la dejas vacía, este costo se repite indefinidamente hasta que lo pauses o elimines." />
               </label>
@@ -370,17 +370,17 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
       {/* Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 card-hover">
-          <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 inline-flex items-center">
-            Total mensual
-            <InfoTooltip tip="Suma de los costos activos que aplican este mes. Los costos programados para meses futuros no se incluyen aquí." />
+          <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5 min-w-0">
+            <span className="truncate min-w-0">Total mensual</span>
+            <InfoTooltip tip="Suma de los costos activos que aplican este mes. Los costos programados para meses futuros no se incluyen aquí." className="flex-shrink-0" />
           </p>
           <p className="text-xl font-bold text-orange-400">{formatCLP(totalMes)}</p>
           <p className="text-[11px] text-[var(--c-text3)] mt-1">{activos.length - conteoEstados.programado} activos este mes</p>
         </div>
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 card-hover">
-          <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 inline-flex items-center">
-            Pagado
-            <InfoTooltip tip="Suma de los costos de este mes cuyo pago ya fue confirmado. Este monto es el que realmente impacta tu flujo de caja." />
+          <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5 min-w-0">
+            <span className="truncate min-w-0">Pagado</span>
+            <InfoTooltip tip="Suma de los costos de este mes cuyo pago ya fue confirmado. Este monto es el que realmente impacta tu flujo de caja." className="flex-shrink-0" />
           </p>
           <p className="text-xl font-bold text-emerald-400">{formatCLP(pagadoMonto)}</p>
           <p className="text-[11px] text-[var(--c-text3)] mt-1">{MESES[mes]} {anio}</p>
@@ -417,12 +417,12 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
       {/* Cobertura financiera real */}
       {totalMes > 0 && (
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-[var(--c-text)] inline-flex items-center">
-              Cobertura financiera de costos fijos
-              <InfoTooltip tip="Compara lo que realmente te queda disponible (ingresos menos gastos variables) contra tus costos fijos del mes. A diferencia de mirar solo las ventas, esto evita mostrar 'cubierto' cuando en realidad el negocio está perdiendo dinero por gastos altos." />
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-sm font-semibold text-[var(--c-text)] flex items-center gap-1.5 min-w-0">
+              <span className="truncate min-w-0">Cobertura financiera de costos fijos</span>
+              <InfoTooltip tip="Compara lo que realmente te queda disponible (ingresos menos gastos variables) contra tus costos fijos del mes. A diferencia de mirar solo las ventas, esto evita mostrar 'cubierto' cuando en realidad el negocio está perdiendo dinero por gastos altos." className="flex-shrink-0" />
             </p>
-            <span className="text-lg">{cubierto ? "✅" : "⚠️"}</span>
+            <span className="text-lg flex-shrink-0">{cubierto ? "✅" : "⚠️"}</span>
           </div>
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="bg-[var(--c-card2)] rounded-xl p-2 sm:p-3 min-w-0">
@@ -456,7 +456,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
       {/* Proyección — próximos 3 meses */}
       {proyeccionMeses.some(p => p.total > 0) && (
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
-          <p className="text-sm font-semibold text-[var(--c-text)] mb-1 inline-flex items-center">
+          <p className="text-sm font-semibold text-[var(--c-text)] mb-1 inline-flex items-center gap-1.5">
             📊 Proyección — próximos 3 meses
             <InfoTooltip tip="Suma de tus costos fijos recurrentes activos en cada uno de los próximos meses, según su fecha de inicio y término. No incluye costos únicos ni gastos variables — solo lo que ya sabes que se va a repetir." />
           </p>

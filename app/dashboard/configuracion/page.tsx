@@ -50,8 +50,15 @@ export default async function ConfiguracionPage() {
           retiró por completo, y el de cumpleaños ahora solo avisa adentro
           de la app para que el dueño salude a mano. El envío manual vía
           Gmail (botón "Email" en el centro de cobranza) sigue funcionando
-          igual que siempre. */}
-      <div className="space-y-5 max-w-2xl">
+          igual que siempre.
+
+          El ancho máximo crece con la pantalla (hasta max-w-5xl en
+          monitores grandes) en vez de quedar fijo en max-w-2xl — las filas
+          internas son todas "ícono + etiqueta a la izquierda, control a la
+          derecha" (toggles, tarjetas), un patrón que se ve bien con más
+          aire entre ambos lados; fijarlo angosto solo dejaba medio monitor
+          vacío sin motivo en pantallas grandes. */}
+      <div className="space-y-5 max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl">
         <SeccionColapsable icon="🔔" titulo="Notificaciones" defaultOpen>
           <ConfigNotificacionesClient cfg={cfg} />
         </SeccionColapsable>

@@ -89,12 +89,17 @@ export function InfoTooltip({ tip, className = "" }: { tip: string; className?: 
 }
 
 /** Fila "ETIQUETA ⓘ" que usan las tarjetas de KPI — mismo InfoTooltip, con
- * la etiqueta en mayúsculas al lado. */
+ * la etiqueta en mayúsculas al lado. La etiqueta nunca pasa a una segunda
+ * línea: en tarjetas angostas (celular, 2 columnas) una etiqueta de dos
+ * palabras como "Utilidad bruta" alcanzaba a envolver, dejando el ícono
+ * flotando junto a la primera palabra y la segunda palabra huérfana debajo
+ * — con `truncate` se corta con "…" antes de llegar a ese punto, así el
+ * ícono siempre queda pegado a la etiqueta en una sola línea. */
 export function KpiTooltip({ label, tip }: { label: string; tip: string }) {
   return (
-    <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider flex items-center gap-1.5">
-      {label}
-      <InfoTooltip tip={tip} />
+    <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+      <span className="truncate min-w-0">{label}</span>
+      <InfoTooltip tip={tip} className="flex-shrink-0" />
     </p>
   )
 }
