@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { formatCLP } from "@/lib/utils"
 import { obtenerDatosGraficoAnual } from "@/app/actions/resumen-acciones"
+import { InfoTooltip } from "@/components/shared/kpi-tooltip"
 
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 const MESES_ABREV = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
@@ -88,7 +89,7 @@ export function GraficoMensual({ datos, mes, anio }: { datos: PuntoMensual[]; me
         <div>
           <h2 className="text-sm font-semibold text-[var(--c-text)] flex items-center gap-1.5">
             Ingresos vs Gastos
-            <span className="text-[var(--c-text4)] text-xs cursor-help" title="Comparación de ingresos, gastos y resultado neto.">ⓘ</span>
+            <InfoTooltip tip="Comparación de ingresos, gastos y resultado neto." />
           </h2>
           <p className="text-xs text-[var(--c-text4)] mt-0.5">Comparación de ingresos, gastos y resultado neto</p>
         </div>

@@ -1,6 +1,7 @@
 "use client"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { formatCLP } from "@/lib/utils"
+import { InfoTooltip } from "@/components/shared/kpi-tooltip"
 
 function TooltipFlujo({ active, payload, label, mes, anio }: any) {
   if (!active || !payload?.length) return null
@@ -41,7 +42,7 @@ export function FlujoAcumuladoChart({ datos, mes, anio }: { datos: { dia: string
       <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-[var(--c-text)] flex items-center gap-1.5">
           Flujo acumulado del mes
-          <span className="text-[var(--c-text4)] text-xs cursor-help" title="Cómo evoluciona tu disponible día a día, según todos tus movimientos reales.">ⓘ</span>
+          <InfoTooltip tip="Cómo evoluciona tu disponible día a día, según todos tus movimientos reales." />
         </h3>
         {hayDatos && (
           <div className="flex items-center gap-4 text-xs">
