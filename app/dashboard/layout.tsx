@@ -27,9 +27,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <NavegacionProvider>
-      <div className="flex min-h-screen" style={{ backgroundColor: "var(--c-bg)" }}>
+      {/* h-dvh (no min-h-screen) + overflow-hidden: ancla la altura total
+          al viewport real (incluye el alto dinámico en mobile, con la
+          barra del navegador entrando y saliendo) en vez de solo poner un
+          mínimo — sin esto, nada obligaba a los hijos a quedarse dentro de
+          esa altura, así que la página entera (Sidebar incluido) crecía
+          según el contenido de cada módulo y terminaba scrolleando el
+          documento completo en vez de solo el área de contenido. */}
+      <div className="flex h-dvh overflow-hidden" style={{ backgroundColor: "var(--c-bg)" }}>
         <Sidebar userRole={session.user.role} modulosPermitidos={modulosPermitidos} esEmpleado={session.user.esEmpleado} />
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           <Header session={session} />
           <ContenidoDashboard>{children}</ContenidoDashboard>
         </div>
