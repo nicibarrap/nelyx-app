@@ -7,6 +7,8 @@ import { AutoReparadorPush } from "@/components/notificaciones/auto-reparador-pu
 import { AutoLogoutEmpleado } from "@/components/dashboard/auto-logout-empleado"
 import { AutoRevalidarReconexion } from "@/components/dashboard/auto-revalidar-reconexion"
 import { ChatSoporteWidget } from "@/components/soporte/chat-widget"
+import { NavegacionProvider } from "@/components/dashboard/navegacion-provider"
+import { OverlayCargaModulo } from "@/components/dashboard/overlay-carga-modulo"
 import { db } from "@/lib/db"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -24,22 +26,27 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: "var(--c-bg)" }}>
-      <Sidebar userRole={session.user.role} modulosPermitidos={modulosPermitidos} esEmpleado={session.user.esEmpleado} />
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header session={session} />
-        {/* pt-16 hasta md: espacio para el ☰ fijo del sidebar, que a partir
-            de md ya no existe (sidebar siempre visible) — mismo breakpoint
-            que el sidebar y el saludo del header. */}
-        <main className="flex-1 p-4 lg:p-5 overflow-y-auto overflow-x-hidden pt-16 md:pt-4">
-          {children}
-        </main>
+    <NavegacionProvider>
+      <div className="flex min-h-screen" style={{ backgroundColor: "var(--c-bg)" }}>
+        <Sidebar userRole={session.user.role} modulosPermitidos={modulosPermitidos} esEmpleado={session.user.esEmpleado} />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <Header session={session} />
+          {/* pt-16 hasta md: espacio para el ☰ fijo del sidebar, que a partir
+              de md ya no existe (sidebar siempre visible) — mismo breakpoint
+              que el sidebar y el saludo del header. relative: ancla el
+              overlay de carga (logo parpadeando) a esta área, sin taparla
+              por completo. */}
+          <main className="relative flex-1 p-4 lg:p-5 overflow-y-auto overflow-x-hidden pt-16 md:pt-4">
+            {children}
+            <OverlayCargaModulo />
+          </main>
+        </div>
+        <PermisoNotificacionesModal yaPedido={notifCfg?.permisoPedido ?? false} />
+        <AutoReparadorPush />
+        <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />
+        <AutoRevalidarReconexion />
+        {session.user.role !== "ADMIN" && <ChatSoporteWidget />}
       </div>
-      <PermisoNotificacionesModal yaPedido={notifCfg?.permisoPedido ?? false} />
-      <AutoReparadorPush />
-      <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />
-      <AutoRevalidarReconexion />
-      {session.user.role !== "ADMIN" && <ChatSoporteWidget />}
-    </div>
+    </NavegacionProvider>
   )
 }
