@@ -33,14 +33,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Header session={session} />
           {/* pt-16 hasta md: espacio para el ☰ fijo del sidebar, que a partir
               de md ya no existe (sidebar siempre visible) — mismo breakpoint
-              que el sidebar y el saludo del header. relative: ancla el
-              overlay de carga (logo parpadeando) a esta área, sin taparla
-              por completo. */}
-          <main className="relative flex-1 p-4 lg:p-5 overflow-y-auto overflow-x-hidden pt-16 md:pt-4">
+              que el sidebar y el saludo del header. */}
+          <main className="flex-1 p-4 lg:p-5 overflow-y-auto overflow-x-hidden pt-16 md:pt-4">
             {children}
-            <OverlayCargaModulo />
           </main>
         </div>
+        <OverlayCargaModulo />
         <PermisoNotificacionesModal yaPedido={notifCfg?.permisoPedido ?? false} />
         <AutoReparadorPush />
         <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />

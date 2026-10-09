@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import {
   obtenerConversacionesAdmin, obtenerMensajesAdmin, enviarMensajeSoporte, marcarConversacionResuelta,
 } from "@/app/actions/soporte-acciones"
+import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
 
 type Conversacion = {
   id: string; estado: string; negocio: string; ultimoMensajeDe: string
@@ -100,6 +101,7 @@ export function SoporteAdminClient({ conversacionInicialId }: { conversacionInic
       <div className="flex flex-col gap-3">
         <Link href="/admin/clientes" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
           ← Clientes NELYX
+          <SincronizarPendiente />
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-[var(--c-text)] tracking-tight">Soporte NELYX</h1>
