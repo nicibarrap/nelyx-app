@@ -53,19 +53,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             la app abierta puede quedar apuntando a archivos .js viejos que
             ya no existen en el servidor — se veía en Sentry como
             "Cannot read properties of undefined (reading 'call')" en
-            páginas al azar. En vez de que la persona vea un error sin
+            páginas al azar, y también como "UnrecognizedActionError: Server
+            Action ... was not found on the server" cuando esa persona
+            alcanza a enviar un formulario (Server Action) justo durante o
+            después del deploy. En vez de que la persona vea un error sin
             sentido, se detecta ese patrón puntual y se recarga una sola vez
             (con guarda de 10s para nunca entrar en loop). */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             try {
               var KEY = 'nelyx-chunk-reload-ts';
-              function esErrorDeChunk(msg) {
+              function esErrorDeClienteDesactualizado(msg) {
                 if (!msg) return false;
-                return /Loading chunk [\\d]+ failed|ChunkLoadError|Cannot read properties of undefined \\(reading 'call'\\)|Importing a module script failed/i.test(msg);
+                return /Loading chunk [\\d]+ failed|ChunkLoadError|Cannot read properties of undefined \\(reading 'call'\\)|Importing a module script failed|was not found on the server/i.test(msg);
               }
               function intentarRecargar(msg) {
-                if (!esErrorDeChunk(msg)) return;
+                if (!esErrorDeClienteDesactualizado(msg)) return;
                 var ultimo = Number(sessionStorage.getItem(KEY) || 0);
                 var ahora = Date.now();
                 if (ahora - ultimo > 10000) {
