@@ -199,6 +199,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
                     {(!collapsed || isMobile) && (noLeidosSoporte > 99 ? "99+" : noLeidosSoporte)}
                   </span>
                 )}
+                <SincronizarPendiente />
               </Link>
             ))}
           </>

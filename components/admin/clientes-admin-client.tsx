@@ -3,6 +3,7 @@ import { useState, useTransition, useMemo } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { formatCLP } from "@/lib/utils"
+import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
 import {
   registrarPagoCobro, actualizarNotaCliente, crearSuscripcionParaUsuario, crearClienteNelyx,
   actualizarSuscripcion, cambiarEstadoCliente,
@@ -537,6 +538,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
       <div className="flex flex-col gap-3">
         <Link href="/dashboard/resumen" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text3)] hover:text-sky-400 transition-colors w-fit">
           ← Volver al Dashboard
+          <SincronizarPendiente />
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
