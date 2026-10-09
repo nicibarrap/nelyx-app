@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import { ChevronLeft } from "lucide-react"
 import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 import { contarNoLeidosAdmin } from "@/app/actions/soporte-acciones"
+import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
 
 const NAV_PRINCIPAL = [
   { href: "/dashboard/resumen",     icon: "◈", label: "Resumen",     activo: true, moduloKey: "resumen" },
@@ -72,6 +73,7 @@ function NavItem({ href, icon, label, badge, activo, collapsed, moduloKey, modul
       {!collapsed && <span className="flex-1">{label}</span>}
       {!collapsed && soloLectura && <span className="text-[10px] text-[var(--c-text4)]" title="Solo puedes ver, no modificar">👁</span>}
       {!collapsed && isActive && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+      <SincronizarPendiente />
     </Link>
   )
 }
