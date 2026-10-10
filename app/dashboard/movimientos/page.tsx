@@ -5,7 +5,7 @@ import { TablaMovimientos } from "@/components/movimientos/tabla-movimientos"
 import { FiltroPeriodo } from "@/components/shared/filtro-periodo"
 import Link from "next/link"
 
-export const metadata: Metadata = { title: "Movimientos" }
+export const metadata: Metadata = { title: "Historial — Movimientos" }
 
 export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string }> }) {
   const searchParams = await props.searchParams;
@@ -24,7 +24,7 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-[var(--c-text)]">Movimientos</h1>
+          <h1 className="text-lg font-bold text-[var(--c-text)]">Historial de movimientos</h1>
           <p className="text-xs text-[var(--c-text3)] mt-0.5">{movimientos.length} registros en el período</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

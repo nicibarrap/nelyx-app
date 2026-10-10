@@ -51,7 +51,15 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [ahora, setAhora] = useState<Date | null>(null)
-  useEffect(() => { setAhora(new Date()) }, [])
+  // Se actualiza sola mientras la pantalla de Venta queda abierta (no hay
+  // recarga entre una venta y la siguiente) — sin el intervalo, quedaba
+  // fija en la hora en que se montó el componente y mostraba una hora vieja
+  // si alguien dejaba la pestaña abierta un rato.
+  useEffect(() => {
+    setAhora(new Date())
+    const intervalo = setInterval(() => setAhora(new Date()), 30_000)
+    return () => clearInterval(intervalo)
+  }, [])
   const [modoRapido, setModoRapido] = useState(false)
 
   // Cliente
@@ -408,9 +416,10 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
   }
 
   return (
-    <div className="max-w-7xl mx-auto animate-fade-up pb-10">
+    <>
+    <div className="max-w-7xl mx-auto animate-fade-up lg:h-full lg:flex lg:flex-col">
       {/* Encabezado — a lo ancho completo, arriba de las 2 columnas */}
-      <div className="flex items-center justify-between gap-2 sm:gap-3 mb-5">
+      <div className="flex items-center justify-between gap-2 sm:gap-3 mb-5 lg:flex-shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center text-xl flex-shrink-0">🛒</div>
           <div className="min-w-0">
@@ -445,12 +454,18 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
       </div>
 
       {/* En celular queda todo en una sola columna, igual que siempre.
-          Desde pantallas grandes (lg), se divide en 2: lo que se arma a la
-          izquierda (más ancho), y el resumen fijo a la derecha — así el
-          total, el pago y el botón de registrar nunca se pierden de vista,
-          sin importar cuántos productos tenga el carrito. */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-        <div className="lg:col-span-2 space-y-5">
+          Desde pantallas grandes (lg), se divide en 2 paneles de ALTURA FIJA
+          (lg:h-full, acotada por lg:grid-rows-1 + lg:flex-1 del contenedor),
+          cada uno con su PROPIO scroll interno — en vez de que la columna
+          derecha dependa de position:sticky para "alcanzar" a quedarse fija.
+          Con el carrito vacío o con pocos productos, ambas columnas miden
+          casi lo mismo de alto, así que sticky solo lograba pegarse un
+          instante antes de soltarse de nuevo (se sentía como que el panel
+          "se movía" al hacer scroll, aunque el CSS técnicamente funcionara).
+          Con paneles de altura fija, ninguno de los dos se mueve nunca: solo
+          scrollea el contenido DENTRO de cada uno, si no entra completo. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start lg:flex-1 lg:min-h-0 lg:grid-rows-1">
+        <div className="lg:col-span-2 space-y-5 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-1">
 
       {/* Productos */}
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
@@ -639,12 +654,12 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
 
         </div>
         {/* ══════════════════════════════════════════
-            Columna derecha — "Resumen de la venta". Queda fija (sticky)
-            mientras la izquierda scrollea, así cliente/pago/total/botón
-            de registrar siempre están a la vista, sin importar cuántos
-            productos tenga el carrito.
+            Columna derecha — "Resumen de la venta". Panel de altura fija
+            (ver nota arriba): cliente/pago/total/botón de registrar siempre
+            están a la vista, sin importar cuántos productos tenga el
+            carrito, sin depender de que sticky "alcance" a pegarse.
         ══════════════════════════════════════════ */}
-        <div className="space-y-5 lg:sticky lg:top-4">
+        <div className="space-y-5 lg:h-full lg:min-h-0 lg:overflow-y-auto">
 
       {/* Cliente */}
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
@@ -777,10 +792,14 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
 
         </div>
       </div>
+    </div>
 
-      {/* Conexiones — franja horizontal completa, debajo de las 2 columnas,
-          aprovechando todo el ancho disponible en vez de apilarse angosta
-          dentro de la columna derecha. */}
+    {/* Conexiones — franja horizontal completa, debajo de las 2 columnas.
+        Queda FUERA del bloque de altura fija de arriba a propósito: es
+        contenido informativo, no parte de los paneles que deben quedarse
+        siempre a la vista, así que no le quita espacio a esos paneles en
+        pantallas bajas — si hiciera falta, es la única parte que scrollea. */}
+    <div className="max-w-7xl mx-auto animate-fade-up pb-10">
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-3 mt-5">
         <p className="text-[10px] text-[var(--c-text4)] mb-2">Esta venta se conecta sola con:</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
@@ -798,6 +817,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
           ))}
         </div>
       </div>
+    </div>
 
       {mostrarEscaner && (
         <EscanerCodigoBarras
@@ -855,6 +875,6 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
         </div>,
         document.body
       )}
-    </div>
+    </>
   )
 }

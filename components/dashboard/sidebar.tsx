@@ -10,7 +10,7 @@ import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider
 const NAV_PRINCIPAL = [
   { href: "/dashboard/resumen",     icon: "◈", label: "Resumen",     activo: true, moduloKey: "resumen" },
   { href: "/dashboard/venta",       icon: "🛒", label: "Venta",       activo: true, moduloKey: "venta" },
-  { href: "/dashboard/movimientos", icon: "⇄", label: "Movimientos", activo: true, moduloKey: "movimientos" },
+  { href: "/dashboard/movimientos/nuevo", matchHref: "/dashboard/movimientos", icon: "⇄", label: "Movimientos", activo: true, moduloKey: "movimientos" },
   { href: "/dashboard/productos",   icon: "▣", label: "Productos",   activo: true, moduloKey: "productos" },
   { href: "/dashboard/deudas",      icon: "◎", label: "Deudas",      activo: true, moduloKey: "deudas" },
   { href: "/dashboard/alertas",     icon: "🔔", label: "Alertas",     activo: true, moduloKey: "alertas" },
@@ -28,11 +28,16 @@ const NAV_EXTRA = [
   { href: "/dashboard/configuracion", icon: "⚙️", label: "Configuración", activo: true, moduloKey: "configuracion" },
 ]
 
-type NavItemProps = { href: string; icon: string; label: string; badge?: string; activo?: boolean; collapsed?: boolean; moduloKey?: string; modulosPermitidos?: string[] | null }
+type NavItemProps = { href: string; matchHref?: string; icon: string; label: string; badge?: string; activo?: boolean; collapsed?: boolean; moduloKey?: string; modulosPermitidos?: string[] | null }
 
-function NavItem({ href, icon, label, badge, activo, collapsed, moduloKey, modulosPermitidos }: NavItemProps) {
+function NavItem({ href, matchHref, icon, label, badge, activo, collapsed, moduloKey, modulosPermitidos }: NavItemProps) {
   const pathname = usePathname()
-  const isActive = pathname === href || (href !== "#" && pathname.startsWith(href + "/"))
+  // matchHref: para Movimientos, el link va directo al formulario (como
+  // Venta) pero el ítem debe seguir "activo" también al ver el historial
+  // (/dashboard/movimientos) — sin esto, el resaltado del sidebar se perdía
+  // apenas se entraba al historial desde cualquier otro lado de la app.
+  const base = matchHref ?? href
+  const isActive = pathname === base || (base !== "#" && pathname.startsWith(base + "/"))
   const sinPermiso = !!moduloKey && !tieneAcceso(modulosPermitidos, moduloKey)
   const soloLectura = !!moduloKey && esSoloLectura(modulosPermitidos, moduloKey)
 
