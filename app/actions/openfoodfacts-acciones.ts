@@ -11,6 +11,7 @@
 // ══════════════════════════════════════════════════════════════════════
 import { auth } from "@/lib/auth"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 const USER_AGENT = "Nelyx - Plataforma de gestion para almacenes chilenos - https://nelyx.vercel.app"
 
@@ -93,6 +94,7 @@ export async function buscarProductoPorCodigoBarras(codigoBarras: string): Promi
   // ajeno al uso real de la app.
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   const codigo = codigoBarras.trim()
   if (!codigo) return null
   for (const base of FUENTES) {

@@ -12,10 +12,12 @@ import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
 import { hoyEnChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

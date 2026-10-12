@@ -5,13 +5,14 @@ import { signOut } from "next-auth/react"
 // El middleware solo redirige acá por un motivo: /api/check-session
 // encontró que esta cuenta (o la cuenta dueña de la que depende, si es un
 // empleado) ya no está activa — suspendida por un administrador, o
-// desactivada por el dueño del negocio. Antes esta pantalla era un spinner
-// genérico ("Cerrando sesión...") sin explicar nada, así que a la persona
-// expulsada le quedaba la duda de si fue un error técnico o algo
-// intencional. Un pequeño retraso a propósito (ver DEMORA_MS) para que el
-// mensaje alcance a leerse antes de saltar al login — sin él, signOut()
-// redirige casi al instante y el texto nunca llega a verse.
-const DEMORA_MS = 2500
+// desactivada por el dueño del negocio. Mismo ícono X que ya se usa en el
+// Sidebar colapsado y en el overlay de carga entre módulos
+// (OverlayCargaModulo) — así la persona expulsada reconoce de inmediato
+// que es la plataforma la que la está sacando, a propósito, no un error.
+// Un pequeño retraso intencional (DEMORA_MS) para que la pantalla alcance
+// a verse antes de saltar al login — sin él, signOut() redirige casi al
+// instante y nunca llega a notarse.
+const DEMORA_MS = 2200
 
 export default function ForzarSalida() {
   useEffect(() => {
@@ -22,18 +23,15 @@ export default function ForzarSalida() {
   }, [])
 
   return (
-    <div style={{ minHeight: "100vh", background: "#030b1f", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ textAlign: "center", maxWidth: 360 }}>
-        <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px", fontSize: 22 }}>
-          🚫
-        </div>
-        <p style={{ color: "#fff", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Tu sesión fue cerrada</p>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, lineHeight: 1.5 }}>
+    <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-6 bg-[var(--c-bg)] px-6 text-center">
+      <img src="/icon-x.png" alt="Nelyx" className="logo-dark w-24 h-24 object-contain animate-pulse-soft" />
+      <img src="/icon-x-light.png" alt="Nelyx" className="logo-light w-24 h-24 object-contain animate-pulse-soft" />
+      <div className="max-w-xs">
+        <p className="text-[var(--c-text)] text-base font-bold mb-2">Tu sesión fue cerrada</p>
+        <p className="text-[var(--c-text3)] text-sm leading-relaxed">
           Esta cuenta fue desactivada o suspendida. Si crees que es un error, contacta a soporte.
         </p>
-        <div style={{ width: 28, height: 28, border: "3px solid rgba(59,130,246,0.3)", borderTop: "3px solid #3b82f6", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "20px auto 0" }} />
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }

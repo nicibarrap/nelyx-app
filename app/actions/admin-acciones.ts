@@ -8,10 +8,12 @@ import { randomBytes } from "crypto"
 import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO, determinarEstadoAlReactivar, registrarEventoSuscripcion } from "@/lib/suscripciones"
 import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { formatCLP } from "@/lib/utils"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getAdminSession() {
   const session = await auth()
   if (!session || session.user.role !== "ADMIN" || session.user.esEmpleado) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

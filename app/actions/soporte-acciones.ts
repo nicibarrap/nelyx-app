@@ -8,10 +8,12 @@ import { notificar } from "@/lib/notificaciones"
 import { enviarEmail } from "@/lib/email"
 import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA, MENSAJE_RECORDATORIO } from "@/lib/soporte-logica"
 import { generarRespuestaIA } from "@/lib/soporte-ia"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 
