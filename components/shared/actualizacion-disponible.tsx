@@ -10,8 +10,13 @@ const INTERVALO_MS = 10 * 60 * 1000
  * Avisa (con un botón, no en silencio) cuando el servidor ya está
  * corriendo una versión distinta a la que esta pestaña tiene cargada —
  * por dos caminos:
- * 1. Sondeo periódico de /api/build-id, comparado contra el build con el
- *    que se armó el bundle de esta pestaña (NEXT_PUBLIC_BUILD_ID).
+ * 1. Sondeo de /api/build-id, comparado contra el build con el que se
+ *    armó el bundle de esta pestaña (NEXT_PUBLIC_BUILD_ID) — al entrar,
+ *    cada vez que la pestaña vuelve a primer plano (por si el deploy
+ *    pasó mientras estaba en segundo plano) y cada 10 minutos mientras
+ *    se queda abierta. `setInterval` por sí solo no alcanza: no dispara
+ *    su primera revisión hasta que pasan los 10 minutos completos, así
+ *    que alguien que mira la pestaña recién deployado no ve nada todavía.
  * 2. El layout despacha "nelyx:actualizacion-disponible" cuando detecta
  *    el patrón de error típico de un deploy nuevo (chunk/Server Action
  *    de la versión vieja que el servidor ya no reconoce) — antes esto
@@ -32,7 +37,8 @@ export function ActualizacionDisponible() {
     window.addEventListener("nelyx:actualizacion-disponible", avisar)
 
     const buildIdActual = process.env.NEXT_PUBLIC_BUILD_ID
-    const intervalo = setInterval(async () => {
+    async function revisar() {
+      if (yaAvisado.current) return
       try {
         const res = await fetch("/api/build-id", { cache: "no-store" })
         const { buildId } = await res.json()
@@ -41,10 +47,18 @@ export function ActualizacionDisponible() {
         // Sin red en este momento puntual — no es señal de que haya una
         // versión nueva, se vuelve a intentar en el próximo ciclo.
       }
-    }, INTERVALO_MS)
+    }
+
+    revisar()
+    const intervalo = setInterval(revisar, INTERVALO_MS)
+    function alVolverAPrimerPlano() {
+      if (document.visibilityState === "visible") revisar()
+    }
+    document.addEventListener("visibilitychange", alVolverAPrimerPlano)
 
     return () => {
       window.removeEventListener("nelyx:actualizacion-disponible", avisar)
+      document.removeEventListener("visibilitychange", alVolverAPrimerPlano)
       clearInterval(intervalo)
     }
   }, [])
