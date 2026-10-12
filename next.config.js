@@ -3,6 +3,13 @@ const { withSentryConfig } = require("@sentry/nextjs/config")
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: { unoptimized: true },
+  // Identificador de este build — Vercel expone VERCEL_GIT_COMMIT_SHA al
+  // proceso de build (no solo al runtime), así que cada deploy nuevo lo
+  // reemplaza en el bundle del cliente Y en las funciones serverless (la
+  // función entera se reemplaza en cada deploy, no solo el valor). Sirve
+  // para que el cliente note cuándo el servidor ya está en una versión
+  // distinta a la que tiene cargada — ver ActualizacionDisponible.
+  env: { NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_GIT_COMMIT_SHA ?? String(Date.now()) },
   // Encabezados de seguridad del navegador — protecciones de bajo riesgo
   // que Next.js no activa solo. No incluye Content-Security-Policy: una
   // CSP mal armada rompería silenciosamente cosas reales de la app (el

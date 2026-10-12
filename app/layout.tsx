@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { SessionProvider } from "next-auth/react"
 import { Toaster } from "sonner"
 import { EmojiConsistente } from "@/components/shared/emoji-consistente"
+import { ActualizacionDisponible } from "@/components/shared/actualizacion-disponible"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -56,30 +57,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             páginas al azar, y también como "UnrecognizedActionError: Server
             Action ... was not found on the server" cuando esa persona
             alcanza a enviar un formulario (Server Action) justo durante o
-            después del deploy. En vez de que la persona vea un error sin
-            sentido, se detecta ese patrón puntual y se recarga una sola vez
-            (con guarda de 10s para nunca entrar en loop). */}
+            después del deploy. Antes esto recargaba la página sola (con
+            guarda de 10s contra loops) — pero si justo estaba a mitad de
+            llenar un formulario, lo perdía sin aviso. Ahora solo despacha
+            el evento que ActualizacionDisponible escucha para mostrar el
+            botón "Actualizar": la persona decide cuándo recargar. */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             try {
-              var KEY = 'nelyx-chunk-reload-ts';
               function esErrorDeClienteDesactualizado(msg) {
                 if (!msg) return false;
                 return /Loading chunk [\\d]+ failed|ChunkLoadError|Cannot read properties of undefined \\(reading 'call'\\)|Importing a module script failed|was not found on the server/i.test(msg);
               }
-              function intentarRecargar(msg) {
+              function avisarActualizacion(msg) {
                 if (!esErrorDeClienteDesactualizado(msg)) return;
-                var ultimo = Number(sessionStorage.getItem(KEY) || 0);
-                var ahora = Date.now();
-                if (ahora - ultimo > 10000) {
-                  sessionStorage.setItem(KEY, String(ahora));
-                  window.location.reload();
-                }
+                window.dispatchEvent(new Event('nelyx:actualizacion-disponible'));
               }
-              window.addEventListener('error', function(e){ intentarRecargar(e && e.message); });
+              window.addEventListener('error', function(e){ avisarActualizacion(e && e.message); });
               window.addEventListener('unhandledrejection', function(e){
                 var msg = e && e.reason && (e.reason.message || String(e.reason));
-                intentarRecargar(msg);
+                avisarActualizacion(msg);
               });
             } catch (e) {}
           })();
@@ -95,6 +92,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <SessionProvider>
           {children}
           <EmojiConsistente />
+          <ActualizacionDisponible />
           <Toaster richColors position="top-right" />
           {/* Register service worker */}
           <script dangerouslySetInnerHTML={{ __html: `
