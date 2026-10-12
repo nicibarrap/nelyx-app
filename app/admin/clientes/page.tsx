@@ -28,6 +28,7 @@ export default async function ClientesAdminPage() {
         include: {
           pagos: { orderBy: { createdAt: "desc" }, take: 15 },
           cobros: { orderBy: { createdAt: "desc" }, take: 15 },
+          eventos: { orderBy: { createdAt: "desc" }, take: 30 },
         },
       },
       _count: { select: { movimientos: true, productos: true, clientes: true, empleados: true } },
@@ -103,6 +104,7 @@ export default async function ClientesAdminPage() {
       nombre: u.nombre,
       email: u.email,
       negocio: u.negocio,
+      telefono: u.telefono,
       activo: u.activo,
       createdAt: u.createdAt.toISOString(),
       estado,
@@ -140,6 +142,9 @@ export default async function ClientesAdminPage() {
       pagos: (sus?.pagos ?? []).map(p => ({
         id: p.id, fecha: p.fecha.toISOString(), monto: Number(p.monto),
         metodoPago: p.metodoPago, observacion: p.observacion, estado: p.estado,
+      })),
+      eventos: (sus?.eventos ?? []).map(e => ({
+        id: e.id, tipo: e.tipo, detalle: e.detalle, adminNombre: e.adminNombre, createdAt: e.createdAt.toISOString(),
       })),
     }
   })

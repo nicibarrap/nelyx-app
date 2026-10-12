@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
-import { cambiarEstadoCliente } from "@/app/actions/admin-acciones"
+import { cambiarEstadoCliente, registrarPagoCobro, actualizarDatosCliente } from "@/app/actions/admin-acciones"
 import { determinarEstadoAlReactivar } from "@/lib/suscripciones"
 import { verificarBloqueoLogin } from "@/app/actions/empleados-acciones"
 import { GET as checkSession } from "@/app/api/check-session/route"
@@ -19,7 +19,7 @@ async function crearAdmin() {
   const admin = await db.user.create({
     data: { nombre: "Admin Nelyx", email: `admin-${Math.random()}@nelyx.cl`, password: "x", rol: "ADMIN" },
   })
-  sesionActual = { user: { id: admin.id, role: "ADMIN", esEmpleado: false } }
+  sesionActual = { user: { id: admin.id, name: admin.nombre, role: "ADMIN", esEmpleado: false } }
   return admin
 }
 
@@ -180,5 +180,77 @@ describe("GET /api/check-session — cascada dueño → empleados", () => {
     const body = await res.json()
 
     expect(body.activo).toBe(false)
+  })
+})
+
+// Historial de auditoría de la suscripción (nueva funcionalidad pedida
+// junto con el fix de suspensión): cada acción del admin debe quedar
+// registrada con quién y qué pasó, para "control total" sobre clientes y
+// cobranza.
+describe("Historial de auditoría de la suscripción", () => {
+  it("registra un evento 'suspendida' con el nombre del admin al suspender", async () => {
+    const admin = await crearAdmin()
+    const { sus } = await crearClienteConSuscripcion({ estado: "al_dia" })
+
+    await cambiarEstadoCliente(sus.id, "suspendido")
+
+    const eventos = await db.suscripcionNelyxEvento.findMany({ where: { suscripcionId: sus.id } })
+    expect(eventos).toHaveLength(1)
+    expect(eventos[0].tipo).toBe("suspendida")
+    expect(eventos[0].adminNombre).toBe(admin.nombre)
+  })
+
+  it("registra 'reactivada' y 'cancelada' en sus respectivas transiciones", async () => {
+    await crearAdmin()
+    const { sus } = await crearClienteConSuscripcion({ estado: "al_dia" })
+
+    await cambiarEstadoCliente(sus.id, "suspendido")
+    await cambiarEstadoCliente(sus.id, "al_dia") // reactivar
+    await cambiarEstadoCliente(sus.id, "cancelado")
+
+    const eventos = await db.suscripcionNelyxEvento.findMany({ where: { suscripcionId: sus.id }, orderBy: { createdAt: "asc" } })
+    expect(eventos.map(e => e.tipo)).toEqual(["suspendida", "reactivada", "cancelada"])
+  })
+
+  it("registra 'pago_registrado' con el monto y método al registrar un pago", async () => {
+    const admin = await crearAdmin()
+    const { sus } = await crearClienteConSuscripcion({ estado: "pendiente" })
+    const cobro = await db.cobroNelyx.create({
+      data: { suscripcionId: sus.id, plan: "mensual", monto: 20000, fechaEmision: new Date(), fechaVencimiento: new Date(Date.now() + 5 * 86400000), estado: "pendiente" },
+    })
+
+    const fd = new FormData()
+    fd.set("cobroId", cobro.id)
+    fd.set("metodoPago", "efectivo")
+    await registrarPagoCobro(fd)
+
+    const eventos = await db.suscripcionNelyxEvento.findMany({ where: { suscripcionId: sus.id, tipo: "pago_registrado" } })
+    expect(eventos).toHaveLength(1)
+    expect(eventos[0].adminNombre).toBe(admin.nombre)
+    expect(eventos[0].detalle).toContain("efectivo")
+  })
+})
+
+describe("actualizarDatosCliente", () => {
+  it("actualiza nombre, negocio, email y teléfono del cliente", async () => {
+    await crearAdmin()
+    const { cliente } = await crearClienteConSuscripcion()
+
+    await actualizarDatosCliente(cliente.id, { nombre: "Nombre Nuevo", negocio: "Negocio Nuevo", email: `nuevo-${Math.random()}@nelyx.cl`, telefono: "+56912345678" })
+
+    const actualizado = await db.user.findUniqueOrThrow({ where: { id: cliente.id } })
+    expect(actualizado.nombre).toBe("Nombre Nuevo")
+    expect(actualizado.negocio).toBe("Negocio Nuevo")
+    expect(actualizado.telefono).toBe("+56912345678")
+  })
+
+  it("rechaza con un mensaje claro si el email ya pertenece a otra cuenta", async () => {
+    await crearAdmin()
+    const { cliente: clienteA } = await crearClienteConSuscripcion()
+    const { cliente: clienteB } = await crearClienteConSuscripcion()
+
+    await expect(
+      actualizarDatosCliente(clienteA.id, { nombre: clienteA.nombre, negocio: "", email: clienteB.email, telefono: "" })
+    ).rejects.toThrow(/ya existe/i)
   })
 })

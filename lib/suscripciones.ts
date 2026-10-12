@@ -74,6 +74,18 @@ export async function sincronizarSuscripciones() {
 }
 
 /**
+ * Deja una fila en el historial de auditoría de la suscripción (visible en
+ * /admin/clientes → ficha del cliente → "Ver historial"). adminNombre
+ * omitido o null = lo disparó una transición automática, no un clic del
+ * admin — ver el comentario del modelo en schema.prisma.
+ */
+export async function registrarEventoSuscripcion(suscripcionId: string, tipo: string, detalle?: string | null, adminNombre?: string | null) {
+  await db.suscripcionNelyxEvento.create({
+    data: { suscripcionId, tipo, detalle: detalle ?? null, adminNombre: adminNombre ?? null },
+  })
+}
+
+/**
  * Al reactivar una suscripción suspendida o cancelada (desde /admin/clientes),
  * no se puede asumir "al_dia" a ciegas — si tenía un cobro pendiente o
  * vencido sin pagar antes de suspenderla, reactivar no debe borrar esa
@@ -121,6 +133,9 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
         where: { id: sus.id },
         data: { plan: planFinal, precioPlan: monto, estado: "pendiente" },
       }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Terminó la prueba gratuita — primer cobro de ${PLANES[planFinal].label} por $${monto}` },
+      }),
     ])
     return
   }
@@ -131,6 +146,9 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
     await db.$transaction([
       db.cobroNelyx.update({ where: { id: cobroPendiente.id }, data: { estado: "vencido" } }),
       db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "vencido" } }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId: sus.id, tipo: "vencido", detalle: "El cobro pendiente venció sin pagarse" },
+      }),
     ])
     return
   }
@@ -154,6 +172,9 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
         },
       }),
       db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "pendiente" } }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Nuevo ciclo — cobro de ${PLANES[planFinal].label} por $${monto}` },
+      }),
     ])
     return
   }

@@ -6,23 +6,39 @@ import { formatCLP } from "@/lib/utils"
 import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
 import {
   registrarPagoCobro, actualizarNotaCliente, crearSuscripcionParaUsuario, crearClienteNelyx,
-  actualizarSuscripcion, cambiarEstadoCliente,
+  actualizarSuscripcion, cambiarEstadoCliente, actualizarDatosCliente,
 } from "@/app/actions/admin-acciones"
 import { enviarInvitacionCliente } from "@/app/actions/password-reset-acciones"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { PLANES as PLANES_UI } from "@/lib/planes-nelyx"
+import { generarLinkWhatsapp, generarLinkGmail } from "@/lib/cobranza"
 
 type Pago = { id: string; fecha: string; monto: number; metodoPago: string; observacion: string | null; estado: string }
 type Cobro = { id: string; plan: string; monto: number; fechaEmision: string; fechaVencimiento: string; estado: string }
+type Evento = { id: string; tipo: string; detalle: string | null; adminNombre: string | null; createdAt: string }
 type Cliente = {
-  id: string; nombre: string; email: string; negocio: string | null; activo: boolean
+  id: string; nombre: string; email: string; negocio: string | null; telefono: string | null; activo: boolean
   createdAt: string; estado: string; suscripcionId: string | null; plan: string; planLabel: string
   fechaInicio: string; fechaFinPrueba: string | null; fechaProximoCobro: string | null
   precioPlan: number; renovacionAutomatica: boolean
   ultimoAcceso: string | null; diasSinAcceso: number | null; notas: string | null
   salud: number; movimientos: number; productos: number; clientesCount: number; ventas: number; equipo: number
   cuentaAcceso: "activa" | "pendiente" | "sin_invitar"
-  cobroPendiente: Cobro | null; historialCobros: Cobro[]; pagos: Pago[]
+  cobroPendiente: Cobro | null; historialCobros: Cobro[]; pagos: Pago[]; eventos: Evento[]
+}
+
+// Etiqueta + ícono de cada tipo de evento de auditoría — ver
+// SuscripcionNelyxEvento en schema.prisma para la lista completa de tipos
+// que de verdad se generan.
+const EVENTO_CFG: Record<string, { label: string; icon: string }> = {
+  creada:            { label: "Cliente/suscripción creada", icon: "✨" },
+  suspendida:        { label: "Cuenta suspendida",          icon: "🚫" },
+  reactivada:        { label: "Cuenta reactivada",          icon: "✅" },
+  cancelada:         { label: "Suscripción cancelada",      icon: "✕" },
+  cambio_plan:       { label: "Cambio de plan",             icon: "🔄" },
+  pago_registrado:   { label: "Pago registrado",            icon: "💵" },
+  cobro_generado:    { label: "Cobro generado",             icon: "🧾" },
+  vencido:           { label: "Pasó a vencido",              icon: "⚠️" },
 }
 type Metricas = {
   activos: number; enPrueba: number; proximosVencer: number; pendientes: number; vencidos: number
@@ -253,6 +269,7 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
         <input name="nombre" required placeholder="Nombre completo *" className={inp} />
         <input name="email" type="email" required placeholder="Email *" className={inp} />
         <input name="negocio" placeholder="Nombre del negocio" className={inp} />
+        <input name="telefono" type="tel" placeholder="Teléfono (opcional, para WhatsApp)" className={inp} />
         <div>
           <label className="text-[10px] text-[var(--c-text4)]">Fecha de inicio</label>
           <CampoFecha name="fechaInicio" defaultValue={hoyISO()} className={inp} />
@@ -277,9 +294,40 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
   )
 }
 
+function FormEditarDatosCliente({ c, onClose }: { c: Cliente; onClose: () => void }) {
+  const [pending, start] = useTransition()
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const datos = {
+      nombre: fd.get("nombre") as string, negocio: fd.get("negocio") as string,
+      email: fd.get("email") as string, telefono: fd.get("telefono") as string,
+    }
+    start(async () => {
+      try { await actualizarDatosCliente(c.id, datos); toast.success("✅ Datos actualizados"); onClose() }
+      catch (err) { toast.error(err instanceof Error ? err.message : "No se pudo guardar") }
+    })
+  }
+  const inp = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
+  return (
+    <form onSubmit={submit} className="space-y-2.5 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
+      <p className="text-xs font-bold text-[var(--c-text)]">Editar datos del cliente</p>
+      <input name="nombre" required defaultValue={c.nombre} placeholder="Nombre completo" className={inp} />
+      <input name="negocio" defaultValue={c.negocio ?? ""} placeholder="Nombre del negocio" className={inp} />
+      <input name="email" type="email" required defaultValue={c.email} placeholder="Email" className={inp} />
+      <input name="telefono" type="tel" defaultValue={c.telefono ?? ""} placeholder="Teléfono (para WhatsApp)" className={inp} />
+      <div className="flex gap-2">
+        <button type="button" onClick={onClose} className="flex-1 h-8 text-xs border border-[var(--c-border)] rounded-lg text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
+        <button type="submit" disabled={pending} className="flex-1 h-8 text-xs bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-lg disabled:opacity-50">{pending ? "..." : "Guardar"}</button>
+      </div>
+    </form>
+  )
+}
+
 function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
   const [showPago, setShowPago] = useState(false)
   const [showEditar, setShowEditar] = useState(false)
+  const [showEditarDatos, setShowEditarDatos] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
   const [nota, setNota] = useState(c.notas ?? "")
   const [pending, start] = useTransition()
@@ -314,20 +362,41 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
       }
     })
   }
+  // Mismos helpers que ya usa Cuentas por cobrar (lib/cobranza.ts) para
+  // contactar directo por WhatsApp/Gmail — acá sin plantilla ni registro de
+  // contacto (eso es específico de cobranza a los clientes DE CADA
+  // NEGOCIO), solo el atajo para que Nelyx hable con sus propios clientes.
+  function contactarWhatsapp() {
+    if (!c.telefono) { toast.error("Este cliente no tiene teléfono registrado"); return }
+    window.open(generarLinkWhatsapp(c.telefono, `Hola ${c.nombre}, te escribo de Nelyx.`), "_blank")
+  }
+  function contactarEmail() {
+    window.open(generarLinkGmail(c.email, "Nelyx", `Hola ${c.nombre},\n\n`), "_blank")
+  }
 
   const diasRestantesPrueba = c.estado === "prueba_gratuita" ? diasHasta(c.fechaFinPrueba) : null
   const diasParaRenovar = (c.estado === "al_dia" || c.estado === "proximo_vencer") ? diasHasta(c.fechaProximoCobro) : null
 
   const historialCompleto = useMemo(() => {
-    const items: { fecha: string; label: string; monto: number; badge: string; badgeColor: string }[] = []
+    const items: { fecha: string; label: string; monto: number | null; badge: string; badgeColor: string }[] = []
     for (const p of c.pagos) items.push({ fecha: p.fecha, label: `Pago (${p.metodoPago})`, monto: p.monto, badge: "Pagado", badgeColor: "text-emerald-400" })
     for (const cobro of c.historialCobros) {
       if (cobro.estado !== "pagado") {
         items.push({ fecha: cobro.fechaEmision, label: `Cobro ${cobro.plan}`, monto: cobro.monto, badge: cobro.estado === "vencido" ? "Vencido" : "Pendiente", badgeColor: cobro.estado === "vencido" ? "text-red-400" : "text-[var(--c-warning)]" })
       }
     }
+    // Eventos de auditoría (suspensiones, cambios de plan, etc.) — mismo
+    // timeline que el dinero, para ver "qué pasó y cuándo" de un vistazo.
+    for (const ev of c.eventos) {
+      const evCfg = EVENTO_CFG[ev.tipo] ?? { label: ev.tipo, icon: "•" }
+      const quien = ev.adminNombre ? ev.adminNombre : "Automático"
+      items.push({
+        fecha: ev.createdAt, label: `${evCfg.icon} ${evCfg.label}${ev.detalle ? ` — ${ev.detalle}` : ""}`,
+        monto: null, badge: quien, badgeColor: ev.adminNombre ? "text-sky-400" : "text-[var(--c-text4)]",
+      })
+    }
     return items.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-  }, [c.pagos, c.historialCobros])
+  }, [c.pagos, c.historialCobros, c.eventos])
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -346,11 +415,16 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
         <button onClick={onClose} className="w-7 h-7 rounded-full bg-[var(--c-card2)] text-[var(--c-text4)] text-sm flex items-center justify-center hover:bg-[var(--c-hover)]">✕</button>
       </div>
 
-      <div className="flex gap-2 px-5 py-3 border-b border-[var(--c-border)] flex-shrink-0">
-        <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${cfg.cls}`}>{cfg.label}</span>
-        <span className="text-xs px-2.5 py-1 rounded-full border border-[var(--c-border)] text-[var(--c-text3)]">{c.planLabel}</span>
-        <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${ACCESO_CFG[c.cuentaAcceso].cls}`}>{ACCESO_CFG[c.cuentaAcceso].label}</span>
+      <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-[var(--c-border)] flex-shrink-0 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${cfg.cls}`}>{cfg.label}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-[var(--c-border)] text-[var(--c-text3)]">{c.planLabel}</span>
+          <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${ACCESO_CFG[c.cuentaAcceso].cls}`}>{ACCESO_CFG[c.cuentaAcceso].label}</span>
+        </div>
+        <button onClick={() => setShowEditarDatos(!showEditarDatos)} className="text-xs text-sky-400 hover:text-sky-300 whitespace-nowrap">✎ Editar datos</button>
       </div>
+
+      {showEditarDatos && <div className="px-5 pt-3 flex-shrink-0"><FormEditarDatosCliente c={c} onClose={() => setShowEditarDatos(false)} /></div>}
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
 
@@ -394,12 +468,12 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
               <div className="mt-2 space-y-1.5">
                 {historialCompleto.length === 0 ? <p className="text-xs text-[var(--c-text4)]">Sin movimientos registrados.</p> : (
                   historialCompleto.map((h, i) => (
-                    <div key={i} className="flex items-center justify-between bg-[var(--c-card2)] rounded-lg px-3 py-1.5 text-xs">
-                      <div>
-                        <p className="text-[var(--c-text)] font-semibold">{formatCLP(h.monto)} · {h.label}</p>
+                    <div key={i} className="flex items-center justify-between bg-[var(--c-card2)] rounded-lg px-3 py-1.5 text-xs gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[var(--c-text)] font-semibold truncate">{h.monto !== null ? `${formatCLP(h.monto)} · ` : ""}{h.label}</p>
                         <p className="text-[var(--c-text4)]">{fmtDate(h.fecha)}</p>
                       </div>
-                      <span className={`font-semibold ${h.badgeColor}`}>{h.badge}</span>
+                      <span className={`font-semibold whitespace-nowrap flex-shrink-0 ${h.badgeColor}`}>{h.badge}</span>
                     </div>
                   ))
                 )}
@@ -463,6 +537,16 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
               <span className="text-lg">✉️</span>
               <span className="text-[9px] font-semibold text-center text-sky-400">{c.cuentaAcceso === "sin_invitar" ? "Enviar invitación" : "Reenviar invitación"}</span>
+            </button>
+            <button onClick={contactarWhatsapp}
+              className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all">
+              <span className="text-lg">💬</span>
+              <span className="text-[9px] font-semibold text-center text-emerald-400">WhatsApp</span>
+            </button>
+            <button onClick={contactarEmail}
+              className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all">
+              <span className="text-lg">📧</span>
+              <span className="text-[9px] font-semibold text-center text-sky-400">Escribir correo</span>
             </button>
             <button onClick={toggleSuspender} disabled={pending}
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
