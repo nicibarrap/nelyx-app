@@ -8,9 +8,9 @@ import { getCategoriasBase } from "@/lib/categorias"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const TIPOS = [
-  { value: "GASTO",         label: "🛒 Gasto",         desc: "Pagaste algo",        a: "bg-red-500/20 border-red-500/50 text-red-300",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-red-900" },
-  { value: "INGRESO_EXTRA", label: "➕ Ingreso Extra", desc: "Fuera de ventas",     a: "bg-sky-500/20 border-sky-500/50 text-sky-300",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-sky-900" },
-  { value: "RETIRO",        label: "👝 Retiro",         desc: "Tu sueldo personal",  a: "bg-purple-500/20 border-purple-500/50 text-purple-300", i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-purple-900" },
+  { value: "GASTO",         label: "🛒 Gasto",         desc: "Pagaste algo",        a: "bg-red-500/20 border-red-500/50 chip-text-red",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-red-900" },
+  { value: "INGRESO_EXTRA", label: "➕ Ingreso Extra", desc: "Fuera de ventas",     a: "bg-sky-500/20 border-sky-500/50 chip-text-sky",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-sky-900" },
+  { value: "RETIRO",        label: "👝 Retiro",         desc: "Tu sueldo personal",  a: "bg-purple-500/20 border-purple-500/50 chip-text-purple", i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-purple-900" },
 ]
 
 const inp = "w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-4 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
@@ -155,7 +155,7 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
                 {todasCategorias.map((cat) => (
                   <button key={cat} type="button" onClick={() => setCategoria(cat)}
                     className={`px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all border ${
-                      categoria === cat ? "bg-sky-500/15 border-sky-500/30 text-sky-300" : "bg-[var(--c-card2)] border-[var(--c-border)] text-[var(--c-text2)] hover:border-sky-500/30 hover:text-[var(--c-text)]"
+                      categoria === cat ? "bg-sky-500/15 border-sky-500/30 chip-text-sky" : "bg-[var(--c-card2)] border-[var(--c-border)] text-[var(--c-text2)] hover:border-sky-500/30 hover:text-[var(--c-text)]"
                     }`}>
                     {cat}
                   </button>
