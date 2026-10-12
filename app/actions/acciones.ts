@@ -7,7 +7,7 @@ import * as Sentry from "@sentry/nextjs"
 import { notificar, cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unidades"
 import { registrarMovimientoStock, type TipoMovimientoStock } from "@/lib/stock"
-import { obtenerLoteFIFO } from "@/lib/lotes"
+import { calcularConsumoFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
 import { hoyEnChile } from "@/lib/timezone"
@@ -262,6 +262,7 @@ export async function eliminarMovimiento(id: string) {
     await registrarMovimientoStock({
       productoId: ms.productoId, userId: session.user.id, tipo: "devolucion",
       cantidad: -ms.cantidad, // revierte exactamente el delta original
+      fechaVencimiento: ms.fechaVencimiento, // ...al mismo lote del que salió, no a uno sin lote
       observacion: "Reversión automática por eliminación del movimiento",
     })
   }
@@ -425,19 +426,24 @@ async function registrarVentaInterno(items: Array<{
     // tarde: el Movimiento con el monto completo de la venta ya estaba
     // creado, así que la venta "se cobraba" igual aunque el producto ya no
     // estuviera disponible.
-    let movStockItem: { id: string } | null = null
+    const movsStockItem: { id: string }[] = []
     if (item.productoId) {
       const cantidadDescuento = item.cantidadInterna ?? item.cantidad
       // FIFO automático: si el producto tiene lotes con vencimiento, la
-      // salida se amarra sola al que vence primero — nadie elige nada en
-      // Venta. Si no tiene ningún lote, sigue funcionando igual que siempre.
-      const fechaLoteFIFO = await obtenerLoteFIFO(item.productoId, session.user.id)
-      const resultadoStock = await registrarMovimientoStock({
-        productoId: item.productoId, userId: session.user.id, tipo: "venta",
-        cantidad: -cantidadDescuento, fechaVencimiento: fechaLoteFIFO,
-        exigirStockSuficiente: true,
-      })
-      movStockItem = resultadoStock?.movimiento ?? null
+      // salida se reparte sola entre los que vencen primero — nadie elige
+      // nada en Venta. Si la cantidad vendida supera lo que hay en el
+      // primer lote, el resto se descuenta del/los siguiente(s), en vez de
+      // amarrar la venta completa a un solo lote. Si no tiene ningún lote,
+      // sigue funcionando igual que siempre (una sola salida sin lote).
+      const planConsumo = await calcularConsumoFIFO(item.productoId, session.user.id, cantidadDescuento)
+      for (const consumo of planConsumo) {
+        const resultadoStock = await registrarMovimientoStock({
+          productoId: item.productoId, userId: session.user.id, tipo: "venta",
+          cantidad: -consumo.cantidad, fechaVencimiento: consumo.fechaVencimiento,
+          exigirStockSuficiente: true,
+        })
+        if (resultadoStock?.movimiento) movsStockItem.push(resultadoStock.movimiento)
+      }
     }
 
     // Only create movimiento for cash sales - credit sales only create CuentaPorCobrar
@@ -458,11 +464,12 @@ async function registrarVentaInterno(items: Array<{
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
         }
       })
-      // Conecta el Kardex (creado arriba) con este Movimiento — antes se
+      // Conecta el Kardex (creado arriba — puede ser más de una fila si la
+      // venta se repartió entre varios lotes) con este Movimiento — antes se
       // pasaba movimientoId en el mismo llamado porque el Movimiento se
       // creaba primero; el orden se invirtió a propósito (ver comentario arriba).
-      if (movStockItem) {
-        await db.movimientoStock.update({ where: { id: movStockItem.id }, data: { movimientoId: movItem.id } })
+      if (movsStockItem.length > 0) {
+        await db.movimientoStock.updateMany({ where: { id: { in: movsStockItem.map(m => m.id) } }, data: { movimientoId: movItem.id } })
       }
     }
   }
