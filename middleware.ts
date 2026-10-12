@@ -2,21 +2,16 @@ import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 import { tieneAcceso } from "@/lib/permisos"
 
-// Cuánto tiempo se confía en el último resultado de /api/check-session antes
-// de volver a consultarlo. Antes se consultaba la DB en CADA request al
-// dashboard/admin (cada clic = 1 invocación extra + 1 query solo para esto,
-// sobre todas las páginas de la plataforma). Con esta ventana, un usuario
-// navegando activamente genera una fracción de esas consultas en vez de una
-// por clic — a cambio, desactivar a un empleado, suspender una cuenta de
-// cliente o cambiarle los módulos permitidos tarda hasta este margen en
-// notarse (antes era instantáneo). Bajado de 20s a 5s: suspender la cuenta
-// de un cliente de Nelyx es una acción poco frecuente y de alto impacto —
-// que tarde hasta 20s en expulsarlo a alguien que sigue registrando ventas
-// es demasiado margen; 5s sigue evitando una consulta por cada clic de
-// navegación normal, sin dejar de sentirse prácticamente instantáneo.
-const FRESCURA_SEGUNDOS = 5
-const COOKIE_CHECK = "nlx_sc"
-
+// Antes esto se cacheaba por unos segundos en una cookie (nlx_sc) para no
+// pagar una consulta a la DB en cada clic — primero 20s, después bajado a
+// 5s. Pero una suspensión o desactivación es justo el tipo de cambio que
+// NO puede tener ningún margen: mientras dura la ventana de caché, la
+// cuenta suspendida sigue registrando ventas y moviendo stock con
+// normalidad. Se saca la caché por completo — cada request a /dashboard o
+// /admin consulta /api/check-session fresco. Es una sola fila por id
+// (barata, indexada por primary key); el costo real de "una consulta más
+// por navegación" es insignificante comparado con el de dejar una cuenta
+// desactivada seguir operando.
 export default auth(async (req) => {
   const { pathname } = req.nextUrl
   const session = req.auth
@@ -45,59 +40,54 @@ export default auth(async (req) => {
     return NextResponse.redirect(new URL("/auth/login", req.url))
   }
 
+  // Una Server Action (identificada por el header "next-action", mismo
+  // criterio que ya se usa arriba para /auth/login) también le llega al
+  // middleware como POST a la URL de la página donde se disparó. Si la
+  // cuenta está inactiva y se la redirige acá con un 307 crudo, ese fetch
+  // interno de Next.js (el que ejecuta la Server Action) sigue la
+  // redirección, aterriza en el HTML de /auth/forzar-salida, y como esa
+  // respuesta no tiene el formato que Next.js espera de una Server Action
+  // revienta en el cliente con "An unexpected response was received from
+  // the server" — la persona queda pegada en la misma pantalla, sin la X
+  // de Nelyx y sin cerrar sesión, aunque la acción en sí nunca llegue a
+  // ejecutarse (ver verificarCuentaActivaOExpulsar en lib/sesion-activa.ts,
+  // que ya corre al inicio de cada Server Action). Por eso una Server
+  // Action nunca se redirige desde acá: se deja pasar, y es la propia
+  // acción la que expulsa con redirect() — la única forma que Next.js sí
+  // sabe traducir en una navegación real cuando el resultado viene de una
+  // Server Action.
+  const esServerAction = req.headers.get("next-action") !== null
+
   // Verify user is still active in DB — y de paso, trae los módulos
   // permitidos FRESCOS (no los del JWT, que solo se recalculan al iniciar
-  // sesión). El resultado se cachea en una cookie propia por
-  // FRESCURA_SEGUNDOS para no pagar la consulta en cada clic.
-  //
-  // La cookie se ata al id de quien está actuando (empleado o dueño). Sin
-  // esto, "Cambiar de usuario" no invalida la cookie — es una cookie
-  // aparte de la sesión — así que durante la ventana de FRESCURA_SEGUNDOS
-  // el empleado recién entrado heredaba los módulos cacheados de quien
-  // estaba antes (p. ej. el dueño, con acceso total) en vez de los suyos.
-  const idActuando = (session.user as any)?.empleadoId || session.user?.id
+  // sesión). Sin caché: se consulta en cada request a /dashboard o /admin.
   let modulosFrescos: string[] | null | undefined = undefined
-  let huboConsultaFresca = false
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/admin")) {
-    let cache: { id: string; activo: boolean; modulosPermitidos: string[] | null } | null = null
-    const cacheRaw = req.cookies.get(COOKIE_CHECK)?.value
-    if (cacheRaw) {
-      try { cache = JSON.parse(cacheRaw) } catch { cache = null }
-      if (cache && cache.id !== idActuando) cache = null
-    }
-
-    if (cache) {
-      if (!cache.activo) return NextResponse.redirect(new URL("/auth/forzar-salida", req.url))
-      modulosFrescos = cache.modulosPermitidos
-    } else {
-      try {
-        // Se arma con VERCEL_URL (la URL fija de este despliegue, provista
-        // por la plataforma) en vez de con req.url — si se arma con el
-        // dominio que el usuario usó para entrar, y ese dominio tiene un
-        // redirect a otro (ej. el dominio viejo redirigiendo al nuevo tras
-        // conectar un dominio propio), este fetch interno cae en ese
-        // redirect entre dominios, pierde la cookie de sesión en el camino,
-        // y esta ruta responde "no hay sesión" — lo que fuerza un cierre de
-        // sesión real para cuentas que sí están activas. VERCEL_URL nunca
-        // pasa por reglas de redirect de dominio custom.
-        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : req.url
-        const checkUrl = new URL("/api/check-session", baseUrl)
-        const res = await fetch(checkUrl.toString(), {
-          headers: { cookie: req.headers.get("cookie") ?? "" },
-        })
-        const data = await res.json()
-        if (!data.activo) {
-          // Redirect to clean logout page — signs out properly without cookie errors
-          return NextResponse.redirect(new URL("/auth/forzar-salida", req.url))
-        }
-        modulosFrescos = data.modulosPermitidos
-        huboConsultaFresca = true
-      } catch {
-        // Si falla la consulta, se usa lo que venga en la sesión (JWT) como
-        // respaldo, en vez de bloquear todo por un error de red pasajero.
-        // No se cachea este resultado — no vino de una consulta real a la DB.
-        modulosFrescos = (session.user as any)?.modulosPermitidos
+  if (!esServerAction && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
+    try {
+      // Se arma con VERCEL_URL (la URL fija de este despliegue, provista
+      // por la plataforma) en vez de con req.url — si se arma con el
+      // dominio que el usuario usó para entrar, y ese dominio tiene un
+      // redirect a otro (ej. el dominio viejo redirigiendo al nuevo tras
+      // conectar un dominio propio), este fetch interno cae en ese
+      // redirect entre dominios, pierde la cookie de sesión en el camino,
+      // y esta ruta responde "no hay sesión" — lo que fuerza un cierre de
+      // sesión real para cuentas que sí están activas. VERCEL_URL nunca
+      // pasa por reglas de redirect de dominio custom.
+      const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : req.url
+      const checkUrl = new URL("/api/check-session", baseUrl)
+      const res = await fetch(checkUrl.toString(), {
+        headers: { cookie: req.headers.get("cookie") ?? "" },
+      })
+      const data = await res.json()
+      if (!data.activo) {
+        // Redirect to clean logout page — signs out properly without cookie errors
+        return NextResponse.redirect(new URL("/auth/forzar-salida", req.url))
       }
+      modulosFrescos = data.modulosPermitidos
+    } catch {
+      // Si falla la consulta, se usa lo que venga en la sesión (JWT) como
+      // respaldo, en vez de bloquear todo por un error de red pasajero.
+      modulosFrescos = (session.user as any)?.modulosPermitidos
     }
   }
 
@@ -120,16 +110,6 @@ export default auth(async (req) => {
         respuesta = NextResponse.redirect(new URL(`/dashboard/sin-permiso?modulo=${modulo}`, req.url))
       }
     }
-  }
-
-  if (huboConsultaFresca) {
-    respuesta.cookies.set(COOKIE_CHECK, JSON.stringify({ id: idActuando, activo: true, modulosPermitidos: modulosFrescos ?? null }), {
-      maxAge: FRESCURA_SEGUNDOS,
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-    })
   }
 
   return respuesta

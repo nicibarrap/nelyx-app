@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
 import { headers } from "next/headers"
 import { notificar } from "@/lib/notificaciones"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 // next/headers(), no el Request de NextAuth — igual que en
 // password-reset-acciones.ts (acá estamos en un Server Action, no en el
@@ -23,6 +24,7 @@ async function getSessionDueno() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
   if (session.user.esEmpleado) throw new Error("Solo el dueño de la cuenta puede administrar usuarios")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

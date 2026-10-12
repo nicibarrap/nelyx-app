@@ -3,10 +3,12 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { esSoloLectura } from "@/lib/permisos"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 // El tipo NO se re-exporta desde acá a propósito — un archivo "use server"
 // solo debe exportar funciones async. Bajo Turbopack (Next 15), mezclar un
 // "export type" en un archivo de Server Actions rompe el bundle cliente
@@ -16,6 +17,7 @@ import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

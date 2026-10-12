@@ -6,10 +6,12 @@ import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { enviarEmail, correoInvitacion, correoRecuperarPassword } from "@/lib/email"
 import { tokenResetValido } from "@/lib/auth-logica"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getAdminSession() {
   const session = await auth()
   if (!session || session.user.role !== "ADMIN" || session.user.esEmpleado) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

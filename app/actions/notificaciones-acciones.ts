@@ -2,10 +2,12 @@
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getSession() {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
   return session
 }
 

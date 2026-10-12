@@ -5,6 +5,7 @@ import { cambiarEstadoCliente, registrarPagoCobro, actualizarDatosCliente } from
 import { determinarEstadoAlReactivar } from "@/lib/suscripciones"
 import { verificarBloqueoLogin } from "@/app/actions/empleados-acciones"
 import { GET as checkSession } from "@/app/api/check-session/route"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 let sesionActual: any = null
 vi.mock("@/lib/auth", () => ({
@@ -14,6 +15,12 @@ vi.mock("@/lib/auth", () => ({
 }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/headers", () => ({ headers: vi.fn(() => Promise.resolve(new Map())) }))
+// Next.js redirect() real lanza un error especial con digest "NEXT_REDIRECT"
+// que su propio runtime intercepta — acá se imita lo mínimo necesario para
+// poder comprobar, desde el test, a dónde intentó mandar a la persona.
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((url: string) => { throw new Error(`NEXT_REDIRECT:${url}`) }),
+}))
 
 async function crearAdmin() {
   const admin = await db.user.create({
@@ -180,6 +187,54 @@ describe("GET /api/check-session — cascada dueño → empleados", () => {
     const body = await res.json()
 
     expect(body.activo).toBe(false)
+  })
+})
+
+// Bug real reportado: una Server Action disparada SIN que la persona haya
+// vuelto a navegar antes (ej. parada en un formulario cuando su cuenta se
+// desactiva) no pasaba por ningún chequeo fresco — getSession() en cada
+// acciones.ts solo decodificaba el JWT, nunca consultaba la DB. El
+// middleware sí detecta la cuenta inactiva en ese POST, pero un redirect
+// HTTP crudo ahí rompe el protocolo de respuesta que Next.js espera de una
+// Server Action ("An unexpected response was received from the server"),
+// así que la persona se queda pegada en la pantalla sin ningún aviso.
+// verificarCuentaActivaOExpulsar() es la pieza que cada getSession() de
+// app/actions/*.ts llama ahora, para que sea la propia Server Action quien
+// expulse con redirect() — la única forma que Next.js sí sabe traducir en
+// una navegación real del lado del cliente en ese caso.
+describe("verificarCuentaActivaOExpulsar — defensa dentro de la Server Action", () => {
+  it("no hace nada cuando la cuenta está activa", async () => {
+    const user = await db.user.create({
+      data: { nombre: "Cuenta activa", email: `activa-${Math.random()}@nelyx.cl`, password: "x", rol: "USER", activo: true },
+    })
+    await expect(verificarCuentaActivaOExpulsar({ user: { id: user.id } } as any)).resolves.toBeUndefined()
+  })
+
+  it("expulsa con redirect() a /auth/forzar-salida cuando la cuenta está desactivada", async () => {
+    const user = await db.user.create({
+      data: { nombre: "Cuenta desactivada", email: `inactiva-${Math.random()}@nelyx.cl`, password: "x", rol: "USER", activo: false },
+    })
+    await expect(verificarCuentaActivaOExpulsar({ user: { id: user.id } } as any)).rejects.toThrow("NEXT_REDIRECT:/auth/forzar-salida")
+  })
+
+  it("expulsa a un empleado cuya cuenta dueña fue desactivada, aunque su propio registro siga activo", async () => {
+    const dueno = await db.user.create({
+      data: { nombre: "Dueño suspendido", email: `dueno2-${Math.random()}@nelyx.cl`, password: "x", rol: "USER", activo: false },
+    })
+    const empleado = await db.user.create({
+      data: { nombre: "Empleado", email: `empleado2-${Math.random()}@nelyx.cl`, password: "x", rol: "USER", activo: true, cuentaPrincipalId: dueno.id },
+    })
+    await expect(verificarCuentaActivaOExpulsar({ user: { id: dueno.id, empleadoId: empleado.id } } as any)).rejects.toThrow("NEXT_REDIRECT:/auth/forzar-salida")
+  })
+
+  it("deja pasar a un empleado activo de una cuenta dueña activa", async () => {
+    const dueno = await db.user.create({
+      data: { nombre: "Dueño activo", email: `dueno3-${Math.random()}@nelyx.cl`, password: "x", rol: "USER", activo: true },
+    })
+    const empleado = await db.user.create({
+      data: { nombre: "Empleado", email: `empleado3-${Math.random()}@nelyx.cl`, password: "x", rol: "USER", activo: true, cuentaPrincipalId: dueno.id },
+    })
+    await expect(verificarCuentaActivaOExpulsar({ user: { id: dueno.id, empleadoId: empleado.id } } as any)).resolves.toBeUndefined()
   })
 })
 

@@ -2,6 +2,7 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { prepararGraficoAnual } from "@/lib/utils"
+import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 /**
  * Trae los movimientos de TODO el año en una sola consulta y los agrega en
@@ -12,6 +13,7 @@ import { prepararGraficoAnual } from "@/lib/utils"
 export async function obtenerDatosGraficoAnual(anio: number) {
   const session = await auth()
   if (!session?.user?.id) throw new Error("No autorizado")
+  await verificarCuentaActivaOExpulsar(session)
 
   const movimientos = await db.movimiento.findMany({
     where: { userId: session.user.id, fecha: { gte: new Date(anio, 0, 1), lt: new Date(anio + 1, 0, 1) } },
