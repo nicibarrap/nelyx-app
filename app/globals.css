@@ -93,6 +93,17 @@ body {
 .light .logo-light { display: block; }
 .light .logo-dark  { display: none; }
 
+/* Texto de las tarjetas de tipo de movimiento (Gasto/Ingreso extra/Retiro)
+   cuando están seleccionadas: el tono pastel que resalta sobre el fondo
+   oscuro queda casi ilegible sobre el fondo claro — en modo claro se oscurece
+   a una variante más saturada del mismo color para mantener el contraste. */
+.chip-text-red    { color: #fca5a5; }
+.chip-text-sky    { color: #7dd3fc; }
+.chip-text-purple { color: #d8b4fe; }
+.light .chip-text-red    { color: #b91c1c; }
+.light .chip-text-sky    { color: #0369a1; }
+.light .chip-text-purple { color: #7e22ce; }
+
 /* ══════════════════════════════════════════
    SCROLLBAR
 ══════════════════════════════════════════ */
