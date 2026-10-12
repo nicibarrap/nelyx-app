@@ -37,21 +37,41 @@ export async function calcularLotesProducto(productoId: string, userId: string):
   return lotes.map((l, i) => ({ ...l, numero: i + 1 }))
 }
 
+export type ConsumoLote = { fechaVencimiento: Date | null; cantidad: number }
+
 /**
- * El lote que corresponde vender primero (el más próximo a vencer entre los
- * que todavía tienen stock) — se usa al registrar una venta para "amarrar"
- * la salida a ese lote en silencio, sin pedirle nada al cajero. Si el
- * producto no tiene ningún lote con vencimiento, devuelve null y la venta
- * sigue funcionando exactamente igual que siempre.
+ * Reparte una salida de stock (venta, merma, etc.) entre los lotes vigentes
+ * en orden FIFO (el más próximo a vencer primero), agotando cada lote por
+ * completo antes de pasar al siguiente. Si la cantidad pedida supera lo que
+ * queda en todos los lotes con vencimiento (o el producto no tiene ninguno),
+ * el resto queda sin lote (fechaVencimiento: null) — se amarra igual que
+ * antes de que existiera el seguimiento por lotes.
+ *
+ * Antes, la salida completa se amarraba entera al primer lote (el que vence
+ * primero) sin importar cuánto tuviera: si la venta superaba lo que había
+ * en ese lote, los lotes siguientes quedaban con cantidades que ya no
+ * reflejaban la venta real (parecían intactos aunque se hubiera vendido
+ * parte de su stock).
  */
-export async function obtenerLoteFIFO(productoId: string, userId: string): Promise<Date | null> {
+export async function calcularConsumoFIFO(productoId: string, userId: string, cantidadNecesaria: number): Promise<ConsumoLote[]> {
+  if (cantidadNecesaria <= 0) return []
   const lotes = await calcularLotesProducto(productoId, userId)
-  return lotes.length > 0 ? new Date(lotes[0].fechaVencimiento) : null
+  const plan: ConsumoLote[] = []
+  let restante = cantidadNecesaria
+  for (const lote of lotes) {
+    if (restante <= 0) break
+    const consumo = Math.min(restante, lote.cantidadRestante)
+    plan.push({ fechaVencimiento: new Date(lote.fechaVencimiento), cantidad: consumo })
+    restante -= consumo
+  }
+  if (restante > 0) plan.push({ fechaVencimiento: null, cantidad: restante })
+  return plan
 }
 
 /**
- * Igual que obtenerLoteFIFO, pero para TODOS los productos del usuario a la
- * vez — una sola consulta en vez de una por producto, pensado para listas
+ * Igual que calcularLotesProducto (toma el lote que vence primero), pero
+ * para TODOS los productos del usuario a la vez — una sola consulta en vez
+ * de una por producto, pensado para listas
  * (la vista general de Productos). Devuelve solo los productos que sí
  * tienen al menos un lote vigente, con su fecha más próxima.
  */
