@@ -7,9 +7,14 @@ import { tieneAcceso } from "@/lib/permisos"
 // dashboard/admin (cada clic = 1 invocación extra + 1 query solo para esto,
 // sobre todas las páginas de la plataforma). Con esta ventana, un usuario
 // navegando activamente genera una fracción de esas consultas en vez de una
-// por clic — a cambio, desactivar a un empleado o cambiarle los módulos
-// permitidos tarda hasta este margen en notarse (antes era instantáneo).
-const FRESCURA_SEGUNDOS = 20
+// por clic — a cambio, desactivar a un empleado, suspender una cuenta de
+// cliente o cambiarle los módulos permitidos tarda hasta este margen en
+// notarse (antes era instantáneo). Bajado de 20s a 5s: suspender la cuenta
+// de un cliente de Nelyx es una acción poco frecuente y de alto impacto —
+// que tarde hasta 20s en expulsarlo a alguien que sigue registrando ventas
+// es demasiado margen; 5s sigue evitando una consulta por cada clic de
+// navegación normal, sin dejar de sentirse prácticamente instantáneo.
+const FRESCURA_SEGUNDOS = 5
 const COOKIE_CHECK = "nlx_sc"
 
 export default auth(async (req) => {

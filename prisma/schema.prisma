@@ -15,6 +15,10 @@ model User {
   rol                   Rol                    @default(USER)
   activo                Boolean                @default(true)
   negocio               String?
+  // Solo se usa hoy para clientes de Nelyx (rol USER, cuentaPrincipalId
+  // null) — permite al admin de /admin/clientes contactarlos directo por
+  // WhatsApp desde su ficha. Nunca se pide en el registro normal.
+  telefono              String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   // ── Multi-usuario: un dueño puede crear "empleados" que inician sesión
@@ -412,7 +416,30 @@ model SuscripcionNelyx {
   updatedAt            DateTime     @updatedAt
   pagos                PagoNelyx[]
   cobros               CobroNelyx[]
+  eventos              SuscripcionNelyxEvento[]
   @@index([estado])
+}
+
+// Auditoría de /admin/clientes — "qué pasó y cuándo" con la suscripción
+// de un cliente: cambios de estado (suspendida/reactivada/cancelada),
+// cambios de plan, pagos registrados, y las transiciones automáticas que
+// corren solas en sincronizarSuscripciones (cobro generado, vencido).
+// Append-only, igual que el resto de los "kardex" del proyecto — nunca se
+// edita ni se borra una fila existente.
+model SuscripcionNelyxEvento {
+  id            String           @id @default(cuid())
+  suscripcionId String
+  suscripcion   SuscripcionNelyx @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
+  tipo          String
+  detalle       String?
+  // Snapshot de quién lo hizo al momento del evento — null cuando lo
+  // disparó una transición automática (sincronizarSuscripciones), no un
+  // clic del admin. No es una relación a User: un evento de auditoría
+  // debe reflejar lo que era cierto en ese momento, no cambiar si el
+  // nombre del admin cambia después (ni romperse si esa cuenta se borra).
+  adminNombre   String?
+  createdAt     DateTime         @default(now())
+  @@index([suscripcionId])
 }
 
 model PagoNelyx {

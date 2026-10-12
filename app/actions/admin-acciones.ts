@@ -5,8 +5,9 @@ import { auth } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
 import { randomBytes } from "crypto"
-import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO } from "@/lib/suscripciones"
+import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO, determinarEstadoAlReactivar, registrarEventoSuscripcion } from "@/lib/suscripciones"
 import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
+import { formatCLP } from "@/lib/utils"
 
 async function getAdminSession() {
   const session = await auth()
@@ -26,10 +27,11 @@ function generarPasswordAleatoria(): string {
 // nunca ve ni define una contraseña acá: la define él mismo desde el link
 // de invitación (ver enviarInvitacionCliente en password-reset-acciones.ts).
 export async function crearClienteNelyx(formData: FormData) {
-  await getAdminSession()
+  const session = await getAdminSession()
   const nombre = formData.get("nombre") as string
   const email = formData.get("email") as string
   const negocio = formData.get("negocio") as string | null
+  const telefono = formData.get("telefono") as string | null
   const planSeleccionado = (formData.get("plan") as string) || "mensual"
   const fechaInicioInput = formData.get("fechaInicio") as string | null
 
@@ -48,6 +50,7 @@ export async function crearClienteNelyx(formData: FormData) {
         email: email.trim().toLowerCase(),
         password: hashed,
         negocio: negocio?.trim() || null,
+        telefono: telefono?.trim() || null,
         activo: true,
         rol: "USER",
       },
@@ -61,7 +64,7 @@ export async function crearClienteNelyx(formData: FormData) {
 
   const fechaFinPrueba = new Date(fechaInicio)
   fechaFinPrueba.setDate(fechaFinPrueba.getDate() + DIAS_PRUEBA_GRATUITA)
-  await db.suscripcionNelyx.create({
+  const sus = await db.suscripcionNelyx.create({
     data: {
       userId: user.id,
       plan,
@@ -71,9 +74,31 @@ export async function crearClienteNelyx(formData: FormData) {
       precioPlan: 0,
     },
   })
+  await registrarEventoSuscripcion(sus.id, "creada", `Cliente creado con plan ${PLANES[plan].label}`, session.user.name)
 
   revalidatePath("/admin/clientes")
   return { id: user.id }
+}
+
+// ── Editar datos del cliente (nombre, negocio, email, teléfono) ───────
+export async function actualizarDatosCliente(userId: string, datos: { nombre: string; negocio: string; email: string; telefono: string }) {
+  await getAdminSession()
+  const nombre = datos.nombre.trim()
+  const email = datos.email.trim().toLowerCase()
+  if (!nombre || !email) throw new Error("Nombre y email son obligatorios")
+
+  try {
+    await db.user.update({
+      where: { id: userId },
+      data: { nombre, email, negocio: datos.negocio.trim() || null, telefono: datos.telefono.trim() || null },
+    })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new Error("Ya existe otra cuenta con ese email.")
+    }
+    throw err
+  }
+  revalidatePath("/admin/clientes")
 }
 
 /**
@@ -98,7 +123,7 @@ async function conTransaccionSerializable<T>(fn: (tx: Prisma.TransactionClient) 
 
 // ── Registrar pago de un cobro pendiente ───────────────────────────────
 export async function registrarPagoCobro(formData: FormData) {
-  await getAdminSession()
+  const session = await getAdminSession()
   const cobroId = formData.get("cobroId") as string
   const metodoPago = (formData.get("metodoPago") as string) || "transferencia"
   const observacion = (formData.get("observacion") as string | null) || null
@@ -132,6 +157,9 @@ export async function registrarPagoCobro(formData: FormData) {
       data: { estado: "al_dia", fechaProximoCobro },
     })
     await tx.user.update({ where: { id: cobroBase.suscripcion.userId }, data: { activo: true } })
+    await tx.suscripcionNelyxEvento.create({
+      data: { suscripcionId: cobro.suscripcionId, tipo: "pago_registrado", detalle: `${formatCLP(Number(cobro.monto))} vía ${metodoPago}`, adminNombre: session.user.name },
+    })
     return cobro.suscripcionId
   })
 
@@ -143,7 +171,7 @@ export async function registrarPagoCobro(formData: FormData) {
 
 // ── Editar suscripción (plan, fechas, precio, estado, renovación) ─────
 export async function actualizarSuscripcion(formData: FormData) {
-  await getAdminSession()
+  const session = await getAdminSession()
   const suscripcionId = formData.get("suscripcionId") as string
   const plan = formData.get("plan") as string
   const fechaProximoCobroRaw = formData.get("fechaProximoCobro") as string | null
@@ -156,11 +184,16 @@ export async function actualizarSuscripcion(formData: FormData) {
   const planFinal: PlanKey = esPlanValido(plan) ? plan : "mensual"
   const nuevoPrecio = precioDePlan(planFinal)
   const fechaProximoCobro = fechaProximoCobroRaw ? new Date(fechaProximoCobroRaw) : sus.fechaProximoCobro
+  const cambioDePlan = esPlanValido(sus.plan) && sus.plan !== planFinal
 
   await db.suscripcionNelyx.update({
     where: { id: suscripcionId },
     data: { plan: planFinal, precioPlan: nuevoPrecio, fechaProximoCobro, renovacionAutomatica },
   })
+  if (cambioDePlan) {
+    const planAnterior = esPlanValido(sus.plan) ? PLANES[sus.plan].label : sus.plan
+    await registrarEventoSuscripcion(suscripcionId, "cambio_plan", `${planAnterior} → ${PLANES[planFinal].label}`, session.user.name)
+  }
 
   // Si cambió de plan y se pide generar el cobro del nuevo monto de inmediato
   if (generarCobroAhora) {
@@ -178,6 +211,9 @@ export async function actualizarSuscripcion(formData: FormData) {
         },
       }),
       db.suscripcionNelyx.update({ where: { id: suscripcionId }, data: { estado: "pendiente" } }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId, tipo: "cobro_generado", detalle: `Cobro manual por ${formatCLP(nuevoPrecio)}`, adminNombre: session.user.name },
+      }),
     ])
   }
 
@@ -186,11 +222,26 @@ export async function actualizarSuscripcion(formData: FormData) {
 
 // ── Suspender / reactivar / cancelar ───────────────────────────────────
 export async function cambiarEstadoCliente(suscripcionId: string, estado: "suspendido" | "al_dia" | "cancelado") {
-  await getAdminSession()
+  const session = await getAdminSession()
   const sus = await db.suscripcionNelyx.findUnique({ where: { id: suscripcionId } })
   if (!sus) return
-  await db.suscripcionNelyx.update({ where: { id: suscripcionId }, data: { estado } })
-  await db.user.update({ where: { id: sus.userId }, data: { activo: estado === "al_dia" } })
+
+  // "al_dia" acá siempre significa "reactivar" (el botón "Reactivar" lo usa
+  // tanto para una cuenta suspendida como una cancelada) — no se puede
+  // asumir que reactivar deja a la cuenta al día: si tenía un cobro vencido
+  // sin pagar antes de suspenderla, reactivar no debe borrar esa deuda.
+  // El estado real se recalcula aparte; lo único que "al_dia" garantiza
+  // acá es que la persona recupera el acceso (activo: true).
+  const reactivando = estado === "al_dia"
+  const estadoFinal = reactivando ? await determinarEstadoAlReactivar(suscripcionId) : estado
+
+  await db.suscripcionNelyx.update({ where: { id: suscripcionId }, data: { estado: estadoFinal } })
+  await db.user.update({ where: { id: sus.userId }, data: { activo: reactivando } })
+
+  const tipoEvento = reactivando ? "reactivada" : estado === "suspendido" ? "suspendida" : "cancelada"
+  const detalle = reactivando && estadoFinal !== "al_dia" ? `Quedó en "${estadoFinal}" — seguía con un cobro sin pagar` : null
+  await registrarEventoSuscripcion(suscripcionId, tipoEvento, detalle, session.user.name)
+
   revalidatePath("/admin/clientes")
 }
 
@@ -201,14 +252,15 @@ export async function actualizarNotaCliente(suscripcionId: string, nota: string)
 }
 
 export async function crearSuscripcionParaUsuario(userId: string) {
-  await getAdminSession()
+  const session = await getAdminSession()
   const existe = await db.suscripcionNelyx.findUnique({ where: { userId } })
   if (existe) return
   const fechaInicio = new Date()
   const fechaFinPrueba = new Date(fechaInicio)
   fechaFinPrueba.setDate(fechaFinPrueba.getDate() + DIAS_PRUEBA_GRATUITA)
-  await db.suscripcionNelyx.create({
+  const sus = await db.suscripcionNelyx.create({
     data: { userId, plan: "mensual", estado: "prueba_gratuita", fechaInicio, fechaFinPrueba, precioPlan: 0 },
   })
+  await registrarEventoSuscripcion(sus.id, "creada", null, session.user.name)
   revalidatePath("/admin/clientes")
 }

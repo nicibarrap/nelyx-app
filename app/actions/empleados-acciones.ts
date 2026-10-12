@@ -147,8 +147,8 @@ export async function verificarBloqueoPin(empleadoId: string) {
  * (dueño, por email+contraseña) — se consulta después de un intento
  * fallido para distinguir entre tres casos que hoy dan el mismo mensaje
  * genérico "email o contraseña incorrectos": la cuenta está bloqueada por
- * varios intentos fallidos, el correo no existe, o simplemente la
- * contraseña está mal.
+ * varios intentos fallidos, el correo no existe, la cuenta está
+ * suspendida/desactivada, o simplemente la contraseña está mal.
  */
 export async function verificarBloqueoLogin(email: string) {
   const emailEscrito = email.trim()
@@ -158,19 +158,23 @@ export async function verificarBloqueoLogin(email: string) {
   // "registrado"), sin pasar por el signIn real ni gastar nada de su
   // límite por IP. Se la cuenta como un intento más del mismo contador.
   const ip = await ipActual()
-  if (await demasiadosIntentosDesdeIp(ip)) return { registrado: false, bloqueado: false, minutosRestantes: 0 }
+  if (await demasiadosIntentosDesdeIp(ip)) return { registrado: false, bloqueado: false, suspendido: false, minutosRestantes: 0 }
   await registrarIntentoFallido(ip)
 
   // Mismo criterio "insensitive" que usa el login real (lib/auth.ts) —
   // si acá se buscara distinto, este chequeo podría decir "no existe"
   // para una cuenta que el login sí reconoce, o viceversa.
-  const user = await db.user.findFirst({ where: { email: { equals: emailEscrito, mode: "insensitive" } }, select: { bloqueadoHastaPin: true } })
-  if (!user) return { registrado: false, bloqueado: false, minutosRestantes: 0 }
+  const user = await db.user.findFirst({ where: { email: { equals: emailEscrito, mode: "insensitive" } }, select: { bloqueadoHastaPin: true, activo: true } })
+  if (!user) return { registrado: false, bloqueado: false, suspendido: false, minutosRestantes: 0 }
   if (!user.bloqueadoHastaPin || user.bloqueadoHastaPin <= new Date()) {
-    return { registrado: true, bloqueado: false, minutosRestantes: 0 }
+    // "Suspendido" (lib/auth.ts también rechaza acá) se distingue de una
+    // contraseña incorrecta — antes ambos casos daban el mismo mensaje
+    // genérico, y quien intentaba entrar a una cuenta que Nelyx acababa de
+    // suspender no tenía forma de saber que el problema no era su clave.
+    return { registrado: true, bloqueado: false, suspendido: !user.activo, minutosRestantes: 0 }
   }
   const minutosRestantes = Math.ceil((user.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
-  return { registrado: true, bloqueado: true, minutosRestantes }
+  return { registrado: true, bloqueado: true, suspendido: false, minutosRestantes }
 }
 
 /**

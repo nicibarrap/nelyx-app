@@ -1,27 +1,15 @@
 import { db } from "@/lib/db"
 import * as Sentry from "@sentry/nextjs"
+import { type PlanKey, PLANES, esPlanValido, precioDePlan } from "@/lib/planes-nelyx"
 
-// ── Definición de planes ─────────────────────────────────────────────
-export type PlanKey = "mensual" | "trimestral" | "semestral" | "anual"
-
-export const PLANES: Record<PlanKey, { label: string; precio: number; meses: number }> = {
-  mensual:    { label: "Mensual",    precio: 20000,  meses: 1 },
-  trimestral: { label: "Trimestral", precio: 60000,  meses: 3 },
-  semestral:  { label: "Semestral",  precio: 120000, meses: 6 },
-  anual:      { label: "Anual",      precio: 240000, meses: 12 },
-}
+// Re-exportadas acá para no romper los imports existentes
+// (`from "@/lib/suscripciones"`) en el resto del código server-side — la
+// fuente real de estos tres vive en lib/planes-nelyx.ts (ver su comentario).
+export { type PlanKey, PLANES, esPlanValido, precioDePlan }
 
 export const DIAS_PRUEBA_GRATUITA = 30
 export const DIAS_GRACIA_PAGO = 5      // plazo para pagar un cobro antes de pasar a "vencido"
 export const DIAS_ALERTA_PROXIMO = 5   // días antes del cobro para marcar "próximo a vencer"
-
-export function esPlanValido(plan: string): plan is PlanKey {
-  return plan in PLANES
-}
-
-export function precioDePlan(plan: string): number {
-  return esPlanValido(plan) ? PLANES[plan].precio : 0
-}
 
 export function sumarMeses(fecha: Date, meses: number): Date {
   const d = new Date(fecha)
@@ -85,6 +73,43 @@ export async function sincronizarSuscripciones() {
   }
 }
 
+/**
+ * Deja una fila en el historial de auditoría de la suscripción (visible en
+ * /admin/clientes → ficha del cliente → "Ver historial"). adminNombre
+ * omitido o null = lo disparó una transición automática, no un clic del
+ * admin — ver el comentario del modelo en schema.prisma.
+ */
+export async function registrarEventoSuscripcion(suscripcionId: string, tipo: string, detalle?: string | null, adminNombre?: string | null) {
+  await db.suscripcionNelyxEvento.create({
+    data: { suscripcionId, tipo, detalle: detalle ?? null, adminNombre: adminNombre ?? null },
+  })
+}
+
+/**
+ * Al reactivar una suscripción suspendida o cancelada (desde /admin/clientes),
+ * no se puede asumir "al_dia" a ciegas — si tenía un cobro pendiente o
+ * vencido sin pagar antes de suspenderla, reactivar no debe borrar esa
+ * deuda convirtiéndola en "al día" como si se hubiera pagado. Se recalcula
+ * el estado real a partir de las mismas señales que usa
+ * sincronizarSuscripciones (si sigue habiendo un cobro sin pagar, o si la
+ * prueba gratuita todavía no terminaba).
+ */
+export async function determinarEstadoAlReactivar(suscripcionId: string): Promise<EstadoSuscripcion> {
+  const hoy = new Date()
+  const sus = await db.suscripcionNelyx.findUnique({
+    where: { id: suscripcionId },
+    select: {
+      fechaFinPrueba: true,
+      cobros: { where: { estado: { in: ["pendiente", "vencido"] } }, orderBy: { fechaVencimiento: "desc" }, take: 1, select: { fechaVencimiento: true } },
+    },
+  })
+  if (!sus) return "al_dia"
+  const cobroPendiente = sus.cobros[0]
+  if (cobroPendiente) return cobroPendiente.fechaVencimiento <= hoy ? "vencido" : "pendiente"
+  if (sus.fechaFinPrueba && sus.fechaFinPrueba > hoy) return "prueba_gratuita"
+  return "al_dia"
+}
+
 async function aplicarTransicion(sus: SusRow, hoy: Date) {
   // 1) Prueba gratuita terminada → generar primer cobro (plan mensual por defecto)
   if (sus.estado === "prueba_gratuita" && sus.fechaFinPrueba && sus.fechaFinPrueba <= hoy) {
@@ -108,6 +133,9 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
         where: { id: sus.id },
         data: { plan: planFinal, precioPlan: monto, estado: "pendiente" },
       }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Terminó la prueba gratuita — primer cobro de ${PLANES[planFinal].label} por $${monto}` },
+      }),
     ])
     return
   }
@@ -118,6 +146,9 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
     await db.$transaction([
       db.cobroNelyx.update({ where: { id: cobroPendiente.id }, data: { estado: "vencido" } }),
       db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "vencido" } }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId: sus.id, tipo: "vencido", detalle: "El cobro pendiente venció sin pagarse" },
+      }),
     ])
     return
   }
@@ -141,6 +172,9 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
         },
       }),
       db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "pendiente" } }),
+      db.suscripcionNelyxEvento.create({
+        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Nuevo ciclo — cobro de ${PLANES[planFinal].label} por $${monto}` },
+      }),
     ])
     return
   }
