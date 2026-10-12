@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
 import { randomBytes } from "crypto"
-import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO } from "@/lib/suscripciones"
+import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO, determinarEstadoAlReactivar } from "@/lib/suscripciones"
 import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 
 async function getAdminSession() {
@@ -189,8 +189,18 @@ export async function cambiarEstadoCliente(suscripcionId: string, estado: "suspe
   await getAdminSession()
   const sus = await db.suscripcionNelyx.findUnique({ where: { id: suscripcionId } })
   if (!sus) return
-  await db.suscripcionNelyx.update({ where: { id: suscripcionId }, data: { estado } })
-  await db.user.update({ where: { id: sus.userId }, data: { activo: estado === "al_dia" } })
+
+  // "al_dia" acá siempre significa "reactivar" (el botón "Reactivar" lo usa
+  // tanto para una cuenta suspendida como una cancelada) — no se puede
+  // asumir que reactivar deja a la cuenta al día: si tenía un cobro vencido
+  // sin pagar antes de suspenderla, reactivar no debe borrar esa deuda.
+  // El estado real se recalcula aparte; lo único que "al_dia" garantiza
+  // acá es que la persona recupera el acceso (activo: true).
+  const reactivando = estado === "al_dia"
+  const estadoFinal = reactivando ? await determinarEstadoAlReactivar(suscripcionId) : estado
+
+  await db.suscripcionNelyx.update({ where: { id: suscripcionId }, data: { estado: estadoFinal } })
+  await db.user.update({ where: { id: sus.userId }, data: { activo: reactivando } })
   revalidatePath("/admin/clientes")
 }
 

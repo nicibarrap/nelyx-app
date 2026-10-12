@@ -51,7 +51,7 @@ describe("Login: búsqueda de cuenta sin distinguir mayúsculas/minúsculas", ()
 
   it("dice que no está registrado un correo que de verdad no existe", async () => {
     const resultado = await verificarBloqueoLogin("nadie@nelyx.cl")
-    expect(resultado).toEqual({ registrado: false, bloqueado: false, minutosRestantes: 0 })
+    expect(resultado).toEqual({ registrado: false, bloqueado: false, suspendido: false, minutosRestantes: 0 })
   })
 
   it("reporta bloqueada una cuenta con bloqueadoHastaPin en el futuro", async () => {

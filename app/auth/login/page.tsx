@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import { LoginForm } from "@/components/auth/login-form"
 import { ComoFunciona } from "@/components/auth/como-funciona"
 import { MiniDashboard } from "@/components/auth/mini-dashboard"
@@ -183,8 +184,14 @@ export default function LoginPage() {
                 <p className="text-sm text-white/40 mt-2 leading-relaxed">Ingresa a tu cuenta para continuar<br/>gestionando tu negocio.</p>
               </div>
 
-              {/* Auth form */}
-              <LoginForm/>
+              {/* Auth form — envuelto en Suspense porque LoginForm usa
+                  useSearchParams() (para detectar ?motivo=sesion-cerrada
+                  tras una expulsión forzada), y esta página no usa ninguna
+                  API dinámica propia que ya la saque del prerenderizado
+                  estático — sin este límite, el build falla. */}
+              <Suspense fallback={null}>
+                <LoginForm/>
+              </Suspense>
 
               {/* Trust badges inside card */}
               <div className="grid grid-cols-3 gap-2 mt-7 pt-6 border-t border-white/8">

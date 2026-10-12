@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
 import { toast } from "sonner"
 import { obtenerEmpleadosDeMiCuenta, verificarBloqueoLogin } from "@/app/actions/empleados-acciones"
@@ -9,6 +10,20 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
   const [infoParaElegir, setInfoParaElegir] = useState<{ cuentaId: string; nombreDueno: string; negocio: string | null; emailDueno?: string; empleados: { id: string; nombre: string }[] } | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Llega acá desde /auth/forzar-salida (ver middleware.ts) — alguien fue
+  // expulsado porque su cuenta (o la cuenta dueña de la que depende) se
+  // desactivó o suspendió. Se limpia el query param de la URL (replace,
+  // sin agregar una entrada al historial) para que un refresh o volver con
+  // "atrás" no repita el aviso.
+  useEffect(() => {
+    if (searchParams.get("motivo") === "sesion-cerrada") {
+      toast.error("Tu sesión se cerró porque esta cuenta fue desactivada o suspendida.", { duration: 8000 })
+      router.replace("/auth/login")
+    }
+  }, [searchParams, router])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -26,11 +41,13 @@ export function LoginForm({ onLoginExitoso }: { onLoginExitoso?: () => void } = 
       // así que se consulta aparte para distinguir los tres casos que
       // hoy dan el mismo rechazo genérico: cuenta bloqueada, correo que
       // no existe, o contraseña incorrecta.
-      const { registrado, bloqueado, minutosRestantes } = await verificarBloqueoLogin(email)
+      const { registrado, bloqueado, suspendido, minutosRestantes } = await verificarBloqueoLogin(email)
       if (bloqueado) {
         toast.error(`Demasiados intentos fallidos. Intenta de nuevo en ${minutosRestantes} minuto${minutosRestantes === 1 ? "" : "s"}.`)
       } else if (!registrado) {
         toast.error("No existe ninguna cuenta con ese correo")
+      } else if (suspendido) {
+        toast.error("Esta cuenta está suspendida. Contacta a soporte para reactivarla.", { duration: 8000 })
       } else {
         toast.error("Contraseña incorrecta")
       }

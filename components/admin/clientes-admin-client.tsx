@@ -10,13 +10,7 @@ import {
 } from "@/app/actions/admin-acciones"
 import { enviarInvitacionCliente } from "@/app/actions/password-reset-acciones"
 import { CampoFecha } from "@/components/shared/campo-fecha"
-
-const PLANES_UI: Record<string, { label: string; precio: number; meses: number }> = {
-  mensual:    { label: "Mensual",    precio: 20000,  meses: 1 },
-  trimestral: { label: "Trimestral", precio: 60000,  meses: 3 },
-  semestral:  { label: "Semestral",  precio: 120000, meses: 6 },
-  anual:      { label: "Anual",      precio: 240000, meses: 12 },
-}
+import { PLANES as PLANES_UI } from "@/lib/planes-nelyx"
 
 type Pago = { id: string; fecha: string; monto: number; metodoPago: string; observacion: string | null; estado: string }
 type Cobro = { id: string; plan: string; monto: number; fechaEmision: string; fechaVencimiento: string; estado: string }
@@ -298,9 +292,10 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
   function crearSuscripcion() {
     start(async () => { await crearSuscripcionParaUsuario(c.id); toast.success("Suscripción creada") })
   }
+  const estaInactivo = c.estado === "suspendido" || c.estado === "cancelado"
   function toggleSuspender() {
     if (!c.suscripcionId) return
-    const nuevoEstado = c.estado === "suspendido" ? "al_dia" : "suspendido"
+    const nuevoEstado = estaInactivo ? "al_dia" : "suspendido"
     if (!confirm(nuevoEstado === "suspendido" ? "¿Suspender esta cuenta?" : "¿Reactivar esta cuenta?")) return
     start(async () => { await cambiarEstadoCliente(c.suscripcionId!, nuevoEstado); toast.success("Estado actualizado") })
   }
@@ -472,7 +467,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
             <button onClick={toggleSuspender} disabled={pending}
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
               <span className="text-lg">🚫</span>
-              <span className={`text-[9px] font-semibold text-center ${c.estado === "suspendido" ? "text-emerald-400" : "text-red-400"}`}>{c.estado === "suspendido" ? "Reactivar" : "Suspender"}</span>
+              <span className={`text-[9px] font-semibold text-center ${estaInactivo ? "text-emerald-400" : "text-red-400"}`}>{estaInactivo ? "Reactivar" : "Suspender"}</span>
             </button>
             {c.estado !== "cancelado" && (
               <button onClick={cancelar} disabled={pending}
