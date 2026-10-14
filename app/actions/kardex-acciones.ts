@@ -79,15 +79,25 @@ export async function obtenerHistorialProducto(productoId: string, cursor?: stri
 }
 
 /**
- * Marca un aviso de vencimiento como "resuelto" — el dueño ya vendió o botó
- * ese lote. No toca el stock ni ningún número real, solo deja de mostrarlo
- * en Alertas para que no quede como ruido permanente.
+ * Marca uno o más avisos de vencimiento como "resuelto" — el dueño ya
+ * vendió o botó ese lote. No toca el stock ni ningún número real, solo deja
+ * de mostrarlo en Alertas para que no quede como ruido permanente.
+ *
+ * Un mismo lote (producto + fecha exacta de vencimiento) puede estar
+ * formado por más de un movimiento de "reposición" (ej. se repuso dos
+ * veces con la misma fecha de vencimiento). obtenerLotesPorVencer() agrupa
+ * esos movimientos en una sola fila por lote, así que hay que descartarlos
+ * TODOS a la vez — si solo se marcara uno, la fila seguiría apareciendo con
+ * el otro movimiento como si nada hubiera pasado.
  */
-export async function descartarAvisoVencimiento(movimientoStockId: string) {
+export async function descartarAvisoVencimiento(movimientoStockIds: string[]) {
   const session = await getSessionEscritura("productos")
-  const mov = await db.movimientoStock.findFirst({ where: { id: movimientoStockId, userId: session.user.id } })
-  if (!mov) throw new Error("No encontrado")
-  await db.movimientoStock.update({ where: { id: movimientoStockId }, data: { avisoVencimientoDescartado: true } })
+  if (!movimientoStockIds || movimientoStockIds.length === 0) throw new Error("No encontrado")
+  const { count } = await db.movimientoStock.updateMany({
+    where: { id: { in: movimientoStockIds }, userId: session.user.id },
+    data: { avisoVencimientoDescartado: true },
+  })
+  if (count === 0) throw new Error("No encontrado")
 }
 
 /**
@@ -131,16 +141,33 @@ export async function obtenerLotesPorVencer() {
     restantePorLote.set(clave, (restantePorLote.get(clave) ?? 0) + m.cantidad)
   }
 
-  return entradas
-    .filter(l => l.producto.activo)
-    .map(l => {
-      const clave = `${l.productoId}|${l.fechaVencimiento!.toISOString()}`
-      return {
-        id: l.id,
-        productoNombre: l.producto.nombre,
-        cantidad: restantePorLote.get(clave) ?? l.cantidad,
-        fechaVencimiento: l.fechaVencimiento!.toISOString(),
-      }
-    })
+  // Un mismo lote (producto + fecha exacta de vencimiento) puede tener más
+  // de una entrada de reposición — ej. se repuso, se vendió por completo, y
+  // luego se volvió a reponer con la misma fecha de vencimiento (coincide
+  // justo con la del lote ya agotado). Antes cada entrada generaba su
+  // propia fila en la lista, así que el mismo producto/fecha aparecía
+  // duplicado (dos filas mostrando la misma cantidad restante). Se agrupa
+  // acá por lote: una sola fila, juntando los ids de todas las entradas que
+  // la forman (para poder descartarlas todas juntas con el botón "✓").
+  const porLote = new Map<string, { ids: string[]; productoId: string; productoNombre: string; fechaVencimiento: string }>()
+  for (const l of entradas) {
+    if (!l.producto.activo) continue
+    const clave = `${l.productoId}|${l.fechaVencimiento!.toISOString()}`
+    const existente = porLote.get(clave)
+    if (existente) {
+      existente.ids.push(l.id)
+    } else {
+      porLote.set(clave, { ids: [l.id], productoId: l.productoId, productoNombre: l.producto.nombre, fechaVencimiento: l.fechaVencimiento!.toISOString() })
+    }
+  }
+
+  return Array.from(porLote.values())
+    .map(l => ({
+      ids: l.ids,
+      productoNombre: l.productoNombre,
+      cantidad: restantePorLote.get(`${l.productoId}|${l.fechaVencimiento}`) ?? 0,
+      fechaVencimiento: l.fechaVencimiento,
+    }))
     .filter(l => l.cantidad > 0)
+    .sort((a, b) => new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime())
 }

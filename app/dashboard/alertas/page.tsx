@@ -290,7 +290,7 @@ export default async function AlertasPage() {
             </div>
             <div className="divide-y divide-[var(--c-border2)]">
               {lotesConDias.map(l => (
-                <FilaLotePorVencer key={l.id} movimientoStockId={l.id} productoNombre={l.productoNombre} cantidad={l.cantidad} fechaVencimiento={l.fechaVencimiento} diasRestantes={l.diasRestantes} />
+                <FilaLotePorVencer key={l.ids[0]} movimientoStockIds={l.ids} productoNombre={l.productoNombre} cantidad={l.cantidad} fechaVencimiento={l.fechaVencimiento} diasRestantes={l.diasRestantes} />
               ))}
             </div>
           </div>

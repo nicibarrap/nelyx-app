@@ -12,14 +12,19 @@ import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { ProductoWizard } from "@/components/productos/producto-wizard"
-import { type TipoMovimientoStock } from "@/lib/stock"
-import { obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
+import { DIRECCION_MOTIVO_AJUSTE, type TipoMovimientoStock } from "@/lib/stock"
+import { obtenerHistorialProducto } from "@/app/actions/kardex-acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { LotesProducto } from "@/components/productos/lotes-producto"
 import dynamic from "next/dynamic"
 // Carga perezosa: ver nota en escanear-nuevos-client.tsx.
 const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
 
+// Las direcciones válidas para cada motivo (qué tan razonable es +Agregar o
+// −Reducir con cada uno) viven en DIRECCION_MOTIVO_AJUSTE (lib/stock.ts) —
+// única fuente de verdad, revalidada también en el servidor (ajustarStock)
+// por si se llama directo. Acá solo se define el orden y la etiqueta que ve
+// el dueño del negocio.
 const MOTIVOS_AJUSTE: { value: TipoMovimientoStock; label: string }[] = [
   { value: "reposicion", label: "Compra" },
   { value: "correccion", label: "Corrección de inventario" },
@@ -457,11 +462,6 @@ function HistorialStock({ productoId }: { productoId: string }) {
     if (nuevo && !cargadoInicial) cargar(true)
   }
 
-  function descartarVencimiento(movimientoStockId: string) {
-    setItems(prev => prev.map(m => m.id === movimientoStockId ? { ...m, avisoVencimientoDescartado: true } : m))
-    descartarAvisoVencimiento(movimientoStockId).catch(() => toast.error("No se pudo marcar como resuelto"))
-  }
-
   return (
     <div className="px-5 pb-5 border-t border-[var(--c-border)] pt-4">
       <button onClick={toggle} className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1.5 font-semibold">
@@ -495,10 +495,9 @@ function HistorialStock({ productoId }: { productoId: string }) {
                       {m.costoTotal != null && ` (${formatCLP(m.costoTotal)} total)`}
                     </p>
                     {m.observacion && <p className="text-[10px] text-[var(--c-text3)] mt-0.5 italic">"{m.observacion}"</p>}
-                    {m.fechaVencimiento && !m.avisoVencimientoDescartado && m.loteVigente && (m.tipo === "reposicion" || m.tipo === "inventario_inicial") && (
+                    {m.fechaVencimiento && m.loteVigente && (m.tipo === "reposicion" || m.tipo === "inventario_inicial") && (
                       <div className="flex items-center gap-2 mt-1.5 bg-amber-500/5 border border-amber-500/15 rounded-lg px-2.5 py-1.5">
-                        <span className="text-[10px] text-amber-400 flex-1">🗓️ Vence {new Date(m.fechaVencimiento).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}</span>
-                        <button onClick={() => descartarVencimiento(m.id)} className="text-[10px] text-[var(--c-text4)] hover:text-emerald-400 font-semibold flex-shrink-0">✓ Resuelto</button>
+                        <span className="text-[10px] text-amber-400">🗓️ Vence {new Date(m.fechaVencimiento).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}</span>
                       </div>
                     )}
                   </div>
@@ -696,8 +695,12 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
                   className="w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 h-7 text-xs text-[var(--c-text)] outline-none focus:border-sky-500 placeholder:text-[var(--c-text4)]" />
               )}
               <div className="flex items-center gap-2">
-                <button disabled={isPending} onClick={() => handleAjuste("agregar")} className="text-xs px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all">+ Agregar</button>
-                <button disabled={isPending} onClick={() => handleAjuste("reducir")} className="text-xs px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-all">− Reducir</button>
+                {(DIRECCION_MOTIVO_AJUSTE[motivoAjuste]?.agregar ?? true) && (
+                  <button disabled={isPending} onClick={() => handleAjuste("agregar")} className="text-xs px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all">+ Agregar</button>
+                )}
+                {(DIRECCION_MOTIVO_AJUSTE[motivoAjuste]?.reducir ?? true) && (
+                  <button disabled={isPending} onClick={() => handleAjuste("reducir")} className="text-xs px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-all">− Reducir</button>
+                )}
                 <button onClick={() => setAjustando(false)} className="text-xs text-[var(--c-text3)] hover:text-[var(--c-text)] ml-auto">Cancelar</button>
               </div>
             </div>
