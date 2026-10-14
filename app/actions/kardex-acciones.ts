@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { TIPO_MOVIMIENTO_LABEL, type TipoMovimientoStock } from "@/lib/stock"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
+import { calcularLotesProducto } from "@/lib/lotes"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getSession() {
@@ -35,13 +36,23 @@ export async function obtenerHistorialProducto(productoId: string, cursor?: stri
   const prod = await db.producto.findFirst({ where: { id: productoId, userId: session.user.id }, select: { id: true } })
   if (!prod) throw new Error("Producto no encontrado")
 
-  const items = await db.movimientoStock.findMany({
-    where: { productoId, userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    take: PAGE_SIZE + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    include: { proveedor: { select: { nombre: true } } },
-  })
+  const [items, lotesVigentes] = await Promise.all([
+    db.movimientoStock.findMany({
+      where: { productoId, userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      take: PAGE_SIZE + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { proveedor: { select: { nombre: true } } },
+    }),
+    calcularLotesProducto(productoId, session.user.id),
+  ])
+  // Un lote ya vendido por completo (cantidadRestante llegó a 0) no debe
+  // seguir ofreciendo el botón "✓ Resuelto" — no queda nada que resolver,
+  // se vendió solo. calcularLotesProducto ya filtra esos lotes agotados
+  // (mismo cálculo que usa la sección "Lotes con vencimiento" de esta misma
+  // ficha), así que un lote figura acá como vigente solo si de verdad
+  // todavía queda stock de esa fecha exacta.
+  const fechasVigentes = new Set(lotesVigentes.map(l => l.fechaVencimiento))
 
   const hayMas = items.length > PAGE_SIZE
   const pagina = items.slice(0, PAGE_SIZE)
@@ -60,6 +71,7 @@ export async function obtenerHistorialProducto(productoId: string, cursor?: stri
       costoTotal: m.costoTotal ? Number(m.costoTotal) : null,
       fechaVencimiento: m.fechaVencimiento ? m.fechaVencimiento.toISOString() : null,
       avisoVencimientoDescartado: m.avisoVencimientoDescartado,
+      loteVigente: m.fechaVencimiento ? fechasVigentes.has(m.fechaVencimiento.toISOString()) : false,
       createdAt: m.createdAt.toISOString(),
     })),
     siguienteCursor: hayMas ? pagina[pagina.length - 1].id : null,
@@ -79,30 +91,56 @@ export async function descartarAvisoVencimiento(movimientoStockId: string) {
 }
 
 /**
- * Todos los lotes con fecha de vencimiento informada, sin descartar,
- * ordenados del más próximo al menos próximo — para la sección "Productos
- * por vencer" de Alertas. El userId se toma de la sesión (no de un parámetro
- * del llamador): al ser una Server Action, es invocable directamente desde
- * el cliente con cualquier id, así que antes cualquiera podía leer los
- * lotes de inventario (vencimientos, cantidades) de otro usuario.
+ * Todos los lotes con fecha de vencimiento informada, sin descartar y que
+ * TODAVÍA tengan stock real, ordenados del más próximo al menos próximo —
+ * para la sección "Productos por vencer" de Alertas. El userId se toma de
+ * la sesión (no de un parámetro del llamador): al ser una Server Action, es
+ * invocable directamente desde el cliente con cualquier id, así que antes
+ * cualquiera podía leer los lotes de inventario (vencimientos, cantidades)
+ * de otro usuario.
  */
 export async function obtenerLotesPorVencer() {
   const session = await getSession()
   const userId = session.user.id
-  const lotes = await db.movimientoStock.findMany({
-    // Solo entradas (reposición / inventario inicial) — las ventas ahora
-    // también heredan la fecha del lote de origen (para poder descontar
-    // FIFO), pero eso no debe aparecer acá como si fuera un lote nuevo.
-    where: { userId, fechaVencimiento: { not: null }, avisoVencimientoDescartado: false, tipo: { in: ["reposicion", "inventario_inicial"] } },
-    include: { producto: { select: { nombre: true, activo: true } } },
-    orderBy: { fechaVencimiento: "asc" },
-  })
-  return lotes
+  const [entradas, todosLosMovimientos] = await Promise.all([
+    db.movimientoStock.findMany({
+      // Solo entradas (reposición / inventario inicial) — las ventas ahora
+      // también heredan la fecha del lote de origen (para poder descontar
+      // FIFO), pero eso no debe aparecer acá como si fuera un lote nuevo.
+      where: { userId, fechaVencimiento: { not: null }, avisoVencimientoDescartado: false, tipo: { in: ["reposicion", "inventario_inicial"] } },
+      include: { producto: { select: { nombre: true, activo: true } } },
+      orderBy: { fechaVencimiento: "asc" },
+    }),
+    // Cantidad real restante por lote (producto + fecha exacta de
+    // vencimiento) — mismo cálculo que calcularLotesProducto, pero para
+    // todos los productos de una sola pasada. Antes esta alerta se leía
+    // solo de la entrada original (reposición), con su cantidad de ese
+    // momento: una vez que el lote se vendía por completo, el aviso
+    // "por vencer" se quedaba ahí para siempre a menos que alguien lo
+    // marcara "✓ Resuelto" a mano, aunque ya no quedara ni una unidad por
+    // vencer.
+    db.movimientoStock.findMany({
+      where: { userId, fechaVencimiento: { not: null } },
+      select: { productoId: true, fechaVencimiento: true, cantidad: true },
+    }),
+  ])
+
+  const restantePorLote = new Map<string, number>()
+  for (const m of todosLosMovimientos) {
+    const clave = `${m.productoId}|${m.fechaVencimiento!.toISOString()}`
+    restantePorLote.set(clave, (restantePorLote.get(clave) ?? 0) + m.cantidad)
+  }
+
+  return entradas
     .filter(l => l.producto.activo)
-    .map(l => ({
-      id: l.id,
-      productoNombre: l.producto.nombre,
-      cantidad: l.cantidad,
-      fechaVencimiento: l.fechaVencimiento!.toISOString(),
-    }))
+    .map(l => {
+      const clave = `${l.productoId}|${l.fechaVencimiento!.toISOString()}`
+      return {
+        id: l.id,
+        productoNombre: l.producto.nombre,
+        cantidad: restantePorLote.get(clave) ?? l.cantidad,
+        fechaVencimiento: l.fechaVencimiento!.toISOString(),
+      }
+    })
+    .filter(l => l.cantidad > 0)
 }

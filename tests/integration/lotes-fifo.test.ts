@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { registrarVenta, eliminarMovimiento } from "@/app/actions/acciones"
 import { registrarMovimientoStock } from "@/lib/stock"
 import { calcularLotesProducto } from "@/lib/lotes"
+import { obtenerLotesPorVencer, obtenerHistorialProducto } from "@/app/actions/kardex-acciones"
 
 // Mismos stubs que race-conditions.test.ts: acciones.ts importa NextAuth
 // (vía getSession) y next/cache (revalidatePath), ninguno de los dos
@@ -111,5 +112,96 @@ describe("Venta que cruza varios lotes (FIFO)", () => {
     expect(lotesFinal).toHaveLength(2)
     expect(lotesFinal[0].cantidadRestante).toBe(1)
     expect(lotesFinal[1].cantidadRestante).toBe(2)
+  })
+})
+
+// Bug real reportado: al vender por completo un lote con fecha de
+// vencimiento, seguía apareciendo en "Productos por vencer" (Alertas) y el
+// botón "✓ Resuelto" seguía ofreciéndose en el historial del producto —
+// ambos leían la cantidad de la reposición original, nunca lo que de verdad
+// quedaba en ese lote. El dueño tenía que marcarlo manualmente aunque ya no
+// quedara ni una unidad por vencer.
+describe("Alertas de vencimiento se resuelven solas al agotarse el lote", () => {
+  it("obtenerLotesPorVencer deja de listar un lote apenas se vende por completo", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    const fechaVencimiento = new Date(Date.now() + 86400000) // mañana
+    await registrarMovimientoStock({
+      productoId: producto.id, userId: user.id, tipo: "reposicion",
+      cantidad: 2, fechaVencimiento,
+    })
+
+    const antes = await obtenerLotesPorVencer()
+    expect(antes.some(l => l.productoNombre === "Platano")).toBe(true)
+
+    await registrarVenta(
+      [{ productoId: producto.id, nombre: producto.nombre, precio: 1688, cantidad: 2 }],
+      new Date().toISOString(),
+    )
+
+    const despues = await obtenerLotesPorVencer()
+    expect(despues.some(l => l.productoNombre === "Platano")).toBe(false)
+  })
+
+  it("obtenerHistorialProducto marca loteVigente=false y oculta '✓ Resuelto' una vez agotado el lote", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    const fechaVencimiento = new Date(Date.now() + 86400000)
+    await registrarMovimientoStock({
+      productoId: producto.id, userId: user.id, tipo: "reposicion",
+      cantidad: 2, fechaVencimiento,
+    })
+
+    const historialAntes = await obtenerHistorialProducto(producto.id)
+    const entradaAntes = historialAntes.items.find(i => i.tipo === "reposicion")!
+    expect(entradaAntes.loteVigente).toBe(true)
+
+    await registrarVenta(
+      [{ productoId: producto.id, nombre: producto.nombre, precio: 1688, cantidad: 2 }],
+      new Date().toISOString(),
+    )
+
+    const historialDespues = await obtenerHistorialProducto(producto.id)
+    const entradaDespues = historialDespues.items.find(i => i.tipo === "reposicion")!
+    expect(entradaDespues.loteVigente).toBe(false)
+  })
+
+  it("una reposición nueva de otro lote no se ve afectada por el lote ya agotado de otra fecha", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await registrarMovimientoStock({
+      productoId: producto.id, userId: user.id, tipo: "reposicion",
+      cantidad: 2, fechaVencimiento: new Date(Date.now() + 86400000),
+    })
+    await registrarVenta(
+      [{ productoId: producto.id, nombre: producto.nombre, precio: 1688, cantidad: 2 }],
+      new Date().toISOString(),
+    )
+    // Lote nuevo, fecha distinta, con stock real — este sí debe seguir
+    // apareciendo normalmente, con su cantidad real.
+    await registrarMovimientoStock({
+      productoId: producto.id, userId: user.id, tipo: "reposicion",
+      cantidad: 2, fechaVencimiento: new Date(Date.now() + 8 * 86400000),
+    })
+
+    const lotes = await obtenerLotesPorVencer()
+    const delProducto = lotes.filter(l => l.productoNombre === "Platano")
+    expect(delProducto).toHaveLength(1)
+    expect(delProducto[0].cantidad).toBe(2)
   })
 })
