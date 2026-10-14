@@ -495,7 +495,7 @@ function HistorialStock({ productoId }: { productoId: string }) {
                       {m.costoTotal != null && ` (${formatCLP(m.costoTotal)} total)`}
                     </p>
                     {m.observacion && <p className="text-[10px] text-[var(--c-text3)] mt-0.5 italic">"{m.observacion}"</p>}
-                    {m.fechaVencimiento && !m.avisoVencimientoDescartado && (m.tipo === "reposicion" || m.tipo === "inventario_inicial") && (
+                    {m.fechaVencimiento && !m.avisoVencimientoDescartado && m.loteVigente && (m.tipo === "reposicion" || m.tipo === "inventario_inicial") && (
                       <div className="flex items-center gap-2 mt-1.5 bg-amber-500/5 border border-amber-500/15 rounded-lg px-2.5 py-1.5">
                         <span className="text-[10px] text-amber-400 flex-1">🗓️ Vence {new Date(m.fechaVencimiento).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}</span>
                         <button onClick={() => descartarVencimiento(m.id)} className="text-[10px] text-[var(--c-text4)] hover:text-emerald-400 font-semibold flex-shrink-0">✓ Resuelto</button>
