@@ -305,79 +305,96 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
         </div>
       </div>
 
-      {/* Mayores gastos + Productos más vendidos */}
+      {/* Mayores gastos + Productos más vendidos — ambas cards se muestran
+          siempre, aunque no haya datos todavía (antes desaparecían por
+          completo si el mes no tenía gastos o ventas, lo que hacía parecer
+          que la sección no existía en vez de que simplemente está vacía). */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {topGastos.length > 0 && (
-          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold text-[var(--c-text)]">Mayores gastos</h3>
-              <Link href="/dashboard/movimientos" className="text-xs text-sky-400 hover:text-sky-300 font-medium">Ver todo →</Link>
-            </div>
-            <p className="text-[11px] text-[var(--c-text4)] mb-4">{MESES[mes]} {anio}</p>
-            <div className="space-y-3">
-              {topGastos.map(([cat, monto]) => {
-                const pct = m.totalGastos > 0 ? Math.round((monto / m.totalGastos) * 100) : 0
-                const color = getColorCategoria(cat)
-                return (
-                  <div key={cat}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-[var(--c-text2)] truncate flex-1">{cat}</span>
-                      <span className="text-xs font-semibold text-[var(--c-text)] ml-2">{pct}%</span>
-                    </div>
-                    <div className="h-1.5 bg-[var(--c-card2)] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
-                    </div>
-                    <p className="text-[10px] text-[var(--c-text3)] mt-1">{formatCLP(monto)}</p>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-[var(--c-border2)]">
-              <span className="text-xs text-[var(--c-text3)]">Total gastos del mes</span>
-              <span className="text-sm font-bold text-[var(--c-text)]">{formatCLP(m.totalGastos)}</span>
-            </div>
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-[var(--c-text)]">Mayores gastos</h3>
+            <Link href="/dashboard/movimientos" className="text-xs text-sky-400 hover:text-sky-300 font-medium">Ver todo →</Link>
           </div>
-        )}
+          <p className="text-[11px] text-[var(--c-text4)] mb-4">{MESES[mes]} {anio}</p>
+          {topGastos.length > 0 ? (
+            <>
+              <div className="space-y-3">
+                {topGastos.map(([cat, monto]) => {
+                  const pct = m.totalGastos > 0 ? Math.round((monto / m.totalGastos) * 100) : 0
+                  const color = getColorCategoria(cat)
+                  return (
+                    <div key={cat}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs text-[var(--c-text2)] truncate flex-1">{cat}</span>
+                        <span className="text-xs font-semibold text-[var(--c-text)] ml-2">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-[var(--c-card2)] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                      </div>
+                      <p className="text-[10px] text-[var(--c-text3)] mt-1">{formatCLP(monto)}</p>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-[var(--c-border2)]">
+                <span className="text-xs text-[var(--c-text3)]">Total gastos del mes</span>
+                <span className="text-sm font-bold text-[var(--c-text)]">{formatCLP(m.totalGastos)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="py-6 text-center">
+              <span className="text-2xl block mb-2">💸</span>
+              <p className="text-xs text-[var(--c-text4)]">Todavía no registraste gastos este mes</p>
+            </div>
+          )}
+        </div>
 
-        {topProductos.length > 0 && (
-          <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold text-[var(--c-text)]">Productos más vendidos</h3>
-              <Link href="/dashboard/productos" className="text-xs text-sky-400 hover:text-sky-300 font-medium">Ver todo →</Link>
-            </div>
-            <p className="text-[11px] text-[var(--c-text4)] mb-4">{MESES[mes]} {anio}</p>
-            <div className="space-y-3">
-              {topProductos.map((p, i) => {
-                const pct = totalVentasProductos > 0 ? Math.round((p.total / totalVentasProductos) * 100) : 0
-                const margen = p.conUtilidad && p.total > 0 ? Math.round((p.utilidad / p.total) * 100) : null
-                const color = i===0 ? "#fbbf24" : i===1 ? "#94a3b8" : i===2 ? "#b45309" : "#38bdf8"
-                return (
-                  <div key={p.nombre}>
-                    <div className="flex items-center justify-between mb-1.5 gap-2">
-                      <span className="text-xs text-[var(--c-text2)] truncate flex-1">{getEmojiProducto(p.nombre)} {p.nombre}</span>
-                      <span className="text-xs font-semibold text-[var(--c-text)] flex-shrink-0">{pct}%</span>
-                    </div>
-                    <div className="h-1.5 bg-[var(--c-card2)] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className="text-[10px] text-[var(--c-text3)]">{p.count} unidades · {formatCLP(p.total)}</p>
-                      {p.conUtilidad ? (
-                        <p className={`text-[10px] font-medium ${p.utilidad >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatCLP(p.utilidad)} util. {margen !== null ? `(${margen}%)` : ""}</p>
-                      ) : (
-                        <p className="text-[10px] text-[var(--c-text4)]">Sin costo</p>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-[var(--c-border2)]">
-              <span className="text-xs text-[var(--c-text3)]">Total vendido en productos</span>
-              <span className="text-sm font-bold text-[var(--c-text)]">{formatCLP(totalVentasProductos)}</span>
-            </div>
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-[var(--c-text)]">Productos más vendidos</h3>
+            <Link href="/dashboard/productos" className="text-xs text-sky-400 hover:text-sky-300 font-medium">Ver todo →</Link>
           </div>
-        )}
+          <p className="text-[11px] text-[var(--c-text4)] mb-4">{MESES[mes]} {anio}</p>
+          {topProductos.length > 0 ? (
+            <>
+              <div className="space-y-3">
+                {topProductos.map((p, i) => {
+                  const pct = totalVentasProductos > 0 ? Math.round((p.total / totalVentasProductos) * 100) : 0
+                  const margen = p.conUtilidad && p.total > 0 ? Math.round((p.utilidad / p.total) * 100) : null
+                  const color = i===0 ? "#fbbf24" : i===1 ? "#94a3b8" : i===2 ? "#b45309" : "#38bdf8"
+                  return (
+                    <div key={p.nombre}>
+                      <div className="flex items-center justify-between mb-1.5 gap-2">
+                        <span className="text-xs text-[var(--c-text2)] truncate flex-1">{getEmojiProducto(p.nombre)} {p.nombre}</span>
+                        <span className="text-xs font-semibold text-[var(--c-text)] flex-shrink-0">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-[var(--c-card2)] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-[10px] text-[var(--c-text3)]">{p.count} unidades · {formatCLP(p.total)}</p>
+                        {p.conUtilidad ? (
+                          <p className={`text-[10px] font-medium ${p.utilidad >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatCLP(p.utilidad)} util. {margen !== null ? `(${margen}%)` : ""}</p>
+                        ) : (
+                          <p className="text-[10px] text-[var(--c-text4)]">Sin costo</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-[var(--c-border2)]">
+                <span className="text-xs text-[var(--c-text3)]">Total vendido en productos</span>
+                <span className="text-sm font-bold text-[var(--c-text)]">{formatCLP(totalVentasProductos)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="py-6 text-center">
+              <span className="text-2xl block mb-2">🛒</span>
+              <p className="text-xs text-[var(--c-text4)]">Todavía no registraste ventas este mes</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Alertas */}

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
-import { registrarVenta, eliminarMovimiento } from "@/app/actions/acciones"
+import { registrarVenta, eliminarMovimiento, ajustarStock } from "@/app/actions/acciones"
 import { registrarMovimientoStock } from "@/lib/stock"
 import { calcularLotesProducto } from "@/lib/lotes"
-import { obtenerLotesPorVencer, obtenerHistorialProducto } from "@/app/actions/kardex-acciones"
+import { obtenerLotesPorVencer, obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
 
 // Mismos stubs que race-conditions.test.ts: acciones.ts importa NextAuth
 // (vía getSession) y next/cache (revalidatePath), ninguno de los dos
@@ -203,5 +203,109 @@ describe("Alertas de vencimiento se resuelven solas al agotarse el lote", () => 
     const delProducto = lotes.filter(l => l.productoNombre === "Platano")
     expect(delProducto).toHaveLength(1)
     expect(delProducto[0].cantidad).toBe(2)
+  })
+})
+
+// Bug real reportado: si un lote se vendía por completo y luego se volvía a
+// reponer el mismo producto con la MISMA fecha de vencimiento (coincidencia
+// real — mismo proveedor, mismo vencimiento), "Productos por vencer" mostraba
+// DOS filas idénticas (una por cada reposición), aunque fuera el mismo lote
+// lógico. obtenerLotesPorVencer ahora agrupa por (producto, fecha exacta) en
+// vez de listar una fila por cada movimiento de reposición.
+describe("obtenerLotesPorVencer agrupa reposiciones que comparten la misma fecha de vencimiento", () => {
+  it("dos reposiciones con la misma fecha de vencimiento aparecen como una sola fila", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    const fecha = new Date(Date.now() + 86400000)
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 2, fechaVencimiento: fecha })
+    await registrarVenta([{ productoId: producto.id, nombre: producto.nombre, precio: 1688, cantidad: 2 }], new Date().toISOString())
+    // Reposición nueva, misma fecha exacta de vencimiento que la ya agotada.
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 3, fechaVencimiento: fecha })
+
+    const lotes = await obtenerLotesPorVencer()
+    const delProducto = lotes.filter(l => l.productoNombre === "Platano")
+    expect(delProducto).toHaveLength(1)
+    expect(delProducto[0].cantidad).toBe(3)
+    expect(delProducto[0].ids).toHaveLength(2)
+  })
+
+  it("descartar el aviso de un lote agrupado lo oculta aunque esté formado por dos reposiciones", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    const fecha = new Date(Date.now() + 86400000)
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 2, fechaVencimiento: fecha })
+    await registrarVenta([{ productoId: producto.id, nombre: producto.nombre, precio: 1688, cantidad: 2 }], new Date().toISOString())
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 3, fechaVencimiento: fecha })
+
+    const [lote] = (await obtenerLotesPorVencer()).filter(l => l.productoNombre === "Platano")
+    expect(lote.ids).toHaveLength(2)
+
+    await descartarAvisoVencimiento(lote.ids)
+
+    const despues = await obtenerLotesPorVencer()
+    expect(despues.some(l => l.productoNombre === "Platano")).toBe(false)
+  })
+})
+
+// Bug real reportado: los motivos de "Ajustar stock" (Merma, Producto
+// dañado, Consumo interno, Regalo, etc.) ofrecían +Agregar y −Reducir para
+// cualquiera, sin importar si tenía sentido (ej. "+3 Producto dañado" no
+// representa nada real), y las reducciones nunca se amarraban a un lote
+// específico aunque el producto sí tuviera lotes con vencimiento — la suma
+// de "Lotes con vencimiento" dejaba de coincidir con el stock real apenas
+// se registraba una merma.
+describe("Ajustar stock: dirección válida por motivo y FIFO en reducciones", () => {
+  it("rechaza agregar stock con un motivo que solo admite reducir", async () => {
+    await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: sesionActual!.user.id, nombre: "Pan", controlaInventario: true, stock: 5,
+        costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await expect(ajustarStock(producto.id, 1, "agregar", "merma")).rejects.toThrow(/no admite agregar/)
+  })
+
+  it("rechaza reducir stock con el motivo Compra", async () => {
+    await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: sesionActual!.user.id, nombre: "Pan", controlaInventario: true, stock: 5,
+        costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await expect(ajustarStock(producto.id, 1, "reducir", "reposicion")).rejects.toThrow(/no admite reducir/)
+  })
+
+  it("una merma sobre un producto con lotes descuenta FIFO del lote que vence primero, no queda sin lote", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 3, fechaVencimiento: new Date(Date.now() + 86400000) })
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 2, fechaVencimiento: new Date(Date.now() + 8 * 86400000) })
+
+    await ajustarStock(producto.id, 2, "reducir", "merma")
+
+    const productoFinal = await db.producto.findUniqueOrThrow({ where: { id: producto.id } })
+    expect(productoFinal.stock).toBe(3)
+
+    const lotes = await calcularLotesProducto(producto.id, user.id)
+    expect(lotes).toHaveLength(2)
+    expect(lotes[0].cantidadRestante).toBe(1)
+    expect(lotes[1].cantidadRestante).toBe(2)
   })
 })

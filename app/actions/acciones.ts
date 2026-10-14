@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 import * as Sentry from "@sentry/nextjs"
 import { notificar, cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unidades"
-import { registrarMovimientoStock, type TipoMovimientoStock } from "@/lib/stock"
+import { registrarMovimientoStock, DIRECCION_MOTIVO_AJUSTE, TIPO_MOVIMIENTO_LABEL, type TipoMovimientoStock } from "@/lib/stock"
 import { calcularConsumoFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
@@ -887,16 +887,41 @@ export async function ajustarStock(
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
   if (!cantidadUnidadDisplay || cantidadUnidadDisplay <= 0) throw new Error("La cantidad debe ser mayor a 0")
+  const direccion = DIRECCION_MOTIVO_AJUSTE[motivo]
+  if (direccion && !direccion[tipo]) {
+    throw new Error(`"${TIPO_MOVIMIENTO_LABEL[motivo]}" no admite ${tipo === "agregar" ? "agregar" : "reducir"} stock`)
+  }
 
   const cantidad = aInterno(cantidadUnidadDisplay, prod.unidadMedida)
-  const resultado = await registrarMovimientoStock({
-    productoId: id, userId: session.user.id, tipo: motivo,
-    cantidad: tipo === "agregar" ? cantidad : -cantidad,
-    observacion: opciones?.observacion?.trim() || null,
-    proveedorId: opciones?.proveedorId || null,
-    costoUnitario: opciones?.costoUnitario ?? null,
-    fechaVencimiento: opciones?.fechaVencimiento ? new Date(opciones.fechaVencimiento) : null,
-  })
+  let resultado: Awaited<ReturnType<typeof registrarMovimientoStock>> = null
+  if (tipo === "reducir" && !opciones?.fechaVencimiento) {
+    // Igual que en una venta: si el producto tiene lotes con vencimiento,
+    // la salida (merma, producto dañado, consumo interno, etc.) se reparte
+    // sola entre los que vencen primero, agotando cada uno antes de pasar
+    // al siguiente. Antes esta salida siempre quedaba "sin lote" (fecha
+    // null) aunque el producto sí tuviera lotes — la suma de "Lotes con
+    // vencimiento" dejaba de coincidir con el stock real apenas se
+    // registraba una merma o un daño sobre un producto con vencimiento.
+    const planConsumo = await calcularConsumoFIFO(id, session.user.id, cantidad)
+    for (const consumo of planConsumo) {
+      resultado = await registrarMovimientoStock({
+        productoId: id, userId: session.user.id, tipo: motivo,
+        cantidad: -consumo.cantidad,
+        observacion: opciones?.observacion?.trim() || null,
+        proveedorId: opciones?.proveedorId || null,
+        fechaVencimiento: consumo.fechaVencimiento,
+      })
+    }
+  } else {
+    resultado = await registrarMovimientoStock({
+      productoId: id, userId: session.user.id, tipo: motivo,
+      cantidad: tipo === "agregar" ? cantidad : -cantidad,
+      observacion: opciones?.observacion?.trim() || null,
+      proveedorId: opciones?.proveedorId || null,
+      costoUnitario: opciones?.costoUnitario ?? null,
+      fechaVencimiento: opciones?.fechaVencimiento ? new Date(opciones.fechaVencimiento) : null,
+    })
+  }
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")

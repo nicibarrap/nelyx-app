@@ -21,6 +21,28 @@ export const TIPO_MOVIMIENTO_LABEL: Record<TipoMovimientoStock, string> = {
   otro: "Otro",
 }
 
+/**
+ * Direcciones de stock que tiene sentido registrar con cada motivo al
+ * ajustar stock a mano (ver `ajustarStock`) — una compra nunca resta stock,
+ * una merma/producto dañado/consumo interno/regalo nunca lo suman. Única
+ * fuente de verdad: la UI (productos-client.tsx) la usa para mostrar solo
+ * los botones que tienen sentido, y `ajustarStock` la vuelve a validar acá
+ * mismo por si se llama directo (la UI no es el único borde de confianza).
+ * "venta", "inventario_inicial" y "ajuste_manual" no pasan por este flujo
+ * (tienen su propio origen), así que no necesitan entrada acá — cuando no
+ * hay entrada para un motivo, se permiten ambas direcciones.
+ */
+export const DIRECCION_MOTIVO_AJUSTE: Partial<Record<TipoMovimientoStock, { agregar: boolean; reducir: boolean }>> = {
+  reposicion: { agregar: true, reducir: false },
+  correccion: { agregar: true, reducir: true },
+  producto_danado: { agregar: false, reducir: true },
+  merma: { agregar: false, reducir: true },
+  consumo_interno: { agregar: false, reducir: true },
+  regalo: { agregar: false, reducir: true },
+  devolucion: { agregar: true, reducir: true },
+  otro: { agregar: true, reducir: true },
+}
+
 type RegistrarMovimientoParams = {
   productoId: string
   userId: string

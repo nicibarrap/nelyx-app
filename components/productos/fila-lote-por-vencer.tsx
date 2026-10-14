@@ -4,14 +4,14 @@ import { toast } from "sonner"
 import { descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
 
 interface Props {
-  movimientoStockId: string
+  movimientoStockIds: string[]
   productoNombre: string
   cantidad: number
   fechaVencimiento: string
   diasRestantes: number
 }
 
-export function FilaLotePorVencer({ movimientoStockId, productoNombre, cantidad, fechaVencimiento, diasRestantes }: Props) {
+export function FilaLotePorVencer({ movimientoStockIds, productoNombre, cantidad, fechaVencimiento, diasRestantes }: Props) {
   const [oculto, setOculto] = useState(false)
   const [isPending, start] = useTransition()
 
@@ -23,7 +23,7 @@ export function FilaLotePorVencer({ movimientoStockId, productoNombre, cantidad,
   function handle() {
     start(async () => {
       try {
-        await descartarAvisoVencimiento(movimientoStockId)
+        await descartarAvisoVencimiento(movimientoStockIds)
         setOculto(true)
       } catch {
         toast.error("No se pudo marcar como resuelto")
