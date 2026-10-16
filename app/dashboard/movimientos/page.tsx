@@ -14,11 +14,17 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
   const mes = parseInt(searchParams.mes ?? String(hoy.getMonth() + 1))
   const anio = parseInt(searchParams.anio ?? String(hoy.getFullYear()))
 
-  const movimientos = await db.movimiento.findMany({
+  const movimientosDb = await db.movimiento.findMany({
     where: { userId: session!.user.id, fecha: { gte: new Date(anio, mes - 1, 1), lt: new Date(anio, mes, 1) } },
     include: { producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } } },
     orderBy: [{ fecha: "desc" }, { createdAt: "desc" }],
   })
+  // Decimal de Prisma no es un objeto plano — pasarlo directo a un Client
+  // Component (TablaMovimientos) rompe la regla de serialización de RSC.
+  const movimientos = movimientosDb.map(m => ({
+    ...m, monto: Number(m.monto), costoUnitario: m.costoUnitario != null ? Number(m.costoUnitario) : null,
+    utilidad: m.utilidad != null ? Number(m.utilidad) : null,
+  }))
 
   return (
     <div className="space-y-5">

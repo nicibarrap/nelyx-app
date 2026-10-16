@@ -186,7 +186,11 @@ export function GraficoMensual({ datos, mes, anio }: { datos: PuntoMensual[]; me
               {/* Eje derecho oculto, propio del Resultado neto — así un período con
                   pérdida grande no aplasta la escala de las barras. */}
               <YAxis yAxisId="neto" orientation="right" hide domain={["auto","auto"]} />
-              <Tooltip content={<TooltipP vista={vista} mes={mes} anio={vista === "anual" ? anioCacheado : anio} />} cursor={{ fill: "rgba(255,255,255,0.02)" }} />
+              {/* wrapperStyle pointerEvents:auto — por defecto Recharts deja el
+                  wrapper del tooltip con pointer-events:none (para no robarle
+                  el hover al gráfico), lo que hacía el link "Ver movimientos
+                  del día" de adentro completamente inclickeable. */}
+              <Tooltip content={<TooltipP vista={vista} mes={mes} anio={vista === "anual" ? anioCacheado : anio} />} cursor={{ fill: "rgba(255,255,255,0.02)" }} wrapperStyle={{ pointerEvents: "auto" }} />
               <Bar yAxisId="barras" dataKey="ventas" fill="url(#colorVentas)" radius={[3,3,0,0]} maxBarSize={vista === "anual" ? 20 : 14} />
               <Bar yAxisId="barras" dataKey="gastos" fill="url(#colorGastos)" radius={[3,3,0,0]} maxBarSize={vista === "anual" ? 20 : 14} />
               <Line yAxisId="neto" type="monotone" dataKey="neto" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 3, fill: "#0ea5e9" }} activeDot={{ r: 5 }} />
