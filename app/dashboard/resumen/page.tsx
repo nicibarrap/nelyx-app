@@ -246,10 +246,10 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
       {deudasProximas.length > 0 && (
         <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl px-5 py-3.5 flex items-center gap-3">
           <span className="text-[var(--c-warning)] text-base flex-shrink-0">⚠</span>
-          <p className="text-sm font-medium text-amber-300 flex-1">
+          <p className="text-sm font-medium text-[var(--c-warning)] flex-1">
             {deudasProximas.length} deuda{deudasProximas.length > 1 ? "s" : ""} vence{deudasProximas.length > 1 ? "n" : ""} esta semana
           </p>
-          <Link href="/dashboard/deudas" className="text-xs text-[var(--c-warning)] hover:text-amber-300 font-medium whitespace-nowrap">Ver alertas →</Link>
+          <Link href="/dashboard/deudas" className="text-xs text-[var(--c-warning)] font-medium whitespace-nowrap hover:opacity-80">Ver alertas →</Link>
         </div>
       )}
 

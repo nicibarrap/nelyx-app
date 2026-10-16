@@ -745,7 +745,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
           <div className="mt-3 space-y-2">
             <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5">
               <span className="text-[var(--c-warning)] text-xs flex-shrink-0">ⓘ</span>
-              <p className="text-[11px] text-amber-300">Se generará una cuenta por cobrar para el cliente seleccionado.</p>
+              <p className="text-[11px] text-[var(--c-warning)]">Se generará una cuenta por cobrar para el cliente seleccionado.</p>
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">

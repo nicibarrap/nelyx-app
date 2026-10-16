@@ -127,7 +127,7 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                           {terminales.map(t => <option key={t.id} value={t.id}>{t.id} {t.operatingMode !== "PDV" ? "(⚠️ modo standalone)" : ""}</option>)}
                         </select>
                         {terminales.find(t => t.id === terminalElegida)?.operatingMode !== "PDV" && (
-                          <p className="text-[10px] text-amber-500 mt-1">⚠️ Esta terminal está en modo "standalone" — hay que cambiarla a modo integrado (PDV) desde la app de Mercado Pago antes de poder cobrar desde Nelyx.</p>
+                          <p className="text-[10px] text-[var(--c-warning)] mt-1">⚠️ Esta terminal está en modo "standalone" — hay que cambiarla a modo integrado (PDV) desde la app de Mercado Pago antes de poder cobrar desde Nelyx.</p>
                         )}
                       </div>
                       <button onClick={handleConectar} disabled={isPending}

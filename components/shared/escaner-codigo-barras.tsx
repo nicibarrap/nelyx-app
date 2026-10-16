@@ -363,7 +363,7 @@ export function EscanerCodigoBarras({ onDetectado, onCerrar, titulo = "Escanear 
           </div>
         )}
         {sugerenciaDistancia ? (
-          <p className="text-xs text-amber-300 text-center max-w-xs mx-auto font-medium animate-fade-in">
+          <p className="text-xs text-[var(--c-warning)] text-center max-w-xs mx-auto font-medium animate-fade-in">
             📏 ¿Se ve borroso? Aleja el celular unos 10-15 cm del código — más cerca que eso, la cámara no puede enfocar.
           </p>
         ) : (

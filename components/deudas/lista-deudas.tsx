@@ -367,7 +367,7 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
                 <form onSubmit={handlePago} className="space-y-3 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-4">
                   <p className="text-xs font-semibold text-[var(--c-text)]">Registrar pago</p>
                   {deudaDetalle.cuotas != null && deudaDetalle.cuotasPagadas + 1 >= deudaDetalle.cuotas && (
-                    <p className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-[var(--c-warning)] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
                       💡 Esta es tu última cuota — sugerimos el saldo exacto que falta, no el valor de cuota de siempre, para que cierre perfecto en $0. Ajústalo si tu banco te cobró un monto distinto.
                     </p>
                   )}

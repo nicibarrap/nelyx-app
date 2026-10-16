@@ -102,7 +102,7 @@ function AlertasBanner({ alertas, onSelect }: { alertas: Alerta[]; onSelect: (id
   if (alertas.length === 0) return null
   const colorCls: Record<string, string> = {
     blue: "border-blue-500/20 bg-blue-500/5 text-blue-300",
-    amber: "border-amber-500/20 bg-amber-500/5 text-amber-300",
+    amber: "border-amber-500/20 bg-amber-500/5 text-[var(--c-warning)]",
     red: "border-red-500/20 bg-red-500/5 text-red-300",
     slate: "border-slate-500/20 bg-slate-500/5 text-slate-300",
   }
@@ -455,7 +455,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
 
             {c.cobroPendiente && (
               <div className="mt-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
-                <p className="text-xs text-amber-300 font-semibold">Monto próximo: {formatCLP(c.cobroPendiente.monto)}</p>
+                <p className="text-xs text-[var(--c-warning)] font-semibold">Monto próximo: {formatCLP(c.cobroPendiente.monto)}</p>
                 <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Vence {fmtDate(c.cobroPendiente.fechaVencimiento)}</p>
               </div>
             )}
