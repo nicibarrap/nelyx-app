@@ -40,15 +40,30 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
     )
   }
 
+  // Clave estable para agrupar por día — la fecha se guarda como medianoche
+  // UTC de ese día (mismo criterio que formatFecha), así que tomar los
+  // primeros 10 caracteres del ISO evita cualquier ambigüedad de huso horario.
+  const claveDia = (fecha: string | Date) => new Date(fecha).toISOString().slice(0, 10)
+  const labelDia = (fecha: string | Date) =>
+    new Date(fecha).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })
+
   return (
-    <div className="divide-y divide-[#1A1A1A]">
-      {movimientos.map((m) => {
+    <div>
+      {movimientos.map((m, idx) => {
         const et = ETIQUETAS[m.tipo]
         const esIngreso = m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA"
         const colorCat = m.categoria ? getColorCategoria(m.categoria) : null
+        const esNuevoDia = idx === 0 || claveDia(m.fecha) !== claveDia(movimientos[idx - 1].fecha)
 
         return (
-          <div key={m.id} className="flex items-center justify-between py-3 px-1 hover:bg-white/[0.02] rounded-lg transition-colors">
+          <div key={m.id}>
+          {esNuevoDia && (
+            <div className={`flex items-center gap-3 ${idx === 0 ? "pb-2" : "pt-5 pb-2"}`}>
+              <span className="text-[11px] font-bold text-[var(--c-text3)] capitalize whitespace-nowrap">{labelDia(m.fecha)}</span>
+              <div className="flex-1 h-px bg-[var(--c-border2)]" />
+            </div>
+          )}
+          <div className={`flex items-center justify-between py-3 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
             <div className="flex items-center gap-3 min-w-0">
               <span className="text-xl flex-shrink-0">{et.emoji}</span>
               <div className="min-w-0">
@@ -87,6 +102,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               <button onClick={() => handleEliminar(m.id)} disabled={isPending}
                 className="p-1.5 text-zinc-700 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors">🗑</button>
             </div>
+          </div>
           </div>
         )
       })}

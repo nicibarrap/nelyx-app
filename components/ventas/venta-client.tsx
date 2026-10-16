@@ -720,7 +720,16 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
         <p className="text-sm font-semibold text-[var(--c-text)] mb-3 flex items-center gap-1.5">💳 Método de pago</p>
 
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        {/* flex-wrap + min-w (en vez de grid-cols-5 fijo): en la columna
+            derecha de pantallas grandes (acotada a ~1/3 de max-w-7xl por el
+            layout de 2 columnas) 5 columnas rígidas dejaban cada botón con
+            ~60-70px — "Transferencia" y "Pendiente" terminaban cortados a
+            la mitad de la palabra ("Transferen"/"cia"). Con min-width por
+            botón, el navegador reacomoda solo cuántos entran por fila según
+            el ancho real disponible (nunca más angostos que el mínimo),
+            así que el texto siempre entra completo en una sola línea, sea
+            celular, tablet o un monitor grande. */}
+        <div className="flex flex-wrap gap-2">
           {METODOS_PAGO.map(m => {
             // Cuando hay una máquina conectada, Débito y Crédito cobran de
             // verdad ahí en vez de solo marcar el método a mano — mismo
@@ -730,9 +739,9 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
               <button key={m.value}
                 onClick={() => esCobrable ? handleCobrarConMaquina(m.value as "debito" | "credito") : setMetodo(m.value)}
                 disabled={esCobrable && (isPending || cobroMaquina?.estado === "esperando")}
-                className={`relative flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all disabled:opacity-60 ${metodo === m.value && !esCobrable ? "border-sky-500 bg-sky-500/10 text-sky-400" : "border-[var(--c-border)] text-[var(--c-text3)] hover:border-sky-500/30"}`}>
+                className={`relative flex-1 min-w-[92px] flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all disabled:opacity-60 ${metodo === m.value && !esCobrable ? "border-sky-500 bg-sky-500/10 text-sky-400" : "border-[var(--c-border)] text-[var(--c-text3)] hover:border-sky-500/30"}`}>
                 <span className="text-lg">{m.icon}</span>
-                <span className="text-[11px] font-semibold text-center leading-tight px-0.5 break-words w-full">{m.label}</span>
+                <span className="text-[11px] font-semibold text-center leading-tight px-0.5 whitespace-nowrap w-full">{m.label}</span>
                 {esCobrable && <span className="absolute -top-1.5 -right-1.5 text-xs">🟡</span>}
               </button>
             )
