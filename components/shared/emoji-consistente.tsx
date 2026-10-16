@@ -43,7 +43,7 @@ function aplicarEmojisConsistentes() {
  */
 export function EmojiConsistente() {
   const pathname = usePathname()
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
   const observerRef = useRef<MutationObserver | null>(null)
 
   // Cada <img> que se inserta es en sí misma una mutación del DOM — sin
@@ -63,9 +63,22 @@ export function EmojiConsistente() {
   }, [pathname])
 
   useEffect(() => {
+    // rAF en vez de un debounce de milisegundos fijos: antes, el emoji
+    // nativo del sistema operativo se alcanzaba a pintar en pantalla y
+    // recién 150ms después se reemplazaba por la versión Twemoji — ese
+    // cambio visible de golpe es justamente el "parpadeo" reportado al
+    // cambiar de filtro (y en general, cada vez que se renderiza una lista
+    // nueva con emojis). requestAnimationFrame corre justo antes del
+    // siguiente pintado del navegador, así que el reemplazo ya quedó listo
+    // cuando el usuario llega a ver el frame — sigue agrupando varias
+    // mutaciones seguidas en una sola pasada (cancelando el rAF pendiente
+    // si llega una mutación nueva antes), igual que hacía el debounce.
     const observer = new MutationObserver(() => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      timeoutRef.current = setTimeout(aplicarYReconectar, 150)
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
+        aplicarYReconectar()
+      })
     })
     observerRef.current = observer
     observer.observe(document.body, { childList: true, subtree: true, characterData: true })
@@ -89,7 +102,7 @@ export function EmojiConsistente() {
 
     return () => {
       observer.disconnect()
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
       document.body.removeEventListener("error", onError, true)
       document.body.removeEventListener("load", onLoad, true)
     }

@@ -497,7 +497,7 @@ function HistorialStock({ productoId }: { productoId: string }) {
                     {m.observacion && <p className="text-[10px] text-[var(--c-text3)] mt-0.5 italic">"{m.observacion}"</p>}
                     {m.fechaVencimiento && m.loteVigente && (m.tipo === "reposicion" || m.tipo === "inventario_inicial") && (
                       <div className="flex items-center gap-2 mt-1.5 bg-amber-500/5 border border-amber-500/15 rounded-lg px-2.5 py-1.5">
-                        <span className="text-[10px] text-amber-400">🗓️ Vence {new Date(m.fechaVencimiento).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}</span>
+                        <span className="text-[10px] text-[var(--c-warning)]">🗓️ Vence {new Date(m.fechaVencimiento).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}</span>
                       </div>
                     )}
                   </div>
@@ -559,7 +559,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-[var(--c-text)] flex items-center gap-1.5">{getEmojiProducto(producto.nombre, producto.categoria)} {producto.nombre}</h3>
             <CategoriaBadge categoria={producto.categoria} />
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${producto.activo ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-zinc-800/50 text-zinc-600 border-zinc-700"}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${producto.activo ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-[var(--c-card2)] text-[var(--c-text3)] border-[var(--c-border)]"}`}>
               {producto.activo ? "Activo" : "Inactivo"}
             </span>
           </div>

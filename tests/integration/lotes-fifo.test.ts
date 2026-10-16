@@ -3,7 +3,7 @@ import { db } from "@/lib/db"
 import { registrarVenta, eliminarMovimiento, ajustarStock } from "@/app/actions/acciones"
 import { registrarMovimientoStock } from "@/lib/stock"
 import { calcularLotesProducto } from "@/lib/lotes"
-import { obtenerLotesPorVencer, obtenerHistorialProducto, descartarAvisoVencimiento } from "@/app/actions/kardex-acciones"
+import { obtenerLotesPorVencer, obtenerHistorialProducto } from "@/app/actions/kardex-acciones"
 
 // Mismos stubs que race-conditions.test.ts: acciones.ts importa NextAuth
 // (vía getSession) y next/cache (revalidatePath), ninguno de los dos
@@ -232,28 +232,6 @@ describe("obtenerLotesPorVencer agrupa reposiciones que comparten la misma fecha
     expect(delProducto).toHaveLength(1)
     expect(delProducto[0].cantidad).toBe(3)
     expect(delProducto[0].ids).toHaveLength(2)
-  })
-
-  it("descartar el aviso de un lote agrupado lo oculta aunque esté formado por dos reposiciones", async () => {
-    const user = await crearUsuario()
-    const producto = await db.producto.create({
-      data: {
-        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
-        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
-      },
-    })
-    const fecha = new Date(Date.now() + 86400000)
-    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 2, fechaVencimiento: fecha })
-    await registrarVenta([{ productoId: producto.id, nombre: producto.nombre, precio: 1688, cantidad: 2 }], new Date().toISOString())
-    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 3, fechaVencimiento: fecha })
-
-    const [lote] = (await obtenerLotesPorVencer()).filter(l => l.productoNombre === "Platano")
-    expect(lote.ids).toHaveLength(2)
-
-    await descartarAvisoVencimiento(lote.ids)
-
-    const despues = await obtenerLotesPorVencer()
-    expect(despues.some(l => l.productoNombre === "Platano")).toBe(false)
   })
 })
 

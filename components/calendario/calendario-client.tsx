@@ -19,7 +19,7 @@ const TIPO_CONFIG: Record<string,{icon:string;bg:string;text:string;border:strin
   deuda:         {icon:"🏦",bg:"bg-violet-500/15",text:"text-violet-300",border:"border-violet-500/20",label:"Deuda",       dot:"bg-violet-400"},
   cuenta_cobrar: {icon:"👤",bg:"bg-sky-500/15",   text:"text-sky-300",  border:"border-sky-500/20",   label:"Cobro/CxC",   dot:"bg-sky-400"},
   tarea:         {icon:"✅",bg:"bg-blue-500/15",  text:"text-blue-300", border:"border-blue-500/20",  label:"Tarea",       dot:"bg-blue-400"},
-  recordatorio:  {icon:"🔔",bg:"bg-amber-500/15", text:"text-amber-300",border:"border-amber-500/20", label:"Recordatorio",dot:"bg-amber-400"},
+  recordatorio:  {icon:"🔔",bg:"bg-amber-500/15", text:"text-[var(--c-warning)]",border:"border-amber-500/20", label:"Recordatorio",dot:"bg-amber-400"},
   evento:        {icon:"📅",bg:"bg-slate-500/15", text:"text-slate-300",border:"border-slate-500/20", label:"Evento",      dot:"bg-slate-400"},
 }
 // Mismos colores que TIPO_CONFIG.dot pero en hex — para la barra lateral de
@@ -41,7 +41,7 @@ const DIAS_SEMANA_OPTS = [{v:0,l:"Lun"},{v:1,l:"Mar"},{v:2,l:"Mié"},{v:3,l:"Jue
 
 const PRIORIDAD_CFG: Record<string,{label:string;cls:string}> = {
   baja:    {label:"Baja",   cls:"bg-slate-500/20 text-slate-300"},
-  media:   {label:"Media",  cls:"bg-amber-500/20 text-amber-300"},
+  media:   {label:"Media",  cls:"bg-amber-500/20 text-[var(--c-warning)]"},
   alta:    {label:"Alta",   cls:"bg-orange-500/20 text-orange-300"},
   critica: {label:"Crítica",cls:"bg-red-500/20 text-red-300"},
 }
@@ -504,7 +504,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
       </div>
       <div className="flex-1 min-h-0 px-5 py-4 space-y-3 overflow-y-auto overscroll-contain">
         {eraRecurrente&&(
-          <p className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Guardar cambios solo actualizará esta ocurrencia — las demás no se ven afectadas.</p>
+          <p className="text-[10px] text-[var(--c-warning)] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Guardar cambios solo actualizará esta ocurrencia — las demás no se ven afectadas.</p>
         )}
         <div>
           <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Tipo</label>
