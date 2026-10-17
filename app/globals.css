@@ -41,6 +41,11 @@
   --c-destructive-muted: rgba(248,113,113,0.1);
   --c-info:              #818CF8;
   --c-info-muted:        rgba(129,140,248,0.1);
+  /* Naranjo propio para "Costo fijo" en Calendario — a propósito distinto
+     de --c-warning (amber), que ya usa "Recordatorio" en el mismo
+     calendario: deben verse como dos colores distintos, no el mismo. */
+  --c-orange:            #FB923C;
+  --c-orange-muted:      rgba(251,146,60,0.1);
 }
 
 /* ══════════════════════════════════════════
@@ -73,6 +78,8 @@
   --c-destructive-muted: rgba(220,38,38,0.08);
   --c-info:              #4F46E5;
   --c-info-muted:        rgba(79,70,229,0.08);
+  --c-orange:            #C2410C;
+  --c-orange-muted:      rgba(194,65,12,0.08);
 }
 
 /* ══════════════════════════════════════════
