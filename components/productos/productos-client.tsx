@@ -560,9 +560,16 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
           costoUnitario: typeof costoAjuste === "number" ? costoAjuste : undefined,
           fechaVencimiento: fechaVencimientoAjuste || undefined,
         }))
-        toast.success(tipo === "agregar" ? `+${cantidadNum} ${unidadLabel} agregado(s)` : `-${cantidadNum} ${unidadLabel} reducido(s)`)
+        // Un solo toast (no dos seguidos) — disparar dos toasts.* en el mismo
+        // tick en que además se desmonta el panel de ajuste (setAjustando
+        // abajo) le da al navegador más superficie para una condición de
+        // carrera entre el commit de React y la animación de salida de
+        // sonner al cerrar un toast anterior.
+        const mensajeBase = tipo === "agregar" ? `+${cantidadNum} ${unidadLabel} agregado(s)` : `-${cantidadNum} ${unidadLabel} reducido(s)`
         if (resultado?.gastoRegistrado) {
-          toast.info(`Gasto registrado: ${formatCLP(resultado.gastoRegistrado)} — ya aparece en Resumen y Movimientos`, { duration: 6000 })
+          toast.success(`${mensajeBase} — Gasto registrado: ${formatCLP(resultado.gastoRegistrado)}`, { duration: 6000 })
+        } else {
+          toast.success(mensajeBase)
         }
         setAjustando(false)
         setObservacionAjuste("")
@@ -701,7 +708,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
                   ANTES de confirmar, para que nunca sea una sorpresa. */}
               {MOTIVOS_PERDIDA_RECONOCIDA.includes(motivoAjuste) && (
                 producto.costo ? (
-                  <p className="text-[11px] text-amber-400/90 bg-amber-500/8 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+                  <p className="text-[11px] text-[var(--c-warning)] bg-amber-500/8 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
                     💸 Esto registrará un gasto de ~{formatCLP(estimarGastoPerdida(cantidadAjuste, producto))} (al costo del producto)
                   </p>
                 ) : (

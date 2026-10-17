@@ -15,7 +15,7 @@ const DIAS = ["LUN","MAR","MIÉ","JUE","VIE","SÁB","DOM"]
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 const TIPO_CONFIG: Record<string,{icon:string;bg:string;text:string;border:string;label:string;dot:string}> = {
-  costo_fijo:    {icon:"🏠",bg:"bg-orange-500/15",text:"text-orange-300",border:"border-orange-500/20",label:"Costo fijo",  dot:"bg-orange-400"},
+  costo_fijo:    {icon:"🏠",bg:"bg-orange-500/15",text:"text-[var(--c-orange)]",border:"border-orange-500/20",label:"Costo fijo",  dot:"bg-orange-400"},
   deuda:         {icon:"🏦",bg:"bg-violet-500/15",text:"text-violet-300",border:"border-violet-500/20",label:"Deuda",       dot:"bg-violet-400"},
   cuenta_cobrar: {icon:"👤",bg:"bg-sky-500/15",   text:"text-sky-300",  border:"border-sky-500/20",   label:"Cobro/CxC",   dot:"bg-sky-400"},
   tarea:         {icon:"✅",bg:"bg-blue-500/15",  text:"text-blue-300", border:"border-blue-500/20",  label:"Tarea",       dot:"bg-blue-400"},
