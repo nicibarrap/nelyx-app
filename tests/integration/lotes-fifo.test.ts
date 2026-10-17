@@ -287,3 +287,117 @@ describe("Ajustar stock: dirección válida por motivo y FIFO en reducciones", (
     expect(lotes[1].cantidadRestante).toBe(2)
   })
 })
+
+// Bug real reportado: Merma/Producto dañado/Regalo/Consumo interno
+// descontaban el stock pero nunca dejaban ningún rastro financiero — el
+// inventario (un activo) desaparecía sin que ningún Gasto lo reflejara, así
+// que Utilidad neta y Disponible quedaban artificialmente altos.
+describe("Ajustar stock: Gasto automático por pérdida reconocida de inventario", () => {
+  it("una Merma con costo cargado registra un Gasto al costo real, enlazado al Kardex", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Pan", controlaInventario: true, stock: 10,
+        costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    const resultado = await ajustarStock(producto.id, 3, "reducir", "merma")
+    expect(resultado?.gastoRegistrado).toBe(1500) // 3 × 500
+
+    const gastos = await db.movimiento.findMany({ where: { userId: user.id, tipo: "GASTO" } })
+    expect(gastos).toHaveLength(1)
+    expect(Number(gastos[0].monto)).toBe(1500)
+    expect(gastos[0].categoria).toBe("Merma")
+    expect(gastos[0].productoId).toBe(producto.id)
+
+    const movsStock = await db.movimientoStock.findMany({ where: { productoId: producto.id, tipo: "merma" } })
+    expect(movsStock).toHaveLength(1)
+    expect(movsStock[0].movimientoId).toBe(gastos[0].id)
+  })
+
+  it("una Merma repartida en 2 lotes (FIFO) registra UN solo Gasto por el total, no uno por lote", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Platano", controlaInventario: true, stock: 0,
+        costo: 900, precio: 1688, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 3, fechaVencimiento: new Date(Date.now() + 86400000) })
+    await registrarMovimientoStock({ productoId: producto.id, userId: user.id, tipo: "reposicion", cantidad: 2, fechaVencimiento: new Date(Date.now() + 8 * 86400000) })
+
+    // Pide 4 → se reparte en 3 (lote que vence primero) + 1 (segundo lote),
+    // dos filas de Kardex, pero debe quedar un único Gasto de 4 × 900.
+    const resultado = await ajustarStock(producto.id, 4, "reducir", "merma")
+    expect(resultado?.gastoRegistrado).toBe(3600)
+
+    const gastos = await db.movimiento.findMany({ where: { userId: user.id, tipo: "GASTO" } })
+    expect(gastos).toHaveLength(1)
+    expect(Number(gastos[0].monto)).toBe(3600)
+
+    const movsStock = await db.movimientoStock.findMany({ where: { productoId: producto.id, tipo: "merma" } })
+    expect(movsStock).toHaveLength(2)
+    expect(movsStock.every(m => m.movimientoId === gastos[0].id)).toBe(true)
+  })
+
+  it("una Merma sobre un producto SIN costo cargado no registra ningún Gasto", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Pan sin costo", controlaInventario: true, stock: 5,
+        unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    const resultado = await ajustarStock(producto.id, 2, "reducir", "merma")
+    expect(resultado?.gastoRegistrado).toBeNull()
+    const gastos = await db.movimiento.findMany({ where: { userId: user.id, tipo: "GASTO" } })
+    expect(gastos).toHaveLength(0)
+  })
+
+  it("Corrección de inventario y Otro nunca registran Gasto automático, aunque el producto tenga costo", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Pan", controlaInventario: true, stock: 10,
+        costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await ajustarStock(producto.id, 2, "reducir", "correccion")
+    await ajustarStock(producto.id, 1, "reducir", "otro", { observacion: "ajuste de prueba" })
+    const gastos = await db.movimiento.findMany({ where: { userId: user.id, tipo: "GASTO" } })
+    expect(gastos).toHaveLength(0)
+  })
+
+  it("Devolución a proveedor solo admite reducir, Devolución de cliente solo admite agregar, y ninguna registra Gasto", async () => {
+    const user = await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: user.id, nombre: "Pan", controlaInventario: true, stock: 10,
+        costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await expect(ajustarStock(producto.id, 1, "agregar", "devolucion_proveedor")).rejects.toThrow(/no admite agregar/)
+    await expect(ajustarStock(producto.id, 1, "reducir", "devolucion_cliente")).rejects.toThrow(/no admite reducir/)
+
+    await ajustarStock(producto.id, 2, "reducir", "devolucion_proveedor")
+    await ajustarStock(producto.id, 1, "agregar", "devolucion_cliente")
+
+    const productoFinal = await db.producto.findUniqueOrThrow({ where: { id: producto.id } })
+    expect(productoFinal.stock).toBe(9) // 10 - 2 + 1
+
+    const gastos = await db.movimiento.findMany({ where: { userId: user.id, tipo: "GASTO" } })
+    expect(gastos).toHaveLength(0)
+  })
+
+  it("el motivo interno 'devolucion' (reversión automática de eliminarMovimiento) ya no se puede invocar vía ajustarStock", async () => {
+    await crearUsuario()
+    const producto = await db.producto.create({
+      data: {
+        userId: sesionActual!.user.id, nombre: "Pan", controlaInventario: true, stock: 5,
+        unidadMedida: "unidad", formaVenta: "unidad",
+      },
+    })
+    await expect(ajustarStock(producto.id, 1, "agregar", "devolucion")).rejects.toThrow(/no admite agregar/)
+    await expect(ajustarStock(producto.id, 1, "reducir", "devolucion")).rejects.toThrow(/no admite reducir/)
+  })
+})
