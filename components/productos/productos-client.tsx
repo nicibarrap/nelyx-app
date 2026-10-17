@@ -7,12 +7,12 @@ import { toast } from "sonner"
 import { crearProducto, actualizarProducto, crearCategoriaPersonalizada, toggleProducto, ajustarStock, eliminarProducto } from "@/app/actions/acciones"
 import { AvisoCambioCostoModal, type AvisoCosto } from "@/components/productos/aviso-cambio-costo-modal"
 import { formatCLP } from "@/lib/utils"
-import { unidadesParaForma, formatearStock, deInterno, labelUnidad, type FormaVenta } from "@/lib/unidades"
+import { unidadesParaForma, formatearStock, deInterno, aInterno, labelUnidad, type FormaVenta } from "@/lib/unidades"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { ProductoWizard } from "@/components/productos/producto-wizard"
-import { DIRECCION_MOTIVO_AJUSTE, type TipoMovimientoStock } from "@/lib/stock"
+import { DIRECCION_MOTIVO_AJUSTE, MOTIVOS_PERDIDA_RECONOCIDA, type TipoMovimientoStock } from "@/lib/stock"
 import { obtenerHistorialProducto } from "@/app/actions/kardex-acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { LotesProducto } from "@/components/productos/lotes-producto"
@@ -32,7 +32,10 @@ const MOTIVOS_AJUSTE: { value: TipoMovimientoStock; label: string }[] = [
   { value: "merma", label: "Merma" },
   { value: "consumo_interno", label: "Consumo interno" },
   { value: "regalo", label: "Regalo" },
-  { value: "devolucion", label: "Devolución" },
+  // "Devolución" (genérica) se reemplazó por estas dos — ver el comentario en
+  // lib/stock.ts. Cada una queda en una sola dirección, igual que el resto.
+  { value: "devolucion_proveedor", label: "Devolución a proveedor" },
+  { value: "devolucion_cliente", label: "Devolución de cliente" },
   { value: "otro", label: "Otro" },
 ]
 
@@ -110,6 +113,21 @@ import { calcularMargenPorcentual } from "@/lib/financial-engine"
 function getMargen(precio: number | null, costo: number | null) {
   if (!precio || !costo || costo === 0) return null
   return calcularMargenPorcentual(precio, costo)
+}
+
+/** Estimación en vivo del Gasto que `ajustarStock` va a registrar — misma
+ * conversión de unidad que el servidor (ver comentario ahí), solo para
+ * mostrarle al dueño el monto ANTES de confirmar. El servidor recalcula todo
+ * de nuevo sobre la cantidad realmente aplicada, así que una diferencia acá
+ * (ej. redondeo) nunca desincroniza el gasto real. */
+function estimarGastoPerdida(cantidadAjusteStr: string, producto: Producto): number {
+  const cantidadNum = parseFloat(cantidadAjusteStr) || 0
+  if (cantidadNum <= 0 || !producto.costo) return 0
+  const cantidadInterna = aInterno(cantidadNum, producto.unidadMedida)
+  const cantidadEnUnidadCosto = producto.unidadVentaCantidad
+    ? cantidadInterna / producto.unidadVentaCantidad
+    : deInterno(cantidadInterna, producto.unidadMedida)
+  return Math.round(producto.costo * cantidadEnUnidadCosto)
 }
 
 const inp = "w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
@@ -432,7 +450,8 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
 const TIPO_ICONO: Record<string, string> = {
   venta: "🛒", reposicion: "📦", ajuste_manual: "✏️", correccion: "🔧",
   producto_danado: "💔", merma: "📉", consumo_interno: "🍽️", regalo: "🎁",
-  devolucion: "↩️", inventario_inicial: "🏁", otro: "•",
+  devolucion: "↩️", devolucion_proveedor: "↩️", devolucion_cliente: "↩️",
+  inventario_inicial: "🏁", otro: "•",
 }
 
 function HistorialStock({ productoId }: { productoId: string }) {
@@ -542,6 +561,9 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
           fechaVencimiento: fechaVencimientoAjuste || undefined,
         }))
         toast.success(tipo === "agregar" ? `+${cantidadNum} ${unidadLabel} agregado(s)` : `-${cantidadNum} ${unidadLabel} reducido(s)`)
+        if (resultado?.gastoRegistrado) {
+          toast.info(`Gasto registrado: ${formatCLP(resultado.gastoRegistrado)} — ya aparece en Resumen y Movimientos`, { duration: 6000 })
+        }
         setAjustando(false)
         setObservacionAjuste("")
         setCostoAjuste("")
@@ -674,6 +696,18 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
                   {MOTIVOS_AJUSTE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
+              {/* Estos motivos registran un Gasto automático al costo del
+                  producto (ver ajustarStock) — se avisa el monto estimado
+                  ANTES de confirmar, para que nunca sea una sorpresa. */}
+              {MOTIVOS_PERDIDA_RECONOCIDA.includes(motivoAjuste) && (
+                producto.costo ? (
+                  <p className="text-[11px] text-amber-400/90 bg-amber-500/8 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+                    💸 Esto registrará un gasto de ~{formatCLP(estimarGastoPerdida(cantidadAjuste, producto))} (al costo del producto)
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-[var(--c-text4)] italic">Este producto no tiene costo cargado — no se registrará ningún gasto automático.</p>
+                )
+              )}
               {motivoAjuste === "reposicion" && (
                 <div className="flex items-center gap-2 flex-wrap">
                   {producto.unidadVentaCantidad ? (

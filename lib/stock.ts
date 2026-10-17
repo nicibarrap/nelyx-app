@@ -3,7 +3,8 @@ import { costoPromedioPonderado } from "@/lib/financial-engine"
 
 export const TIPOS_MOVIMIENTO_STOCK = [
   "venta", "reposicion", "ajuste_manual", "correccion", "producto_danado",
-  "merma", "consumo_interno", "regalo", "devolucion", "inventario_inicial", "otro",
+  "merma", "consumo_interno", "regalo", "devolucion", "devolucion_proveedor",
+  "devolucion_cliente", "inventario_inicial", "otro",
 ] as const
 export type TipoMovimientoStock = typeof TIPOS_MOVIMIENTO_STOCK[number]
 
@@ -16,10 +17,36 @@ export const TIPO_MOVIMIENTO_LABEL: Record<TipoMovimientoStock, string> = {
   merma: "Merma",
   consumo_interno: "Consumo interno",
   regalo: "Regalo",
+  // "devolucion" ya no se ofrece al dueño del negocio (ver devolucion_proveedor
+  // / devolucion_cliente) — se mantiene solo porque eliminarMovimiento
+  // (acciones.ts) la sigue usando internamente para revertir el stock cuando
+  // se borra un Movimiento (ej. se elimina una Venta), y porque el Kardex
+  // histórico ya tiene filas reales con este tipo que deben seguir mostrándose.
   devolucion: "Devolución",
+  devolucion_proveedor: "Devolución a proveedor",
+  devolucion_cliente: "Devolución de cliente",
   inventario_inicial: "Inventario inicial",
   otro: "Otro",
 }
+
+/**
+ * Motivos de salida de stock que representan una PÉRDIDA ECONÓMICA real del
+ * negocio — el inventario se dio de baja sin que haya una venta detrás, así
+ * que si no se registra el gasto correspondiente, Utilidad neta y Disponible
+ * quedan artificialmente altos (el activo desaparece pero nada lo refleja).
+ * `ajustarStock` usa esta lista para registrar automáticamente un Gasto al
+ * costo del producto cuando corresponde. "Corrección" y "Otro" quedan fuera
+ * a propósito: una corrección de conteo no es necesariamente una pérdida
+ * NUEVA (puede ir en cualquier dirección y a veces solo corrige un error de
+ * conteo previo), y "Otro" es un cajón de sastre sin un motivo claro — para
+ * ambos, es mejor que el dueño registre el gasto a mano si corresponde, en
+ * vez de asumirlo automáticamente. "Devolución a proveedor" tampoco entra:
+ * nunca se registró un gasto al comprar el inventario (ver comentario en
+ * `reposicion` más abajo), así que no hay nada que revertir.
+ */
+export const MOTIVOS_PERDIDA_RECONOCIDA: TipoMovimientoStock[] = [
+  "merma", "producto_danado", "regalo", "consumo_interno",
+]
 
 /**
  * Direcciones de stock que tiene sentido registrar con cada motivo al
@@ -39,7 +66,19 @@ export const DIRECCION_MOTIVO_AJUSTE: Partial<Record<TipoMovimientoStock, { agre
   merma: { agregar: false, reducir: true },
   consumo_interno: { agregar: false, reducir: true },
   regalo: { agregar: false, reducir: true },
-  devolucion: { agregar: true, reducir: true },
+  // Bloqueado en ambas direcciones a propósito: "devolucion" ya no se ofrece
+  // como opción — ver el comentario en TIPO_MOVIMIENTO_LABEL. Esto no afecta
+  // a eliminarMovimiento, que llama a registrarMovimientoStock directo y
+  // nunca pasa por esta validación.
+  devolucion: { agregar: false, reducir: false },
+  // Antes era una sola "Devolución" bidireccional que mezclaba dos eventos
+  // de negocio completamente distintos — devolver mercadería a TU proveedor
+  // (el stock sale) vs. que un cliente te devuelva algo que te compró (el
+  // stock vuelve a entrar) — y esa ambigüedad hacía imposible decidir el
+  // efecto financiero correcto de cada una. Separadas, cada una queda
+  // unidireccional igual que el resto de los motivos de salida/entrada.
+  devolucion_proveedor: { agregar: false, reducir: true },
+  devolucion_cliente: { agregar: true, reducir: false },
   otro: { agregar: true, reducir: true },
 }
 

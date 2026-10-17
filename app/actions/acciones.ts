@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 import * as Sentry from "@sentry/nextjs"
 import { notificar, cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unidades"
-import { registrarMovimientoStock, DIRECCION_MOTIVO_AJUSTE, TIPO_MOVIMIENTO_LABEL, type TipoMovimientoStock } from "@/lib/stock"
+import { registrarMovimientoStock, DIRECCION_MOTIVO_AJUSTE, TIPO_MOVIMIENTO_LABEL, MOTIVOS_PERDIDA_RECONOCIDA, type TipoMovimientoStock } from "@/lib/stock"
 import { calcularConsumoFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
@@ -894,6 +894,13 @@ export async function ajustarStock(
 
   const cantidad = aInterno(cantidadUnidadDisplay, prod.unidadMedida)
   let resultado: Awaited<ReturnType<typeof registrarMovimientoStock>> = null
+  // Se acumulan TODOS los MovimientoStock creados (puede ser más de uno si
+  // el FIFO reparte la salida entre varios lotes) y la cantidad interna
+  // real aplicada (puede ser menor a la pedida si el stock se clampeó) —
+  // para registrar un único Gasto por el total real más abajo, en vez de
+  // uno por lote.
+  const movsStockCreados: { id: string }[] = []
+  let cantidadRealTotal = 0
   if (tipo === "reducir" && !opciones?.fechaVencimiento) {
     // Igual que en una venta: si el producto tiene lotes con vencimiento,
     // la salida (merma, producto dañado, consumo interno, etc.) se reparte
@@ -911,6 +918,7 @@ export async function ajustarStock(
         proveedorId: opciones?.proveedorId || null,
         fechaVencimiento: consumo.fechaVencimiento,
       })
+      if (resultado?.movimiento) { movsStockCreados.push(resultado.movimiento); cantidadRealTotal += Math.abs(resultado.movimiento.cantidad) }
     }
   } else {
     resultado = await registrarMovimientoStock({
@@ -921,6 +929,7 @@ export async function ajustarStock(
       costoUnitario: opciones?.costoUnitario ?? null,
       fechaVencimiento: opciones?.fechaVencimiento ? new Date(opciones.fechaVencimiento) : null,
     })
+    if (resultado?.movimiento) { movsStockCreados.push(resultado.movimiento); cantidadRealTotal += Math.abs(resultado.movimiento.cantidad) }
   }
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
@@ -934,6 +943,39 @@ export async function ajustarStock(
   // un proveedor asignado, aunque crearDeuda/editarDeuda sí revalidaban
   // esta misma ruta por el lado de las deudas.
   revalidatePath("/dashboard/proveedores")
+
+  // Pérdida real de inventario (Merma, Producto dañado, Regalo, Consumo
+  // interno): el stock ya se dio de baja arriba, pero eso solo mueve el
+  // Kardex — sin esto, un activo (inventario) desaparecía sin que ningún
+  // gasto lo reflejara, y Utilidad neta/Disponible quedaban artificialmente
+  // altos. Se registra UN Gasto por el costo real de lo perdido (nunca al
+  // precio de venta — acá no hay ingreso, solo se perdió lo que costó), con
+  // el mismo criterio de conversión de unidades que el snapshot de costo de
+  // cada Venta (ver registrarVentaInterno), para que una presentación fija
+  // (bolsas, botellas...) no quede mal convertida. Si el producto no tiene
+  // costo cargado, no hay nada que registrar — se omite en silencio en vez
+  // de inventar un monto.
+  let gastoRegistrado: number | null = null
+  if (tipo === "reducir" && MOTIVOS_PERDIDA_RECONOCIDA.includes(motivo) && cantidadRealTotal > 0 && prod.costo != null && Number(prod.costo) > 0) {
+    const cantidadEnUnidadCosto = prod.unidadVentaCantidad
+      ? cantidadRealTotal / prod.unidadVentaCantidad
+      : deInterno(cantidadRealTotal, prod.unidadMedida)
+    const montoGasto = Math.round(Number(prod.costo) * cantidadEnUnidadCosto)
+    if (montoGasto > 0) {
+      const movGasto = await db.movimiento.create({
+        data: {
+          tipo: "GASTO", monto: montoGasto, fecha: new Date(),
+          descripcion: `${TIPO_MOVIMIENTO_LABEL[motivo]}: ${prod.nombre}${opciones?.observacion?.trim() ? ` — ${opciones.observacion.trim()}` : ""}`,
+          categoria: TIPO_MOVIMIENTO_LABEL[motivo],
+          productoId: id, costoUnitario: Number(prod.costo),
+          userId: session.user.id,
+          realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        },
+      })
+      await db.movimientoStock.updateMany({ where: { id: { in: movsStockCreados.map(m => m.id) } }, data: { movimientoId: movGasto.id } })
+      gastoRegistrado = montoGasto
+    }
+  }
 
   if (resultado?.cambioCosto) {
     const { costoAnterior, costoNuevo, precioActual } = resultado.cambioCosto
@@ -950,15 +992,16 @@ export async function ajustarStock(
               costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo),
               precioActual, precioSugerido, margenActual: Math.round(margenActual * 100),
             },
+            gastoRegistrado,
           }
         }
       }
     }
     // No hay precio de referencia (o el margen no da para calcular) — igual
     // dejamos un aviso simple, sin precio sugerido, para que el dueño lo note.
-    return { avisoCosto: { productoId: id, productoNombre: prod.nombre, costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo), precioActual: null, precioSugerido: null, margenActual: null } }
+    return { avisoCosto: { productoId: id, productoNombre: prod.nombre, costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo), precioActual: null, precioSugerido: null, margenActual: null }, gastoRegistrado }
   }
-  return { avisoCosto: null }
+  return { avisoCosto: null, gastoRegistrado }
 }
 
 export async function toggleProducto(id: string, activo: boolean) {
