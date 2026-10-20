@@ -190,7 +190,7 @@ async function main() {
         costoUnitario: esVenta && costoUnit !== null ? costoUnit : null,
         utilidad: esVenta && costoUnit !== null ? (precioUnit - costoUnit) * cantidad : null,
         margen: esVenta && costoUnit !== null && precioUnit > 0 ? ((precioUnit - costoUnit) / precioUnit) * 100 : null,
-        metodoPago: elegir(["Efectivo", "Débito", "Crédito", "Transferencia"]),
+        metodoPago: elegir(["Efectivo", "Tarjeta", "Transferencia"]),
       }
     })
 
