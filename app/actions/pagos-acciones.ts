@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
+import { validarApiKeyTuu, crearSolicitudPagoTuu, consultarSolicitudPagoTuu } from "@/lib/pagos/tuu"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
@@ -70,13 +71,50 @@ export async function desconectarPago(proveedor: string) {
   revalidatePath("/dashboard/venta")
 }
 
+/** Paso 1 al conectar TUU: no hay forma de listar terminales como en
+ * Mercado Pago, así que solo se valida que la API Key sea correcta — el
+ * número de serie del terminal lo escribe el dueño a mano (viene impreso
+ * atrás de la máquina). */
+export async function probarConexionTuu(apiKey: string) {
+  await getSession()
+  return validarApiKeyTuu(apiKey)
+}
+
+/** Paso 2: guarda la conexión con el terminal que el dueño escribió. La
+ * API Key se cifra igual que el Access Token de Mercado Pago. */
+export async function conectarTuu(apiKey: string, device: string) {
+  const session = await getSessionEscritura("configuracion")
+  const apiKeyCifrada = cifrarToken(apiKey)
+  await db.conexionPago.upsert({
+    where: { userId_proveedor: { userId: session.user.id, proveedor: "tuu" } },
+    create: { userId: session.user.id, proveedor: "tuu", accessToken: apiKeyCifrada, terminalId: device, activo: true, ultimaConexionOk: new Date() },
+    update: { accessToken: apiKeyCifrada, terminalId: device, activo: true, ultimaConexionOk: new Date() },
+  })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/venta")
+}
+
+// Un local solo debería tener una máquina conectada a la vez, pero como
+// cada proveedor se guarda en su propia fila, nada impide tener dos
+// activas al mismo tiempo. Si eso pasa, se prioriza Mercado Pago por ser
+// la integración más probada ("mercadopago" < "tuu" alfabéticamente).
+const PROVEEDORES_MAQUINA = ["mercadopago", "tuu"] as const
+
 /** Se llama desde Venta al elegir "Cobrar con máquina conectada" — le pide
- * a la terminal que cobre el monto exacto. */
+ * a la terminal que cobre el monto exacto, sea cual sea el proveedor que
+ * el local tenga conectado. */
 export async function iniciarCobroMaquina(monto: number, referenciaVenta: string) {
   const session = await getSessionEscritura("venta")
-  const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "mercadopago", activo: true } })
+  const conexion = await db.conexionPago.findFirst({
+    where: { userId: session.user.id, proveedor: { in: [...PROVEEDORES_MAQUINA] }, activo: true },
+    orderBy: { proveedor: "asc" },
+  })
   if (!conexion || !conexion.terminalId) throw new Error("No tienes ninguna máquina de pago conectada. Ve a Configuración para conectarla.")
 
+  if (conexion.proveedor === "tuu") {
+    const { paymentRequestId } = await crearSolicitudPagoTuu(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
+    return { orderId: String(paymentRequestId) }
+  }
   const { orderId } = await crearOrdenMercadoPago(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
   return { orderId }
 }
@@ -85,7 +123,12 @@ export async function iniciarCobroMaquina(monto: number, referenciaVenta: string
  * espera que el cliente ponga la tarjeta en la máquina. */
 export async function consultarCobroMaquina(orderId: string) {
   const session = await getSession()
-  const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "mercadopago", activo: true } })
+  const conexion = await db.conexionPago.findFirst({
+    where: { userId: session.user.id, proveedor: { in: [...PROVEEDORES_MAQUINA] }, activo: true },
+    orderBy: { proveedor: "asc" },
+  })
   if (!conexion) throw new Error("No hay ninguna máquina conectada")
+
+  if (conexion.proveedor === "tuu") return consultarSolicitudPagoTuu(descifrarToken(conexion.accessToken), orderId)
   return consultarOrdenMercadoPago(descifrarToken(conexion.accessToken), orderId)
 }

@@ -16,7 +16,11 @@ export default async function VentaPage() {
       orderBy: { nombre: "asc" },
     }),
     db.cliente.findMany({ where: { userId: session!.user.id, activo: true }, select: { id: true, nombre: true, apellido: true, telefono: true, empresa: true, esVip: true }, orderBy: { nombre: "asc" } }),
-    db.conexionPago.findFirst({ where: { userId: session!.user.id, proveedor: "mercadopago", activo: true } }),
+    // Si el local tuviera dos máquinas conectadas a la vez (no debería
+    // pasar, pero nada en el modelo lo impide), se prioriza Mercado Pago
+    // por ser la integración más probada — mismo criterio que en
+    // iniciarCobroMaquina/consultarCobroMaquina (app/actions/pagos-acciones.ts).
+    db.conexionPago.findFirst({ where: { userId: session!.user.id, proveedor: { in: ["mercadopago", "tuu"] }, activo: true }, orderBy: { proveedor: "asc" } }),
   ])
 
   // precio/costo son Decimal de Prisma (instancias de clase, no objetos
@@ -25,5 +29,5 @@ export default async function VentaPage() {
   // que /dashboard/deudas ya hace esta misma conversión.
   const productos = productosRaw.map(p => ({ ...p, precio: p.precio ? Number(p.precio) : null, costo: p.costo ? Number(p.costo) : null }))
 
-  return <VentaClient productos={productos} clientes={clientes} conexionPagoActiva={!!conexionPago} />
+  return <VentaClient productos={productos} clientes={clientes} proveedorPagoActivo={conexionPago?.proveedor ?? null} />
 }

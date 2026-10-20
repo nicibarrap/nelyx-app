@@ -669,7 +669,7 @@ model ConexionPago {
   id                String   @id @default(cuid())
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  proveedor         String   // "mercadopago" | "transbank" | "getnet" | "bancoestado"
+  proveedor         String   // "mercadopago" | "tuu" | "transbank" | "getnet" | "bancoestado"
   accessToken       String   @db.Text
   terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo
   activo            Boolean  @default(true)
