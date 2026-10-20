@@ -321,7 +321,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
-    const nombreProveedor = proveedorPagoActivo === "tuu" ? "TUU" : "Mercado Pago"
+    const nombreProveedor = proveedorPagoActivo === "tuu" ? "TUU" : proveedorPagoActivo === "sumup" ? "SumUp" : "Mercado Pago"
     const etiqueta = `Tarjeta (${nombreProveedor})`
     setCobroMaquina({ estado: "esperando" })
     startTransition(async () => {

@@ -14,28 +14,38 @@
 //   (ej. "MB436VFT"), no hay que transformarlo.
 // - La cuenta de prueba solo acepta CLP — confirmado con el error real
 //   "this merchant can only accept 'CLP'" al intentar con EUR.
+// - Crear el cobro (POST .../checkout) funciona y devuelve
+//   {"data":{"checkout_id","client_transaction_id"}} — confirmado con una
+//   respuesta real exitosa. El "Invalid affiliate key" que bloqueó esto
+//   mucho tiempo NUNCA fue un tema de activación de cuenta ni de formato
+//   del Application ID: era un typo de transcripción en la Affiliate Key
+//   usada en las pruebas (una "O" mayúscula en vez de un cero "0" en un
+//   tramo del string) — la clave real, copiada tal cual del dashboard
+//   (Ajustes → Para desarrolladores → Claves de Afiliado), funcionó a la
+//   primera. Moraleja ya aplicada acá: nunca se hardcodea la Affiliate Key
+//   a mano en este archivo, se exige por variable de entorno (ver abajo).
+// - SumUp NO tiene un endpoint para consultar el estado de un cobro ya
+//   creado — GET /v0.1/checkouts/{id} es un recurso DISTINTO (de la API de
+//   Checkout Online normal), confirmado en vivo: da 404 para un
+//   checkout_id devuelto por un cobro de lector. El resultado real llega
+//   únicamente por webhook a `return_url` (confirmado contra el OpenAPI
+//   spec oficial de SumUp: schema `ReaderCheckoutStatusChange`, con
+//   `payload.status` en {"successful","failed"} y `payload.client_
+//   transaction_id` como correlación). Por eso `crearCobroSumup` acá abajo
+//   NO devuelve un estado — la consulta posterior se hace contra nuestra
+//   propia base de datos (tabla CobroSumup), que el webhook en
+//   app/api/webhooks/sumup/route.ts va actualizando. Ver ese archivo y
+//   iniciarCobroMaquina/consultarCobroMaquina en app/actions/pagos-acciones.ts
+//   para el resto del flujo.
 //
-// BLOQUEADO — por eso NO se implementó el cobro (crearCobro) todavía:
-// - Cada intento de POST .../checkout (con Amount en CLP, minor_unit 0,
-//   más el objeto "affiliate": { app_id, key, foreign_transaction_id })
-//   devolvió siempre {"errors":{"detail":"Invalid affiliate key.",
-//   "type":"INVALID_AFFILIATE_KEY"}}, incluso recreando la Affiliate Key y
-//   probando distintos Application ID — API Key, merchantCode y readerId
-//   confirmados correctos (el listado de lectores funciona con las mismas
-//   credenciales). Parece requerir alguna activación manual de SumUp;
-//   se les escribió a soporte. Como nunca se obtuvo una respuesta exitosa
-//   real de creación de cobro, no hay forma honesta de confirmar la forma
-//   exacta de esa respuesta sin adivinarla.
-// - Además, a diferencia de Mercado Pago y TUU, SumUp no documenta un
-//   endpoint para consultar el estado de un cobro ya creado — el
-//   mecanismo oficial es un webhook (`return_url`) que SumUp llama cuando
-//   la transacción termina. Conectar esto a Venta requeriría un endpoint
-//   público nuevo (ej. app/api/webhooks/sumup) que lo correlacione con la
-//   venta — es una pieza de arquitectura aparte, no incluida acá.
-//
-// Por ambos motivos, este archivo solo cubre la conexión/validación de
-// credenciales (lo que sí se probó y funciona) — el cobro en sí queda
-// pendiente hasta resolver lo de la Affiliate Key con soporte de SumUp.
+// AFFILIATE KEY — es un secreto A NIVEL DE APP, no por usuario/local:
+// identifica a la integración de Nelyx ante SumUp (Application identifier
+// + Affiliate Key, generados una sola vez desde Ajustes → Para
+// desarrolladores → Claves de Afiliado de la cuenta que registra la app),
+// a diferencia de apiKey/merchantCode/readerId que sí son de cada local y
+// viven cifrados en ConexionPago. Por eso va en variables de entorno
+// (SUMUP_AFFILIATE_APP_ID / SUMUP_AFFILIATE_KEY), nunca en la base de
+// datos ni hardcodeada acá.
 // ══════════════════════════════════════════════════════════════════════
 
 const BASE = "https://api.sumup.com"
@@ -66,4 +76,33 @@ export async function listarLectoresSumup(apiKey: string, merchantCode: string):
   const data = await res.json()
   const items = data?.items ?? []
   return items.map((it: any) => ({ id: it.id, nombre: it.name, estado: it.status }))
+}
+
+/** Le pide al lector que cobre un monto. A diferencia de crearSolicitudPagoTuu
+ * o crearOrdenMercadoPago, esto NO devuelve un estado consultable — devuelve
+ * el client_transaction_id que SumUp usará para correlacionar el webhook
+ * cuando el cobro termine (ver cabecera del archivo). Quien llama a esto
+ * (iniciarCobroMaquina) es responsable de guardar ese id en CobroSumup
+ * ANTES de que pueda llegar el webhook — por eso esta función no toca la
+ * base de datos, solo habla con SumUp. */
+export async function crearCobroSumup(apiKey: string, merchantCode: string, readerId: string, montoCLP: number, returnUrl: string, foreignTransactionId: string): Promise<{ checkoutId: string | null; clientTransactionId: string }> {
+  const appId = process.env.SUMUP_AFFILIATE_APP_ID
+  const affiliateKey = process.env.SUMUP_AFFILIATE_KEY
+  if (!appId || !affiliateKey) throw new Error("Falta configurar SUMUP_AFFILIATE_APP_ID / SUMUP_AFFILIATE_KEY — sin esto SumUp siempre responde \"Invalid affiliate key\"")
+
+  const res = await fetch(`${BASE}/v0.1/merchants/${merchantCode}/readers/${readerId}/checkout`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      total_amount: { currency: "CLP", minor_unit: 0, value: Math.round(montoCLP) },
+      affiliate: { app_id: appId, key: affiliateKey, foreign_transaction_id: foreignTransactionId },
+      return_url: returnUrl,
+    }),
+  })
+  if (res.status === 401) throw new Error("La API Key no es válida — revísala en tu cuenta de SumUp")
+  if (!res.ok) throw new Error(await leerError(res, `No se pudo iniciar el cobro en el lector (${res.status})`))
+  const data = await res.json()
+  const clientTransactionId = data?.data?.client_transaction_id
+  if (!clientTransactionId) throw new Error("SumUp no devolvió un client_transaction_id — no hay forma de rastrear este cobro")
+  return { checkoutId: data?.data?.checkout_id ?? null, clientTransactionId }
 }
