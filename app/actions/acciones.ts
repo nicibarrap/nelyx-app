@@ -1646,8 +1646,13 @@ export async function eliminarNotaProveedor(id: string) {
 // que nunca pueda leer ni sumar deuda de un cliente de otra cuenta aunque
 // alguna llamada futura se salte esa validación previa.
 async function verificarLimiteCredito(clienteId: string, userId: string, montoNuevo: number) {
-  const cliente = await db.cliente.findFirst({ where: { id: clienteId, userId }, select: { limiteCredito: true, nombre: true } })
-  if (!cliente?.limiteCredito) return
+  const cliente = await db.cliente.findFirst({ where: { id: clienteId, userId }, select: { limiteCredito: true, permiteCredito: true, nombre: true } })
+  if (!cliente) return
+  // El checkbox "Permite crédito" existía en el formulario de cliente desde
+  // siempre, pero nunca se revisaba acá — se podía vender a crédito a
+  // cualquier cliente aunque esa casilla estuviera desmarcada.
+  if (!cliente.permiteCredito) throw new Error(`${cliente.nombre} no tiene habilitado "Permite crédito" — actívalo en su ficha antes de venderle a crédito.`)
+  if (!cliente.limiteCredito) return
   const deudaActual = await db.cuentaPorCobrar.aggregate({
     where: { clienteId, userId, estado: { in: ["pendiente","parcial","vencida"] } },
     _sum: { saldoPendiente: true }

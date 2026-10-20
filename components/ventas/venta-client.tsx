@@ -39,10 +39,14 @@ type ItemVenta = {
 
 interface ClienteOption { id: string; nombre: string; apellido: string | null; telefono: string | null; empresa: string | null; esVip: boolean }
 
+// "Débito" y "Crédito" eran dos botones separados, pero esa elección nunca
+// le llegaba a la máquina (Mercado Pago/TUU solo reciben un monto — el tipo
+// de tarjeta y las cuotas se eligen en el terminal mismo, no desde acá), así
+// que la separación era puramente visual y podía no coincidir con lo que el
+// cliente eligió en la máquina. Se fusionaron en un solo "Tarjeta".
 const METODOS_PAGO = [
   { value: "efectivo",     label: "Efectivo",     icon: "💵" },
-  { value: "debito",       label: "Débito",       icon: "💳" },
-  { value: "credito",      label: "Crédito",      icon: "🏦" },
+  { value: "tarjeta",      label: "Tarjeta",      icon: "💳" },
   { value: "transferencia",label: "Transferencia",icon: "🏛️" },
   { value: "pendiente",    label: "Pendiente",    icon: "📄" },
 ]
@@ -312,13 +316,13 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
     return () => { if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current) }
   }, [])
 
-  function handleCobrarConMaquina(tipo: "debito" | "credito") {
+  function handleCobrarConMaquina() {
     if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
     const nombreProveedor = proveedorPagoActivo === "tuu" ? "TUU" : "Mercado Pago"
-    const etiqueta = tipo === "debito" ? `Débito (${nombreProveedor})` : `Crédito (${nombreProveedor})`
+    const etiqueta = `Tarjeta (${nombreProveedor})`
     setCobroMaquina({ estado: "esperando" })
     startTransition(async () => {
       try {
@@ -732,13 +736,13 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
             celular, tablet o un monitor grande. */}
         <div className="flex flex-wrap gap-2">
           {METODOS_PAGO.map(m => {
-            // Cuando hay una máquina conectada, Débito y Crédito cobran de
-            // verdad ahí en vez de solo marcar el método a mano — mismo
-            // botón de siempre, solo que ahora "sabe" que hay una máquina.
-            const esCobrable = !!proveedorPagoActivo && (m.value === "debito" || m.value === "credito")
+            // Cuando hay una máquina conectada, Tarjeta cobra de verdad ahí
+            // en vez de solo marcar el método a mano — mismo botón de
+            // siempre, solo que ahora "sabe" que hay una máquina.
+            const esCobrable = !!proveedorPagoActivo && m.value === "tarjeta"
             return (
               <button key={m.value}
-                onClick={() => esCobrable ? handleCobrarConMaquina(m.value as "debito" | "credito") : setMetodo(m.value)}
+                onClick={() => esCobrable ? handleCobrarConMaquina() : setMetodo(m.value)}
                 disabled={esCobrable && (isPending || cobroMaquina?.estado === "esperando")}
                 className={`relative flex-1 min-w-[92px] flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all disabled:opacity-60 ${metodo === m.value && !esCobrable ? "border-sky-500 bg-sky-500/10 text-sky-400" : "border-[var(--c-border)] text-[var(--c-text3)] hover:border-sky-500/30"}`}>
                 <span className="text-lg">{m.icon}</span>
@@ -749,7 +753,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
           })}
         </div>
         {proveedorPagoActivo && (
-          <p className="text-[10px] text-[var(--c-text4)] mt-2 flex items-center gap-1">🟡 Débito y Crédito cobran directo con tu máquina conectada.</p>
+          <p className="text-[10px] text-[var(--c-text4)] mt-2 flex items-center gap-1">🟡 Tarjeta cobra directo con tu máquina conectada.</p>
         )}
         {metodo === "pendiente" && (
           <div className="mt-3 space-y-2">
