@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
 import { validarApiKeyTuu, crearSolicitudPagoTuu, consultarSolicitudPagoTuu } from "@/lib/pagos/tuu"
+import { listarLectoresSumup, crearCobroSumup, type LectorSumup } from "@/lib/pagos/sumup"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
@@ -94,11 +95,36 @@ export async function conectarTuu(apiKey: string, device: string) {
   revalidatePath("/dashboard/venta")
 }
 
+/** Paso 1 al conectar SumUp: con la API Key y el código de comercio, trae
+ * los lectores emparejados a la cuenta para que el dueño elija — sin
+ * guardar nada todavía. */
+export async function listarLectoresParaConectarSumup(apiKey: string, merchantCode: string): Promise<LectorSumup[]> {
+  await getSession()
+  return listarLectoresSumup(apiKey, merchantCode)
+}
+
+/** Paso 2: guarda la conexión con el lector elegido. SumUp necesita tanto
+ * la API Key como el código de comercio en cada llamada (a diferencia de
+ * Mercado Pago/TUU, que solo necesitan un token) — van juntos, cifrados,
+ * dentro de accessToken; terminalId guarda el id del lector. */
+export async function conectarSumup(apiKey: string, merchantCode: string, readerId: string) {
+  const session = await getSessionEscritura("configuracion")
+  const credencialesCifradas = cifrarToken(JSON.stringify({ apiKey, merchantCode }))
+  await db.conexionPago.upsert({
+    where: { userId_proveedor: { userId: session.user.id, proveedor: "sumup" } },
+    create: { userId: session.user.id, proveedor: "sumup", accessToken: credencialesCifradas, terminalId: readerId, activo: true, ultimaConexionOk: new Date() },
+    update: { accessToken: credencialesCifradas, terminalId: readerId, activo: true, ultimaConexionOk: new Date() },
+  })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/venta")
+}
+
 // Un local solo debería tener una máquina conectada a la vez, pero como
 // cada proveedor se guarda en su propia fila, nada impide tener dos
 // activas al mismo tiempo. Si eso pasa, se prioriza Mercado Pago por ser
-// la integración más probada ("mercadopago" < "tuu" alfabéticamente).
-const PROVEEDORES_MAQUINA = ["mercadopago", "tuu"] as const
+// la integración más probada, y SumUp antes que TUU ("mercadopago" <
+// "sumup" < "tuu" alfabéticamente).
+const PROVEEDORES_MAQUINA = ["mercadopago", "sumup", "tuu"] as const
 
 /** Se llama desde Venta al elegir "Cobrar con máquina conectada" — le pide
  * a la terminal que cobre el monto exacto, sea cual sea el proveedor que
@@ -115,6 +141,27 @@ export async function iniciarCobroMaquina(monto: number, referenciaVenta: string
     const { paymentRequestId } = await crearSolicitudPagoTuu(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
     return { orderId: String(paymentRequestId) }
   }
+  if (conexion.proveedor === "sumup") {
+    // SumUp no tiene un endpoint de consulta — el resultado llega por
+    // webhook (ver app/api/webhooks/sumup y la cabecera de lib/pagos/sumup.ts).
+    // Esta fila es el punto de encuentro: se crea en "pendiente" apenas
+    // SumUp confirma el client_transaction_id (necesario para poder
+    // guardarlo) — el cobro en el lector recién empieza ahí, así que la
+    // fila siempre existe segundos antes de que el webhook pueda llegar.
+    // webhookToken es un random que nunca sale de acá — es lo único que
+    // impide que alguien forje un webhook de "pago aprobado" para esta
+    // venta (SumUp no firma estos webhooks, ver cabecera de sumup.ts).
+    const { apiKey, merchantCode } = JSON.parse(descifrarToken(conexion.accessToken)) as { apiKey: string; merchantCode: string }
+    const webhookToken = crypto.randomUUID()
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const returnUrl = `${baseUrl}/api/webhooks/sumup?t=${webhookToken}`
+
+    const { clientTransactionId } = await crearCobroSumup(apiKey, merchantCode, conexion.terminalId, monto, returnUrl, referenciaVenta)
+    const cobro = await db.cobroSumup.create({
+      data: { userId: session.user.id, clientTransactionId, webhookToken, merchantCode, estado: "pendiente" },
+    })
+    return { orderId: cobro.id }
+  }
   const { orderId } = await crearOrdenMercadoPago(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
   return { orderId }
 }
@@ -130,5 +177,16 @@ export async function consultarCobroMaquina(orderId: string) {
   if (!conexion) throw new Error("No hay ninguna máquina conectada")
 
   if (conexion.proveedor === "tuu") return consultarSolicitudPagoTuu(descifrarToken(conexion.accessToken), orderId)
+  if (conexion.proveedor === "sumup") {
+    // A diferencia de los otros dos, acá nunca se le pregunta a SumUp
+    // directamente — orderId es el id de la fila CobroSumup que el webhook
+    // va actualizando (ver iniciarCobroMaquina más arriba). Se filtra por
+    // userId además del id, mismo criterio de defensa en profundidad que el
+    // resto de la app (un id es difícil de adivinar, pero igual se acota).
+    const cobro = await db.cobroSumup.findFirst({ where: { id: orderId, userId: session.user.id } })
+    if (!cobro) throw new Error("No se encontró ese cobro")
+    const estado = cobro.estado === "aprobado" ? "aprobado" : cobro.estado === "rechazado" ? "rechazado" : "pendiente"
+    return { estado, crudo: cobro }
+  }
   return consultarOrdenMercadoPago(descifrarToken(conexion.accessToken), orderId)
 }

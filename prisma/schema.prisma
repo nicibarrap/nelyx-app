@@ -52,6 +52,7 @@ model User {
   notificaciones        Notificacion[]
   notificacionConfig    NotificacionConfig?
   conexionesPago        ConexionPago[]
+  cobrosSumup           CobroSumup[]
   passwordResetTokens   PasswordResetToken[]
   conversacionesSoporte ConversacionSoporte[]
   // Ambos apagados por defecto — recordatorios automáticos a CLIENTES (no
@@ -669,13 +670,42 @@ model ConexionPago {
   id                String   @id @default(cuid())
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  proveedor         String   // "mercadopago" | "tuu" | "transbank" | "getnet" | "bancoestado"
-  accessToken       String   @db.Text
-  terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo
+  proveedor         String   // "mercadopago" | "tuu" | "sumup" | "transbank" | "getnet" | "bancoestado"
+  accessToken       String   @db.Text // para SumUp guarda un JSON {apiKey, merchantCode} cifrado junto, no solo un token
+  terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo. Para SumUp: el id del lector ("rdr_...")
   activo            Boolean  @default(true)
   ultimaConexionOk  DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   @@unique([userId, proveedor])
+}
+
+// A diferencia de Mercado Pago y TUU, SumUp no tiene un endpoint para
+// consultar el resultado de un cobro ya creado (confirmado contra el
+// OpenAPI spec oficial de SumUp: GET /v0.1/checkouts/{id} es un recurso
+// aparte — probado en vivo y da 404 para un checkout_id de lector). El
+// resultado llega por webhook (app/api/webhooks/sumup) a `return_url`, con
+// forma `ReaderCheckoutStatusChange` { payload: { client_transaction_id,
+// merchant_code, status: "successful"|"failed" } }. Esta tabla es el punto
+// de encuentro entre ambos lados: iniciarCobroMaquina crea la fila en
+// "pendiente" antes de pedirle a SumUp que cobre, y el webhook la actualiza
+// cuando llega la respuesta — consultarCobroMaquina solo lee esta fila,
+// nunca le pregunta a SumUp directamente.
+model CobroSumup {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientTransactionId String   @unique // el que devuelve SumUp al crear el checkout y el que manda de vuelta el webhook — la correlación principal
+  // Token random generado acá (nunca enviado al navegador, solo viaja
+  // dentro de return_url hacia SumUp) — sin esto, cualquiera que viera el
+  // `orderId` en el navegador del vendedor podría forjar un webhook de
+  // "pago aprobado" para su propia venta, porque SumUp no firma estos
+  // webhooks (confirmado: no hay mecanismo de firma documentado para
+  // ReaderCheckoutStatusChange, a diferencia de otros productos de SumUp).
+  webhookToken        String   @unique
+  merchantCode        String   // se cruza contra el merchant_code que manda el webhook, defensa en profundidad adicional
+  estado              String   @default("pendiente") // "pendiente" | "aprobado" | "rechazado"
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 

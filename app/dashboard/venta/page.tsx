@@ -20,7 +20,7 @@ export default async function VentaPage() {
     // pasar, pero nada en el modelo lo impide), se prioriza Mercado Pago
     // por ser la integración más probada — mismo criterio que en
     // iniciarCobroMaquina/consultarCobroMaquina (app/actions/pagos-acciones.ts).
-    db.conexionPago.findFirst({ where: { userId: session!.user.id, proveedor: { in: ["mercadopago", "tuu"] }, activo: true }, orderBy: { proveedor: "asc" } }),
+    db.conexionPago.findFirst({ where: { userId: session!.user.id, proveedor: { in: ["mercadopago", "sumup", "tuu"] }, activo: true }, orderBy: { proveedor: "asc" } }),
   ])
 
   // precio/costo son Decimal de Prisma (instancias de clase, no objetos
