@@ -669,9 +669,9 @@ model ConexionPago {
   id                String   @id @default(cuid())
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  proveedor         String   // "mercadopago" | "tuu" | "transbank" | "getnet" | "bancoestado"
-  accessToken       String   @db.Text
-  terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo
+  proveedor         String   // "mercadopago" | "tuu" | "sumup" | "transbank" | "getnet" | "bancoestado"
+  accessToken       String   @db.Text // para SumUp guarda un JSON {apiKey, merchantCode} cifrado junto, no solo un token
+  terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo. Para SumUp: el id del lector ("rdr_...")
   activo            Boolean  @default(true)
   ultimaConexionOk  DateTime?
   createdAt         DateTime @default(now())

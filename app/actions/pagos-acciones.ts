@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
 import { validarApiKeyTuu, crearSolicitudPagoTuu, consultarSolicitudPagoTuu } from "@/lib/pagos/tuu"
+import { listarLectoresSumup, type LectorSumup } from "@/lib/pagos/sumup"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
@@ -89,6 +90,36 @@ export async function conectarTuu(apiKey: string, device: string) {
     where: { userId_proveedor: { userId: session.user.id, proveedor: "tuu" } },
     create: { userId: session.user.id, proveedor: "tuu", accessToken: apiKeyCifrada, terminalId: device, activo: true, ultimaConexionOk: new Date() },
     update: { accessToken: apiKeyCifrada, terminalId: device, activo: true, ultimaConexionOk: new Date() },
+  })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/venta")
+}
+
+/** Paso 1 al conectar SumUp: con la API Key y el código de comercio, trae
+ * los lectores emparejados a la cuenta para que el dueño elija — sin
+ * guardar nada todavía. */
+export async function listarLectoresParaConectarSumup(apiKey: string, merchantCode: string): Promise<LectorSumup[]> {
+  await getSession()
+  return listarLectoresSumup(apiKey, merchantCode)
+}
+
+/** Paso 2: guarda la conexión con el lector elegido. SumUp necesita tanto
+ * la API Key como el código de comercio en cada llamada (a diferencia de
+ * Mercado Pago/TUU, que solo necesitan un token) — van juntos, cifrados,
+ * dentro de accessToken; terminalId guarda el id del lector.
+ *
+ * NOTA: esta conexión queda guardada y validada, pero todavía no está
+ * enchufada al cobro desde Venta (ver lib/pagos/sumup.ts) — SumUp confirma
+ * el resultado de un cobro por webhook, no por consulta directa como los
+ * otros proveedores, y esa pieza falta construir. Por eso "sumup" no está
+ * en PROVEEDORES_MAQUINA más abajo. */
+export async function conectarSumup(apiKey: string, merchantCode: string, readerId: string) {
+  const session = await getSessionEscritura("configuracion")
+  const credencialesCifradas = cifrarToken(JSON.stringify({ apiKey, merchantCode }))
+  await db.conexionPago.upsert({
+    where: { userId_proveedor: { userId: session.user.id, proveedor: "sumup" } },
+    create: { userId: session.user.id, proveedor: "sumup", accessToken: credencialesCifradas, terminalId: readerId, activo: true, ultimaConexionOk: new Date() },
+    update: { accessToken: credencialesCifradas, terminalId: readerId, activo: true, ultimaConexionOk: new Date() },
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")

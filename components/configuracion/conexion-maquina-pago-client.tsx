@@ -1,14 +1,16 @@
 "use client"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
-import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, desconectarPago } from "@/app/actions/pagos-acciones"
+import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, listarLectoresParaConectarSumup, conectarSumup, desconectarPago } from "@/app/actions/pagos-acciones"
 import type { TerminalMP } from "@/lib/pagos/mercadopago"
+import type { LectorSumup } from "@/lib/pagos/sumup"
 
 type Conexion = { id: string; proveedor: string; terminalId: string | null; activo: boolean; ultimaConexionOk: string | null }
 
 const MARCAS = [
   { id: "mercadopago", nombre: "Mercado Pago", emoji: "🟡", disponible: true },
   { id: "tuu", nombre: "TUU (Haulmer)", emoji: "🟣", disponible: true },
+  { id: "sumup", nombre: "SumUp", emoji: "🟠", disponible: true },
   { id: "transbank", nombre: "Transbank", emoji: "🔵", disponible: false },
   { id: "getnet", nombre: "Getnet", emoji: "🔴", disponible: false },
   { id: "bancoestado", nombre: "BancoEstado (CompraAquí)", emoji: "🟢", disponible: false },
@@ -23,6 +25,10 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
   const [apiKeyTuu, setApiKeyTuu] = useState("")
   const [deviceTuu, setDeviceTuu] = useState("")
   const [tuuValidado, setTuuValidado] = useState(false)
+  const [apiKeySumup, setApiKeySumup] = useState("")
+  const [merchantCodeSumup, setMerchantCodeSumup] = useState("")
+  const [lectoresSumup, setLectoresSumup] = useState<LectorSumup[] | null>(null)
+  const [lectorElegidoSumup, setLectorElegidoSumup] = useState("")
   const [isPending, startTransition] = useTransition()
 
   const conexionMP = conexiones.find(c => c.proveedor === "mercadopago")
@@ -88,6 +94,38 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
     })
   }
 
+  function handleProbarConexionSumup() {
+    if (!apiKeySumup.trim() || !merchantCodeSumup.trim()) { toast.error("Ingresa tu API Key y tu código de comercio"); return }
+    startTransition(async () => {
+      try {
+        const lista = await listarLectoresParaConectarSumup(apiKeySumup.trim(), merchantCodeSumup.trim())
+        if (lista.length === 0) { toast.error("Las credenciales son válidas, pero no encontré ningún lector emparejado a esta cuenta"); return }
+        setLectoresSumup(lista)
+        setLectorElegidoSumup(lista[0].id)
+        toast.success(`Encontré ${lista.length} lector${lista.length === 1 ? "" : "es"}`)
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo conectar")
+      }
+    })
+  }
+
+  function handleConectarSumup() {
+    if (!lectorElegidoSumup) return
+    startTransition(async () => {
+      try {
+        await conectarSumup(apiKeySumup.trim(), merchantCodeSumup.trim(), lectorElegidoSumup)
+        toast.success("✅ Máquina conectada")
+        setConexiones(prev => [...prev.filter(c => c.proveedor !== "sumup"), { id: "temp", proveedor: "sumup", terminalId: lectorElegidoSumup, activo: true, ultimaConexionOk: new Date().toISOString() }])
+        setMarcaAbierta(null)
+        setApiKeySumup("")
+        setMerchantCodeSumup("")
+        setLectoresSumup(null)
+      } catch (err: any) {
+        toast.error(err?.message ?? "Error al conectar")
+      }
+    })
+  }
+
   function handleDesconectar(proveedor: string) {
     startTransition(async () => {
       try {
@@ -116,6 +154,7 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                   <div>
                     <p className="text-sm font-semibold text-[var(--c-text)]">{marca.nombre}</p>
                     {conectada && <p className="text-[10px] text-emerald-400">Conectado — terminal {conectada.terminalId}</p>}
+                    {conectada && marca.id === "sumup" && <p className="text-[10px] text-amber-400">⚠️ Cobro automático desde Venta: en desarrollo (falta conectar los webhooks de SumUp)</p>}
                     {!marca.disponible && <p className="text-[10px] text-[var(--c-text4)]">Próximamente</p>}
                   </div>
                 </div>
@@ -198,6 +237,45 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                         <p className="text-[10px] text-[var(--c-text4)] mt-1">Está impreso atrás del terminal. Antes de conectar, activa "modo integración" en la app de pagos del terminal (se habilita primero desde el Espacio de Trabajo).</p>
                       </div>
                       <button onClick={handleConectarTuu} disabled={isPending}
+                        className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
+                        {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {marcaAbierta === marca.id && marca.id === "sumup" && !conectada && (
+                <div className="px-4 pb-4 pt-1 border-t border-[var(--c-border)] space-y-3">
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">API Key</label>
+                    <input type="password" value={apiKeySumup} onChange={e => { setApiKeySumup(e.target.value); setLectoresSumup(null) }}
+                      placeholder="sup_sk_..." className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Código de comercio</label>
+                    <input value={merchantCodeSumup} onChange={e => { setMerchantCodeSumup(e.target.value); setLectoresSumup(null) }}
+                      placeholder="Ej: MB436VFT" className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                    <p className="text-[10px] text-[var(--c-text4)] mt-1">Ambos datos están en tu cuenta de SumUp, en Ajustes → Para desarrolladores → Claves API (el código de comercio aparece arriba a la izquierda, junto al nombre de la cuenta).</p>
+                  </div>
+
+                  {!lectoresSumup && (
+                    <button onClick={handleProbarConexionSumup} disabled={isPending}
+                      className="h-9 px-4 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] text-xs font-semibold rounded-lg hover:border-sky-500/40 transition-all disabled:opacity-50">
+                      {isPending ? "Buscando..." : "Probar conexión"}
+                    </button>
+                  )}
+
+                  {lectoresSumup && (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Lector encontrado</label>
+                        <select value={lectorElegidoSumup} onChange={e => setLectorElegidoSumup(e.target.value)}
+                          className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500">
+                          {lectoresSumup.map(l => <option key={l.id} value={l.id}>{l.nombre} ({l.estado})</option>)}
+                        </select>
+                      </div>
+                      <button onClick={handleConectarSumup} disabled={isPending}
                         className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
                         {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
                       </button>
