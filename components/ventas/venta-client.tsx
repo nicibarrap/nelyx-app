@@ -47,7 +47,7 @@ const METODOS_PAGO = [
   { value: "pendiente",    label: "Pendiente",    icon: "📄" },
 ]
 
-export function VentaClient({ productos, clientes, conexionPagoActiva }: { productos: any[]; clientes: ClienteOption[]; conexionPagoActiva: boolean }) {
+export function VentaClient({ productos, clientes, proveedorPagoActivo }: { productos: any[]; clientes: ClienteOption[]; proveedorPagoActivo: string | null }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [ahora, setAhora] = useState<Date | null>(null)
@@ -317,7 +317,8 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
-    const etiqueta = tipo === "debito" ? "Débito (Mercado Pago)" : "Crédito (Mercado Pago)"
+    const nombreProveedor = proveedorPagoActivo === "tuu" ? "TUU" : "Mercado Pago"
+    const etiqueta = tipo === "debito" ? `Débito (${nombreProveedor})` : `Crédito (${nombreProveedor})`
     setCobroMaquina({ estado: "esperando" })
     startTransition(async () => {
       try {
@@ -734,7 +735,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             // Cuando hay una máquina conectada, Débito y Crédito cobran de
             // verdad ahí en vez de solo marcar el método a mano — mismo
             // botón de siempre, solo que ahora "sabe" que hay una máquina.
-            const esCobrable = conexionPagoActiva && (m.value === "debito" || m.value === "credito")
+            const esCobrable = !!proveedorPagoActivo && (m.value === "debito" || m.value === "credito")
             return (
               <button key={m.value}
                 onClick={() => esCobrable ? handleCobrarConMaquina(m.value as "debito" | "credito") : setMetodo(m.value)}
@@ -747,7 +748,7 @@ export function VentaClient({ productos, clientes, conexionPagoActiva }: { produ
             )
           })}
         </div>
-        {conexionPagoActiva && (
+        {proveedorPagoActivo && (
           <p className="text-[10px] text-[var(--c-text4)] mt-2 flex items-center gap-1">🟡 Débito y Crédito cobran directo con tu máquina conectada.</p>
         )}
         {metodo === "pendiente" && (

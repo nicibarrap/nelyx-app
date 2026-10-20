@@ -1,13 +1,14 @@
 "use client"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
-import { listarTerminalesParaConectar, conectarMercadoPago, desconectarPago } from "@/app/actions/pagos-acciones"
+import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, desconectarPago } from "@/app/actions/pagos-acciones"
 import type { TerminalMP } from "@/lib/pagos/mercadopago"
 
 type Conexion = { id: string; proveedor: string; terminalId: string | null; activo: boolean; ultimaConexionOk: string | null }
 
 const MARCAS = [
   { id: "mercadopago", nombre: "Mercado Pago", emoji: "🟡", disponible: true },
+  { id: "tuu", nombre: "TUU (Haulmer)", emoji: "🟣", disponible: true },
   { id: "transbank", nombre: "Transbank", emoji: "🔵", disponible: false },
   { id: "getnet", nombre: "Getnet", emoji: "🔴", disponible: false },
   { id: "bancoestado", nombre: "BancoEstado (CompraAquí)", emoji: "🟢", disponible: false },
@@ -19,6 +20,9 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
   const [accessToken, setAccessToken] = useState("")
   const [terminales, setTerminales] = useState<TerminalMP[] | null>(null)
   const [terminalElegida, setTerminalElegida] = useState("")
+  const [apiKeyTuu, setApiKeyTuu] = useState("")
+  const [deviceTuu, setDeviceTuu] = useState("")
+  const [tuuValidado, setTuuValidado] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const conexionMP = conexiones.find(c => c.proveedor === "mercadopago")
@@ -48,6 +52,36 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
         setMarcaAbierta(null)
         setAccessToken("")
         setTerminales(null)
+      } catch (err: any) {
+        toast.error(err?.message ?? "Error al conectar")
+      }
+    })
+  }
+
+  function handleProbarConexionTuu() {
+    if (!apiKeyTuu.trim()) { toast.error("Ingresa tu API Key primero"); return }
+    startTransition(async () => {
+      try {
+        await probarConexionTuu(apiKeyTuu.trim())
+        setTuuValidado(true)
+        toast.success("API Key válida")
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo validar la API Key")
+      }
+    })
+  }
+
+  function handleConectarTuu() {
+    if (!deviceTuu.trim()) { toast.error("Ingresa el número de serie del terminal"); return }
+    startTransition(async () => {
+      try {
+        await conectarTuu(apiKeyTuu.trim(), deviceTuu.trim())
+        toast.success("✅ Máquina conectada")
+        setConexiones(prev => [...prev.filter(c => c.proveedor !== "tuu"), { id: "temp", proveedor: "tuu", terminalId: deviceTuu.trim(), activo: true, ultimaConexionOk: new Date().toISOString() }])
+        setMarcaAbierta(null)
+        setApiKeyTuu("")
+        setDeviceTuu("")
+        setTuuValidado(false)
       } catch (err: any) {
         toast.error(err?.message ?? "Error al conectar")
       }
@@ -131,6 +165,39 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                         )}
                       </div>
                       <button onClick={handleConectar} disabled={isPending}
+                        className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
+                        {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {marcaAbierta === marca.id && marca.id === "tuu" && !conectada && (
+                <div className="px-4 pb-4 pt-1 border-t border-[var(--c-border)] space-y-3">
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">API Key</label>
+                    <input type="password" value={apiKeyTuu} onChange={e => { setApiKeyTuu(e.target.value); setTuuValidado(false) }}
+                      placeholder="API Key de TUU" className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                    <p className="text-[10px] text-[var(--c-text4)] mt-1">La encuentras en tu Espacio de Trabajo de TUU (espacio.haulmer.com), en la sección de integración.</p>
+                  </div>
+
+                  {!tuuValidado && (
+                    <button onClick={handleProbarConexionTuu} disabled={isPending}
+                      className="h-9 px-4 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] text-xs font-semibold rounded-lg hover:border-sky-500/40 transition-all disabled:opacity-50">
+                      {isPending ? "Validando..." : "Probar conexión"}
+                    </button>
+                  )}
+
+                  {tuuValidado && (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Número de serie del terminal</label>
+                        <input value={deviceTuu} onChange={e => setDeviceTuu(e.target.value)}
+                          placeholder="TJ44245N20440" className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                        <p className="text-[10px] text-[var(--c-text4)] mt-1">Está impreso atrás del terminal. Antes de conectar, activa "modo integración" en la app de pagos del terminal (se habilita primero desde el Espacio de Trabajo).</p>
+                      </div>
+                      <button onClick={handleConectarTuu} disabled={isPending}
                         className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
                         {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
                       </button>
