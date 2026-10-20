@@ -8,9 +8,12 @@ import { getEmojiProducto } from "@/lib/emojis"
 import { TZ_CHILE } from "@/lib/timezone"
 
 // Mismos íconos que el selector de método de pago en Venta — así el
-// mismo método se reconoce de un vistazo en ambas pantallas.
+// mismo método se reconoce de un vistazo en ambas pantallas. "Débito" y
+// "Crédito" ya no se generan para ventas nuevas (se fusionaron en
+// "Tarjeta"), pero se mantienen acá para que las ventas antiguas sigan
+// mostrando su ícono correcto.
 const ICONO_METODO_PAGO: Record<string, string> = {
-  "Efectivo": "💵", "Débito": "💳", "Crédito": "🏦", "Transferencia": "🏛️", "Pendiente": "📄",
+  "Efectivo": "💵", "Tarjeta": "💳", "Débito": "💳", "Crédito": "🏦", "Transferencia": "🏛️", "Pendiente": "📄",
 }
 
 export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
