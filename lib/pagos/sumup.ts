@@ -38,6 +38,18 @@
 //   iniciarCobroMaquina/consultarCobroMaquina en app/actions/pagos-acciones.ts
 //   para el resto del flujo.
 //
+// FLUJO COMPLETO CONFIRMADO EN PRODUCCIÓN (21-oct-2026): venta real por
+// $2.000 CLP, cobrada con el lector Virtual Solo, webhook recibido y venta
+// registrada con el monto correcto. Un detalle que generó dudas en esa
+// prueba y vale la pena dejar escrito: la pantalla de
+// https://virtual-solo.sumup.com/ mostró "CL$200000" para ese cobro de
+// $2.000 (100x de más) — es un bug de visualización DEL SIMULADOR, no del
+// monto real cobrado. Se confirmó contra el registro de la transacción en
+// el dashboard de SumUp (Ventas), que mostró $2.000 correctos, igual que
+// lo que quedó registrado en Nelyx. O sea: `total_amount.value` con
+// `minor_unit: 0` en pesos CLP enteros (sin multiplicar por 100) es
+// correcto — no "arreglar" esto si se vuelve a ver un monto raro ahí.
+//
 // AFFILIATE KEY — es un secreto A NIVEL DE APP, no por usuario/local:
 // identifica a la integración de Nelyx ante SumUp (Application identifier
 // + Affiliate Key, generados una sola vez desde Ajustes → Para
