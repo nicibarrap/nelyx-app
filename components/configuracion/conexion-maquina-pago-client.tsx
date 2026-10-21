@@ -154,7 +154,6 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                   <div>
                     <p className="text-sm font-semibold text-[var(--c-text)]">{marca.nombre}</p>
                     {conectada && <p className="text-[10px] text-emerald-400">Conectado — terminal {conectada.terminalId}</p>}
-                    {conectada && marca.id === "sumup" && <p className="text-[10px] text-amber-400">⚠️ Cobro automático desde Venta: en desarrollo (falta conectar los webhooks de SumUp)</p>}
                     {!marca.disponible && <p className="text-[10px] text-[var(--c-text4)]">Próximamente</p>}
                   </div>
                 </div>
