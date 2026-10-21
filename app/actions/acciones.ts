@@ -13,6 +13,7 @@ import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
 import { hoyEnChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
+import type { ResultadoVenta } from "@/lib/tipos-venta"
 
 async function getSession() {
   const session = await auth()
@@ -293,20 +294,39 @@ export async function eliminarMovimiento(id: string) {
   if (mov.clienteId) revalidatePath("/dashboard/clientes")
 }
 
+// Next.js censura en producción el mensaje de CUALQUIER error lanzado
+// (throw) desde una Server Action — al navegador solo le llega el genérico
+// "An error occurred in the Server Components render...", nunca el texto
+// real (confirmado en vivo: tanto un error de negocio propio, ej. "Juan no
+// tiene habilitado Permite crédito", como un error interno inesperado,
+// quedaban reducidos a ese mismo mensaje sin sentido para quien vende).
+// Por eso acá no se relanza nada — se devuelve siempre un resultado como
+// dato ({ok:true} o {ok:false, error}), que SÍ cruza intacto al cliente.
+// Mismo patrón recomendado por Next.js para "errores esperados". Acotado a
+// este flujo (Venta) por ahora — el resto de las Server Actions del
+// proyecto sigue con throw/catch como antes.
+//
+// El tipo vive en lib/tipos-venta.ts, no acá — un archivo "use server" solo
+// debe exportar funciones async (ver pagos-acciones.ts).
+
 export async function registrarVenta(items: Array<{
   productoId?: string | null
   nombre: string
   precio: number
   cantidad: number
   cantidadInterna?: number | null
-}>, fecha: string, descripcion?: string, clienteId?: string | null, descuento?: number, tipoPago?: string, fechaVence?: string, metodoPago?: string) {
+}>, fecha: string, descripcion?: string, clienteId?: string | null, descuento?: number, tipoPago?: string, fechaVence?: string, metodoPago?: string): Promise<ResultadoVenta> {
   try {
     await registrarVentaInterno(items, fecha, descripcion, clienteId, descuento, tipoPago, fechaVence, metodoPago)
+    return { ok: true }
   } catch (err: any) {
-    if (!err?.code) throw err
+    // Sin .code: fue un throw a propósito (ej. "Stock insuficiente",
+    // "Juan no tiene habilitado Permite crédito") — su mensaje ya es
+    // específico y seguro de mostrar tal cual.
+    if (!err?.code) return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar la venta." }
     console.error("Error en registrarVenta:", err)
     Sentry.captureException(err)
-    throw new Error("No se pudo registrar la venta. Intenta de nuevo — si el problema persiste, contáctanos.")
+    return { ok: false, error: "No se pudo registrar la venta. Intenta de nuevo — si el problema persiste, contáctanos." }
   }
 }
 

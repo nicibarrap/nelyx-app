@@ -15,7 +15,7 @@ export default async function VentaPage() {
       select: { id: true, nombre: true, sku: true, codigoBarras: true, categoria: true, precio: true, costo: true, stock: true, formaVenta: true, unidadMedida: true, unidadPersonalizada: true, unidadVentaCantidad: true, unidadVentaTipo: true, ventaMinima: true },
       orderBy: { nombre: "asc" },
     }),
-    db.cliente.findMany({ where: { userId: session!.user.id, activo: true }, select: { id: true, nombre: true, apellido: true, telefono: true, empresa: true, esVip: true }, orderBy: { nombre: "asc" } }),
+    db.cliente.findMany({ where: { userId: session!.user.id, activo: true }, select: { id: true, nombre: true, apellido: true, telefono: true, empresa: true, esVip: true, permiteCredito: true }, orderBy: { nombre: "asc" } }),
     // Si el local tuviera dos máquinas conectadas a la vez (no debería
     // pasar, pero nada en el modelo lo impide), se prioriza Mercado Pago
     // por ser la integración más probada — mismo criterio que en
