@@ -113,15 +113,18 @@ describe("registrarVenta bajo concurrencia real (venta de inventario)", () => {
 
     // Dos ventas de 4 unidades cada una compitiendo por 5 de stock: juntas
     // (8) superan lo disponible, así que al menos una debe ser rechazada.
-    const resultados = await Promise.allSettled([
+    // registrarVenta ya no rechaza (throw) los errores de negocio como
+    // "Stock insuficiente" — siempre resuelve con { ok, error } — así que
+    // el éxito/rechazo se lee de ahí, no del status de la promesa.
+    const resultados = await Promise.all([
       registrarVenta(item(4), new Date().toISOString()),
       registrarVenta(item(4), new Date().toISOString()),
     ])
 
-    const exitosas = resultados.filter(r => r.status === "fulfilled").length
+    const exitosas = resultados.filter(r => r.ok).length
     expect(exitosas).toBe(1)
-    const rechazada = resultados.find(r => r.status === "rejected") as PromiseRejectedResult
-    expect(rechazada.reason.message).toMatch(/Stock insuficiente/)
+    const rechazada = resultados.find(r => !r.ok)
+    expect(rechazada?.error).toMatch(/Stock insuficiente/)
 
     // Invariante de negocio: el dinero vendido jamás puede corresponder a
     // más unidades que las que el producto realmente tenía.
