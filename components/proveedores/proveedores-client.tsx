@@ -389,6 +389,31 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
         ))}
       </div>
 
+      {/* Ranking */}
+      {rankingCompras.length > 0 && (
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--c-border)]">
+            <h3 className="text-sm font-semibold text-[var(--c-text)]">Ranking de proveedores — Mayor volumen de compras</h3>
+          </div>
+          <div className="divide-y divide-[var(--c-border2)]">
+            {rankingCompras.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[var(--c-hover)] transition-all cursor-pointer" onClick={() => setSelectedId(p.id)}>
+                <span className={`text-sm font-black w-6 text-center ${i === 0 ? "text-[var(--c-warning)]" : i === 1 ? "text-[var(--c-text3)]" : "text-[var(--c-text4)]"}`}>#{i+1}</span>
+                <Avatar nombre={p.nombre} size="sm" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-[var(--c-text)]">{p.nombre}</p>
+                  <p className="text-xs text-[var(--c-text3)]">{p.compras} compras · {p.categoria ?? "Sin categoría"}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-red-400">{formatCLP(p.totalComprado)}</p>
+                  <p className="text-[10px] text-[var(--c-text3)]">{formatRel(p.ultimaCompra)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Lista */}
@@ -456,31 +481,6 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
           )}
         </div>
       </div>
-
-      {/* Ranking */}
-      {rankingCompras.length > 0 && (
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[var(--c-border)]">
-            <h3 className="text-sm font-semibold text-[var(--c-text)]">Ranking de proveedores — Mayor volumen de compras</h3>
-          </div>
-          <div className="divide-y divide-[var(--c-border2)]">
-            {rankingCompras.map((p, i) => (
-              <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[var(--c-hover)] transition-all cursor-pointer" onClick={() => setSelectedId(p.id)}>
-                <span className={`text-sm font-black w-6 text-center ${i === 0 ? "text-[var(--c-warning)]" : i === 1 ? "text-[var(--c-text3)]" : "text-[var(--c-text4)]"}`}>#{i+1}</span>
-                <Avatar nombre={p.nombre} size="sm" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-[var(--c-text)]">{p.nombre}</p>
-                  <p className="text-xs text-[var(--c-text3)]">{p.compras} compras · {p.categoria ?? "Sin categoría"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-red-400">{formatCLP(p.totalComprado)}</p>
-                  <p className="text-[10px] text-[var(--c-text3)]">{formatRel(p.ultimaCompra)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

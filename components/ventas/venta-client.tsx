@@ -37,7 +37,7 @@ type ItemVenta = {
   ventaPorPesoRapida?: boolean // viene del panel de gramos+precio — precio ya es el total, no editable como cantidad×precio-unitario
 }
 
-interface ClienteOption { id: string; nombre: string; apellido: string | null; telefono: string | null; empresa: string | null; esVip: boolean }
+interface ClienteOption { id: string; nombre: string; apellido: string | null; telefono: string | null; empresa: string | null; esVip: boolean; permiteCredito: boolean }
 
 // "Débito" y "Crédito" eran dos botones separados, pero esa elección nunca
 // le llegaba a la máquina (Mercado Pago/TUU solo reciben un monto — el tipo
@@ -361,20 +361,29 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
     const itemsParaEnviar = items.length > 0
       ? items.map(i => ({ productoId: i.productoId, nombre: i.nombre, precio: i.precio, cantidad: i.cantidad, cantidadInterna: i.cantidadInterna }))
       : [{ productoId: null, nombre: notas || "Venta", precio: total, cantidad: 1 }]
-    try {
-      await registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, "contado", undefined, metodoPagoLabel)
+    const resultado = await registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, "contado", undefined, metodoPagoLabel)
+    if (resultado.ok) {
       toast.success("✅ Pago aprobado — venta registrada")
       resetFormulario()
       setCobroMaquina(null)
       router.refresh()
-    } catch (err: any) {
-      toast.error(err?.message ?? "El pago se aprobó, pero hubo un error al registrar la venta — anótala a mano")
+    } else {
+      toast.error(`El pago se aprobó, pero no se pudo registrar la venta — anótala a mano. (${resultado.error ?? "error desconocido"})`)
     }
   }
 
   function handleRegistrar() {
     if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
     if (metodo === "pendiente" && !clienteId) { toast.error("Selecciona un cliente para una venta pendiente"); return }
+    // Mismo chequeo que hace el servidor (verificarLimiteCredito) — se
+    // repite acá para avisar antes de intentar, no después: el aviso
+    // debajo del botón (ver más abajo) ya lo muestra mientras se arma la
+    // venta, esto solo evita el viaje al servidor si de todos modos va a
+    // rechazarla.
+    if (metodo === "pendiente" && clienteSeleccionado && !clienteSeleccionado.permiteCredito) {
+      toast.error(`${clienteSeleccionado.nombre} no tiene habilitado "Permite crédito" — actívalo en su ficha o elige otro método de pago.`)
+      return
+    }
 
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
@@ -390,16 +399,24 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
 
     startTransition(async () => {
       try {
-        await conTimeout(registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, tipoPago, fechaVence || undefined, metodoPago))
-        toast.success("✅ Venta registrada — listo para la siguiente")
-        // Se mantiene en Venta (no navega a Movimientos) para poder cargar
-        // otra venta de inmediato. router.refresh() trae el stock actualizado
-        // de los productos sin perder el formulario ya limpio.
-        resetFormulario()
-        router.refresh()
+        const resultado = await conTimeout(registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, tipoPago, fechaVence || undefined, metodoPago))
+        if (resultado.ok) {
+          toast.success("✅ Venta registrada — listo para la siguiente")
+          // Se mantiene en Venta (no navega a Movimientos) para poder cargar
+          // otra venta de inmediato. router.refresh() trae el stock actualizado
+          // de los productos sin perder el formulario ya limpio.
+          resetFormulario()
+          router.refresh()
+        } else {
+          // Rechazo de negocio (ej. stock insuficiente, límite de crédito
+          // excedido) — el mensaje ya es específico, no hace falta
+          // traducirlo con mensajeErrorAccion (eso es solo para timeout/red).
+          toast.error(resultado.error ?? "No se pudo registrar la venta.", { duration: 8000 })
+        }
       } catch (err) {
-        // Con conexión inestable, el servidor puede haber alcanzado a
-        // registrar la venta antes de que la respuesta se perdiera — por
+        // Acá solo caen timeout (conTimeout) o fallas de red — con
+        // conexión inestable, el servidor puede haber alcanzado a
+        // registrar la venta antes de que la respuesta se perdiera, por
         // eso NO se limpia el formulario acá: mejor que el usuario revise
         // Movimientos antes de decidir si reintentar.
         toast.error(mensajeErrorAccion(err, "la venta se registró"), { duration: 8000 })
@@ -757,10 +774,20 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
         )}
         {metodo === "pendiente" && (
           <div className="mt-3 space-y-2">
-            <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5">
-              <span className="text-[var(--c-warning)] text-xs flex-shrink-0">ⓘ</span>
-              <p className="text-[11px] text-[var(--c-warning)]">Se generará una cuenta por cobrar para el cliente seleccionado.</p>
-            </div>
+            {clienteSeleccionado && !clienteSeleccionado.permiteCredito ? (
+              // Mismo chequeo que hace el servidor (verificarLimiteCredito) —
+              // se muestra acá, apenas se nota, en vez de esperar a que la
+              // venta se rechace recién al tocar "Registrar venta".
+              <div className="flex items-start gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-3 py-2.5">
+                <span className="text-red-400 text-xs flex-shrink-0">⚠️</span>
+                <p className="text-[11px] text-red-400">{clienteSeleccionado.nombre} no tiene "Permite crédito" habilitado — actívalo en su ficha o elige otro método de pago.</p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5">
+                <span className="text-[var(--c-warning)] text-xs flex-shrink-0">ⓘ</span>
+                <p className="text-[11px] text-[var(--c-warning)]">Se generará una cuenta por cobrar para el cliente seleccionado.</p>
+              </div>
+            )}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] text-[var(--c-text3)]">Fecha de vencimiento (opcional)</label>

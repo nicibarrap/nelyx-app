@@ -101,7 +101,7 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
       try {
         if (productoId && productoSel) {
           // Credit sale with product - uses registrarVenta which handles stock deduction
-          await registrarVenta(
+          const resultado = await registrarVenta(
             [{ productoId, nombre: productoSel.nombre, precio: Number(productoSel.precio ?? 0), cantidad }],
             localToday(),
             `Venta a crédito — ${productoSel.nombre}`,
@@ -110,6 +110,7 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
             "credito",
             fechaVence || undefined
           )
+          if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar la venta."); return }
         } else {
           await crearCuentaPorCobrar(fd)
         }

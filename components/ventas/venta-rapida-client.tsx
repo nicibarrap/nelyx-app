@@ -36,10 +36,11 @@ export function VentaRapidaClient({ onVolver }: { onVolver: () => void }) {
     setIsPending(true)
     try {
       const hoy = new Date().toISOString().slice(0, 10)
-      await registrarVenta(
+      const resultado = await registrarVenta(
         [{ productoId: null, nombre: "Venta rápida", precio: montoNum, cantidad: 1 }],
         hoy, undefined, null, undefined, "contado", undefined, "Efectivo"
       )
+      if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar la venta."); return }
       setVentasHoy(prev => [{ id: crypto.randomUUID(), monto: montoNum, hora: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }) }, ...prev])
       toast.success(`✅ ${formatCLP(montoNum)} registrado`)
       setMonto("")
