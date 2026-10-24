@@ -66,13 +66,25 @@ export async function crearOrdenMercadoPago(accessToken: string, terminalId: str
       type: "point",
       external_reference: referenciaExterna,
       expiration_time: "PT5M", // 5 minutos para que el cliente pague, antes de que expire sola
-      transactions: { payments: [{ amount: montoCLP.toFixed(2) }] },
+      // CLP no tiene decimales — la API de Orders exige el monto como string
+      // SIN decimales ("1000", no "1000.00"): confirmado en vivo contra el
+      // sandbox el 24-oct-2026, "1000.00" responde 400 "does not match
+      // pattern". Con .toFixed(2) (como estaba antes) la creación de la
+      // orden fallaba siempre — este bug es anterior al de consultarOrden
+      // y lo tapaba por completo: nunca se llegaba siquiera a crear un
+      // cobro real.
+      transactions: { payments: [{ amount: String(Math.round(montoCLP)) }] },
       config: { point: { terminal_id: terminalId, print_on_terminal: "no_ticket" } },
     }),
   })
   if (!res.ok) {
+    // La API no siempre devuelve un "message" al nivel raíz — el formato
+    // real de error es { errors: [{ code, message, details }] } (confirmado
+    // en vivo). Con solo cuerpo?.message, el motivo real del rechazo se
+    // perdía y siempre se mostraba el mensaje genérico.
     const cuerpo = await res.json().catch(() => null)
-    throw new Error(cuerpo?.message ?? `No se pudo iniciar el cobro (${res.status})`)
+    const mensaje = cuerpo?.message ?? cuerpo?.errors?.[0]?.message
+    throw new Error(mensaje ?? `No se pudo iniciar el cobro (${res.status})`)
   }
   const data = await res.json()
   return { orderId: data.id }
