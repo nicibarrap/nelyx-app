@@ -1,7 +1,8 @@
 "use client"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
-import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, listarLectoresParaConectarSumup, conectarSumup, desconectarPago } from "@/app/actions/pagos-acciones"
+import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, listarLectoresParaConectarSumup, conectarSumup, conectarTransbank, desconectarPago } from "@/app/actions/pagos-acciones"
+import { conectarAgenteTransbank, listarPuertosTransbank, probarPuertoTransbank } from "@/lib/pagos/transbank-cliente"
 import type { TerminalMP } from "@/lib/pagos/mercadopago"
 import type { LectorSumup } from "@/lib/pagos/sumup"
 
@@ -11,7 +12,7 @@ const MARCAS = [
   { id: "mercadopago", nombre: "Mercado Pago", emoji: "🟡", disponible: true },
   { id: "tuu", nombre: "TUU (Haulmer)", emoji: "🟣", disponible: true },
   { id: "sumup", nombre: "SumUp", emoji: "🟠", disponible: true },
-  { id: "transbank", nombre: "Transbank", emoji: "🔵", disponible: false },
+  { id: "transbank", nombre: "Transbank (POS Integrado)", emoji: "🔵", disponible: true },
   { id: "getnet", nombre: "Getnet", emoji: "🔴", disponible: false },
   { id: "bancoestado", nombre: "BancoEstado (CompraAquí)", emoji: "🟢", disponible: false },
 ]
@@ -29,6 +30,9 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
   const [merchantCodeSumup, setMerchantCodeSumup] = useState("")
   const [lectoresSumup, setLectoresSumup] = useState<LectorSumup[] | null>(null)
   const [lectorElegidoSumup, setLectorElegidoSumup] = useState("")
+  const [puertosTransbank, setPuertosTransbank] = useState<{ valor: string; etiqueta: string }[] | null>(null)
+  const [puertoElegidoTransbank, setPuertoElegidoTransbank] = useState("")
+  const [transbankProbado, setTransbankProbado] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const conexionMP = conexiones.find(c => c.proveedor === "mercadopago")
@@ -120,6 +124,55 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
         setApiKeySumup("")
         setMerchantCodeSumup("")
         setLectoresSumup(null)
+      } catch (err: any) {
+        toast.error(err?.message ?? "Error al conectar")
+      }
+    })
+  }
+
+  // Transbank no tiene API Key: busca el Agente instalado en este mismo
+  // computador y lista los puertos donde encuentre un POS conectado por
+  // cable. "Probar conexión" abre el puerto elegido y le hace un poll (sin
+  // cobrar nada) para confirmar que el POS responde antes de guardar.
+  function handleBuscarPuertosTransbank() {
+    startTransition(async () => {
+      try {
+        await conectarAgenteTransbank()
+        const lista = await listarPuertosTransbank()
+        if (lista.length === 0) { toast.error("El Agente está corriendo, pero no encontré ningún puerto — revisa que el cable esté conectado"); return }
+        setPuertosTransbank(lista)
+        setPuertoElegidoTransbank(lista[0].valor)
+        toast.success(`Encontré ${lista.length} puerto${lista.length === 1 ? "" : "s"}`)
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo conectar con el Agente")
+      }
+    })
+  }
+
+  function handleProbarPuertoTransbank() {
+    if (!puertoElegidoTransbank) return
+    startTransition(async () => {
+      try {
+        await probarPuertoTransbank(puertoElegidoTransbank)
+        setTransbankProbado(true)
+        toast.success("El POS respondió correctamente")
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo probar la conexión")
+      }
+    })
+  }
+
+  function handleConectarTransbank() {
+    if (!puertoElegidoTransbank) return
+    startTransition(async () => {
+      try {
+        await conectarTransbank(puertoElegidoTransbank)
+        toast.success("✅ Máquina conectada")
+        setConexiones(prev => [...prev.filter(c => c.proveedor !== "transbank"), { id: "temp", proveedor: "transbank", terminalId: puertoElegidoTransbank, activo: true, ultimaConexionOk: new Date().toISOString() }])
+        setMarcaAbierta(null)
+        setPuertosTransbank(null)
+        setPuertoElegidoTransbank("")
+        setTransbankProbado(false)
       } catch (err: any) {
         toast.error(err?.message ?? "Error al conectar")
       }
@@ -278,6 +331,49 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                         className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
                         {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
                       </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {marcaAbierta === marca.id && marca.id === "transbank" && !conectada && (
+                <div className="px-4 pb-4 pt-1 border-t border-[var(--c-border)] space-y-3">
+                  <div className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl px-3 py-2.5 space-y-1">
+                    <p className="text-[11px] font-semibold text-[var(--c-text2)]">Antes de conectar, en este mismo computador:</p>
+                    <p className="text-[10px] text-[var(--c-text4)]">1. Instala el <a href="https://github.com/TransbankDevelopers/transbank-pos-sdk-web-agent2/releases/latest" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">Agente Transbank</a> (queda corriendo solo, se inicia con el computador).</p>
+                    <p className="text-[10px] text-[var(--c-text4)]">2. Conecta el POS por cable USB o serial a este computador.</p>
+                    <p className="text-[10px] text-[var(--c-text4)]">3. En el POS: menú Comercio → clave supervisora (123456 por defecto) → POS Integrado → Conectar Caja.</p>
+                    <p className="text-[10px] text-[var(--c-text4)]">La primera vez el navegador puede pedirte confiar en el certificado del Agente — es normal, acéptalo.</p>
+                  </div>
+
+                  {!puertosTransbank && (
+                    <button onClick={handleBuscarPuertosTransbank} disabled={isPending}
+                      className="h-9 px-4 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] text-xs font-semibold rounded-lg hover:border-sky-500/40 transition-all disabled:opacity-50">
+                      {isPending ? "Buscando..." : "Buscar mi POS"}
+                    </button>
+                  )}
+
+                  {puertosTransbank && (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Puerto encontrado</label>
+                        <select value={puertoElegidoTransbank} onChange={e => { setPuertoElegidoTransbank(e.target.value); setTransbankProbado(false) }}
+                          className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500">
+                          {puertosTransbank.map(p => <option key={p.valor} value={p.valor}>{p.etiqueta}</option>)}
+                        </select>
+                      </div>
+
+                      {!transbankProbado ? (
+                        <button onClick={handleProbarPuertoTransbank} disabled={isPending}
+                          className="h-9 px-4 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text2)] text-xs font-semibold rounded-lg hover:border-sky-500/40 transition-all disabled:opacity-50 w-full">
+                          {isPending ? "Probando..." : "Probar conexión"}
+                        </button>
+                      ) : (
+                        <button onClick={handleConectarTransbank} disabled={isPending}
+                          className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
+                          {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

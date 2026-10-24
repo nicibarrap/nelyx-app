@@ -6,6 +6,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import { registrarVenta, eliminarCliente } from "@/app/actions/acciones"
 import { iniciarCobroMaquina, consultarCobroMaquina } from "@/app/actions/pagos-acciones"
+import { cobrarTransbank } from "@/lib/pagos/transbank-cliente"
 import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
@@ -51,7 +52,7 @@ const METODOS_PAGO = [
   { value: "pendiente",    label: "Pendiente",    icon: "📄" },
 ]
 
-export function VentaClient({ productos, clientes, proveedorPagoActivo }: { productos: any[]; clientes: ClienteOption[]; proveedorPagoActivo: string | null }) {
+export function VentaClient({ productos, clientes, proveedorPagoActivo, terminalIdActivo }: { productos: any[]; clientes: ClienteOption[]; proveedorPagoActivo: string | null; terminalIdActivo?: string | null }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [ahora, setAhora] = useState<Date | null>(null)
@@ -316,10 +317,40 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
     return () => { if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current) }
   }, [])
 
+  // Transbank no pasa por el servidor: el POS está conectado por cable al
+  // mismo computador donde corre este navegador, así que cobrarTransbank()
+  // le habla directo al Agente Transbank en localhost (ver
+  // lib/pagos/transbank-cliente.ts). No hay que crear una orden y
+  // consultarla después como con los demás — doSale() ya espera a que el
+  // cliente ponga la tarjeta y devuelve el resultado final de una vez.
+  function handleCobrarConMaquinaTransbank() {
+    if (!terminalIdActivo) {
+      setCobroMaquina({ estado: "error", mensaje: "No se encontró el puerto del POS configurado. Ve a Configuración para conectar Transbank." })
+      return
+    }
+    setCobroMaquina({ estado: "esperando" })
+    startTransition(async () => {
+      try {
+        const ticket = `nelyx-${Date.now()}`
+        const { aprobado, mensaje } = await cobrarTransbank(terminalIdActivo, total, ticket)
+        if (aprobado) {
+          setCobroMaquina({ estado: "aprobado" })
+          await confirmarVentaTrasPago("Tarjeta (Transbank)")
+        } else {
+          setCobroMaquina({ estado: "rechazado", mensaje: mensaje ?? "El pago fue rechazado en la máquina." })
+        }
+      } catch (err: any) {
+        setCobroMaquina({ estado: "error", mensaje: err?.message ?? "No se pudo cobrar con el POS Transbank" })
+      }
+    })
+  }
+
   function handleCobrarConMaquina() {
     if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
+
+    if (proveedorPagoActivo === "transbank") { handleCobrarConMaquinaTransbank(); return }
 
     const nombreProveedor = proveedorPagoActivo === "tuu" ? "TUU" : proveedorPagoActivo === "sumup" ? "SumUp" : "Mercado Pago"
     const etiqueta = `Tarjeta (${nombreProveedor})`
