@@ -119,6 +119,22 @@ export async function conectarSumup(apiKey: string, merchantCode: string, reader
   revalidatePath("/dashboard/venta")
 }
 
+/** Transbank no tiene credenciales que validar en el servidor (el POS se
+ * conecta por cable al mismo computador del navegador, no a una API en la
+ * nube) — este paso solo guarda qué puerto quedó probado como referencia,
+ * ver lib/pagos/transbank-cliente.ts. accessToken queda cifrado vacío
+ * porque la columna es obligatoria y acá no hay ningún token que guardar. */
+export async function conectarTransbank(puerto: string) {
+  const session = await getSessionEscritura("configuracion")
+  await db.conexionPago.upsert({
+    where: { userId_proveedor: { userId: session.user.id, proveedor: "transbank" } },
+    create: { userId: session.user.id, proveedor: "transbank", accessToken: cifrarToken(""), terminalId: puerto, activo: true, ultimaConexionOk: new Date() },
+    update: { terminalId: puerto, activo: true, ultimaConexionOk: new Date() },
+  })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/venta")
+}
+
 // Un local solo debería tener una máquina conectada a la vez, pero como
 // cada proveedor se guarda en su propia fila, nada impide tener dos
 // activas al mismo tiempo. Si eso pasa, se prioriza Mercado Pago por ser

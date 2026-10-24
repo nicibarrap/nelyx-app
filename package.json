@@ -33,6 +33,7 @@
     "recharts": "^2.15.4",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.4",
+    "transbank-pos-sdk-web": "^5.1.0",
     "twemoji": "^14.0.2",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
