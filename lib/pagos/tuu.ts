@@ -1,28 +1,34 @@
 // ══════════════════════════════════════════════════════════════════════
 // Adaptador de TUU (Haulmer) — "Pago Remoto": el terminal físico queda en
 // "modo integración" y Nelyx le manda la solicitud de cobro por HTTP, sin
-// cable ni red local (confirmado contra la referencia OpenAPI publicada en
-// developers.tuu.cl el 20-oct-2026).
+// cable ni red local.
 //
-// IMPORTANTE — lo que está confirmado vs. lo que falta validar con una
-// máquina real:
-// - Crear solicitud (POST /PaymentRequest/Create) y Consultar solicitud
-//   (GET /PaymentRequest/{id}): endpoint, headers y forma del body/respuesta
-//   confirmados contra la referencia OpenAPI oficial.
-// - idempotencyKey: el texto de la documentación dice que es obligatoria,
-//   pero el schema del body ("PaymentRequestWithoutIdempotencyDto") no la
-//   incluye como propiedad — se interpretó que va en un header, igual que
-//   X-Idempotency-Key en el adaptador de Mercado Pago. Falta confirmar con
-//   un cobro real si el header tiene que llamarse distinto.
-// - Amount: se asume que son pesos chilenos enteros (sin decimales) — el
-//   ejemplo de la documentación (3000) calza con un monto típico en CLP,
-//   no con centavos. Falta confirmar con un cobro real.
-// - validarApiKeyTuu(): no existe un endpoint documentado para "probar"
-//   una API Key sin cobrar nada, así que se aprovecha que GET
-//   /PaymentRequest/{id} con un ID inexistente responde 401 si la key es
-//   inválida y 404 si es válida (la solicitud simplemente no existe) — es
-//   una inferencia razonable de una API multi-tenant bien diseñada, pero
-//   no está confirmada contra el comportamiento real.
+// Re-confirmado el 24-oct-2026 contra el schema OpenAPI real publicado en
+// developers.tuu.cl (no solo la tabla de la página general, que tiene
+// algunas inconsistencias de mayúsculas/minúsculas con el schema real):
+// - Body de creación (PaymentRequestWithoutIdempotencyDto): "Amount",
+//   "Device", "Description" van tal cual en mayúscula — confirmado.
+// - Amount: entero sin decimales, 100-99999999 — confirmado (el adaptador
+//   de Mercado Pago sí tenía este bug con decimales; acá no).
+// - Respuesta de ambos endpoints viene envuelta en { paymentRequest: {...} }
+//   (confirmado con los ejemplos oficiales) — paymentRequestId/status se
+//   leen de ahí, tal como ya hacía este archivo.
+// - Los 6 estados (Pending/Sent/Canceled/Processing/Failed/Completed) y su
+//   mapeo a pendiente/aprobado/rechazado — confirmados.
+// - validarApiKeyTuu(): confirmado con los ejemplos oficiales de error — un
+//   API Key inválido responde 401 (MR-000 "Not Authorized") y un ID de
+//   solicitud inexistente con key válida responde 404 (MR-160 "Payment
+//   Request doesn't exist"), sin importar si el ID existe o no.
+// - X-Idempotency-Key (header): se sacó — NO es parte del contrato de este
+//   endpoint. /PaymentRequest/Create es justamente el flujo "SIN
+//   idempotencia"; la idempotencia real de TUU vive en un endpoint v2
+//   aparte (POST /RemotePayment/v2/Create, con idempotencyKey en el BODY,
+//   no en un header) que este adaptador no usa. El header viejo no rompía
+//   nada (la API simplemente lo ignoraba), pero sugería una protección
+//   contra cobros duplicados que en realidad no existe acá.
+//
+// Pendiente: nada de esto se ha probado todavía contra un terminal físico
+// real — Haulmer no ofrece un ambiente de pruebas sin hardware.
 // ══════════════════════════════════════════════════════════════════════
 
 const BASE = "https://integrations.payment.haulmer.com"
@@ -55,11 +61,7 @@ export async function validarApiKeyTuu(apiKey: string): Promise<true> {
 export async function crearSolicitudPagoTuu(apiKey: string, device: string, montoCLP: number, descripcion: string): Promise<{ paymentRequestId: number }> {
   const res = await fetch(`${BASE}/PaymentRequest/Create`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": apiKey,
-      "X-Idempotency-Key": crypto.randomUUID(),
-    },
+    headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
     body: JSON.stringify({ Amount: Math.round(montoCLP), Device: device, Description: descripcion }),
   })
   if (!res.ok) throw new Error(await leerError(res, `No se pudo iniciar el cobro (${res.status})`))
