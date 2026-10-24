@@ -344,7 +344,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo }: { prod
               setCobroMaquina({ estado: "rechazado", mensaje: "El pago fue rechazado en la máquina." })
             } else if (intentos >= maxIntentos) {
               if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current)
-              setCobroMaquina({ estado: "error", mensaje: "Se acabó el tiempo de espera — si el cliente sí pagó, verifica en tu app de Mercado Pago antes de reintentar." })
+              setCobroMaquina({ estado: "error", mensaje: `Se acabó el tiempo de espera — si el cliente sí pagó, verifica en tu cuenta de ${nombreProveedor} antes de reintentar.` })
             }
           } catch {
             if (intervaloCobroRef.current) clearInterval(intervaloCobroRef.current)
