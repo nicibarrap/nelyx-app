@@ -1,7 +1,7 @@
 "use client"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
-import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, listarLectoresParaConectarSumup, conectarSumup, conectarTransbank, desconectarPago } from "@/app/actions/pagos-acciones"
+import { listarTerminalesParaConectar, conectarMercadoPago, probarConexionTuu, conectarTuu, listarLectoresParaConectarSumup, conectarSumup, conectarTransbank, conectarBciPagos, desconectarPago } from "@/app/actions/pagos-acciones"
 import { conectarAgenteTransbank, listarPuertosTransbank, probarPuertoTransbank } from "@/lib/pagos/transbank-cliente"
 import type { TerminalMP } from "@/lib/pagos/mercadopago"
 import type { LectorSumup } from "@/lib/pagos/sumup"
@@ -13,6 +13,7 @@ const MARCAS = [
   { id: "tuu", nombre: "TUU (Haulmer)", emoji: "🟣", disponible: true },
   { id: "sumup", nombre: "SumUp", emoji: "🟠", disponible: true },
   { id: "transbank", nombre: "Transbank (POS Integrado)", emoji: "🔵", disponible: true },
+  { id: "bcipagos", nombre: "BCI Pagos (Cloud to Cloud)", emoji: "🔷", disponible: true },
   { id: "getnet", nombre: "Getnet", emoji: "🔴", disponible: false },
   { id: "bancoestado", nombre: "BancoEstado (CompraAquí)", emoji: "🟢", disponible: false },
 ]
@@ -33,6 +34,9 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
   const [puertosTransbank, setPuertosTransbank] = useState<{ valor: string; etiqueta: string }[] | null>(null)
   const [puertoElegidoTransbank, setPuertoElegidoTransbank] = useState("")
   const [transbankProbado, setTransbankProbado] = useState(false)
+  const [appIdBci, setAppIdBci] = useState("")
+  const [appSecretBci, setAppSecretBci] = useState("")
+  const [codigoBci, setCodigoBci] = useState("")
   const [isPending, startTransition] = useTransition()
 
   const conexionMP = conexiones.find(c => c.proveedor === "mercadopago")
@@ -173,6 +177,26 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
         setPuertosTransbank(null)
         setPuertoElegidoTransbank("")
         setTransbankProbado(false)
+      } catch (err: any) {
+        toast.error(err?.message ?? "Error al conectar")
+      }
+    })
+  }
+
+  // BCI Pagos no tiene "probar" separado de "conectar": el código de
+  // vinculación que se genera en el terminal (pantalla "Bind New EPOS")
+  // dura solo ~5 minutos, así que se consume de una sola vez.
+  function handleConectarBciPagos() {
+    if (!appIdBci.trim() || !appSecretBci.trim() || !codigoBci.trim()) { toast.error("Completa el APP ID, el APP Secret y el código de vinculación"); return }
+    startTransition(async () => {
+      try {
+        await conectarBciPagos(appIdBci.trim(), appSecretBci.trim(), codigoBci.trim())
+        toast.success("✅ Máquina conectada")
+        setConexiones(prev => [...prev.filter(c => c.proveedor !== "bcipagos"), { id: "temp", proveedor: "bcipagos", terminalId: null, activo: true, ultimaConexionOk: new Date().toISOString() }])
+        setMarcaAbierta(null)
+        setAppIdBci("")
+        setAppSecretBci("")
+        setCodigoBci("")
       } catch (err: any) {
         toast.error(err?.message ?? "Error al conectar")
       }
@@ -376,6 +400,32 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
                       )}
                     </>
                   )}
+                </div>
+              )}
+
+              {marcaAbierta === marca.id && marca.id === "bcipagos" && !conectada && (
+                <div className="px-4 pb-4 pt-1 border-t border-[var(--c-border)] space-y-3">
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">APP ID</label>
+                    <input value={appIdBci} onChange={e => setAppIdBci(e.target.value)}
+                      placeholder="Ej: 600045" className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">APP Secret</label>
+                    <input type="password" value={appSecretBci} onChange={e => setAppSecretBci(e.target.value)}
+                      className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                    <p className="text-[10px] text-[var(--c-text4)] mt-1">Te los entrega BCI Pagos al crear tu aplicación en la Nube.</p>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Código de vinculación</label>
+                    <input value={codigoBci} onChange={e => setCodigoBci(e.target.value)}
+                      placeholder="5 dígitos" className="w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500" />
+                    <p className="text-[10px] text-[var(--c-text4)] mt-1">En el terminal: Configuración → Connection Mode → Cloud → "Bind New EPOS". Dura ~5 minutos, así que ingrésalo apenas aparezca.</p>
+                  </div>
+                  <button onClick={handleConectarBciPagos} disabled={isPending}
+                    className="h-10 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 w-full">
+                    {isPending ? "Conectando..." : "✅ Conectar esta terminal"}
+                  </button>
                 </div>
               )}
             </div>
