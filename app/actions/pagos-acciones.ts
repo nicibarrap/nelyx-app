@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMercadoPago, type TerminalMP } from "@/lib/pagos/mercadopago"
 import { validarApiKeyTuu, crearSolicitudPagoTuu, consultarSolicitudPagoTuu } from "@/lib/pagos/tuu"
 import { listarLectoresSumup, crearCobroSumup, type LectorSumup } from "@/lib/pagos/sumup"
+import { vincularTerminalBciPagos, cobrarBciPagos } from "@/lib/pagos/bcipagos"
 import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
 import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
@@ -133,6 +134,38 @@ export async function conectarTransbank(puerto: string) {
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+}
+
+/** Paso único para conectar BCI Pagos: a diferencia de los demás, no hay
+ * "probar" separado de "conectar" — el código de vinculación del terminal
+ * (pantalla "Bind New EPOS") solo dura ~5 minutos, así que se consume de
+ * una vez. appId/appSecret se guardan cifrados junto, igual que SumUp;
+ * terminalId guarda el número de serie que devuelve la vinculación. */
+export async function conectarBciPagos(appId: string, appSecret: string, codigo: string) {
+  const session = await getSessionEscritura("configuracion")
+  const { serialNumber } = await vincularTerminalBciPagos(appId, appSecret, codigo)
+  const credencialesCifradas = cifrarToken(JSON.stringify({ appId, appSecret }))
+  await db.conexionPago.upsert({
+    where: { userId_proveedor: { userId: session.user.id, proveedor: "bcipagos" } },
+    create: { userId: session.user.id, proveedor: "bcipagos", accessToken: credencialesCifradas, terminalId: serialNumber, activo: true, ultimaConexionOk: new Date() },
+    update: { accessToken: credencialesCifradas, terminalId: serialNumber, activo: true, ultimaConexionOk: new Date() },
+  })
+  revalidatePath("/dashboard/configuracion")
+  revalidatePath("/dashboard/venta")
+}
+
+/** BCI Pagos no tiene ningún endpoint para consultar un cobro después —
+ * la única forma de saber el resultado es quedarse escuchando MQTT, así
+ * que cobrarBciPagos() ya espera la respuesta antes de devolver algo (a
+ * diferencia de iniciarCobroMaquina/consultarCobroMaquina, que crean una
+ * orden y la consultan después). Por eso esto vive en una acción aparte
+ * en vez de sumarse a PROVEEDORES_MAQUINA. */
+export async function iniciarCobroBciPagos(monto: number, ticket: string) {
+  const session = await getSessionEscritura("venta")
+  const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "bcipagos", activo: true } })
+  if (!conexion || !conexion.terminalId) throw new Error("No tienes BCI Pagos conectado. Ve a Configuración para conectarlo.")
+  const { appId, appSecret } = JSON.parse(descifrarToken(conexion.accessToken)) as { appId: string; appSecret: string }
+  return cobrarBciPagos(appId, appSecret, conexion.terminalId, monto, ticket)
 }
 
 // Un local solo debería tener una máquina conectada a la vez, pero como

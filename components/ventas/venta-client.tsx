@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { registrarVenta, eliminarCliente } from "@/app/actions/acciones"
-import { iniciarCobroMaquina, consultarCobroMaquina } from "@/app/actions/pagos-acciones"
+import { iniciarCobroMaquina, consultarCobroMaquina, iniciarCobroBciPagos } from "@/app/actions/pagos-acciones"
 import { cobrarTransbank } from "@/lib/pagos/transbank-cliente"
 import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
 import { formatCLP } from "@/lib/utils"
@@ -345,12 +345,37 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     })
   }
 
+  // BCI Pagos sí pasa por el servidor (es Cloud-to-Cloud, no necesita estar
+  // en la misma red que el terminal), pero tampoco encaja en el patrón de
+  // "crear orden y consultar cada 2s": no existe ningún endpoint para
+  // consultar un cobro después, así que iniciarCobroBciPagos() ya espera la
+  // respuesta del terminal por MQTT antes de devolver algo (puede tardar
+  // hasta 90s — ver maxDuration en app/dashboard/venta/page.tsx).
+  function handleCobrarConMaquinaBciPagos() {
+    setCobroMaquina({ estado: "esperando" })
+    startTransition(async () => {
+      try {
+        const ticket = `nelyx-${Date.now()}`
+        const { aprobado, mensaje } = await iniciarCobroBciPagos(total, ticket)
+        if (aprobado) {
+          setCobroMaquina({ estado: "aprobado" })
+          await confirmarVentaTrasPago("Tarjeta (BCI Pagos)")
+        } else {
+          setCobroMaquina({ estado: "rechazado", mensaje: mensaje ?? "El pago fue rechazado en la máquina." })
+        }
+      } catch (err: any) {
+        setCobroMaquina({ estado: "error", mensaje: err?.message ?? "No se pudo cobrar con BCI Pagos" })
+      }
+    })
+  }
+
   function handleCobrarConMaquina() {
     if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
     if (proveedorPagoActivo === "transbank") { handleCobrarConMaquinaTransbank(); return }
+    if (proveedorPagoActivo === "bcipagos") { handleCobrarConMaquinaBciPagos(); return }
 
     const nombreProveedor = proveedorPagoActivo === "tuu" ? "TUU" : proveedorPagoActivo === "sumup" ? "SumUp" : "Mercado Pago"
     const etiqueta = `Tarjeta (${nombreProveedor})`

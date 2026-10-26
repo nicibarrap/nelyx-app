@@ -5,6 +5,10 @@ import { VentaClient } from "@/components/ventas/venta-client"
 
 export const metadata: Metadata = { title: "Venta" }
 export const dynamic = "force-dynamic"
+// BCI Pagos no tiene forma de "crear y consultar después" — iniciarCobroBciPagos
+// se queda escuchando MQTT hasta que el terminal responde (hasta 90s, ver
+// lib/pagos/bcipagos.ts), más que el límite por defecto de una función serverless.
+export const maxDuration = 100
 
 export default async function VentaPage() {
   const session = await auth()
@@ -26,7 +30,7 @@ export default async function VentaPage() {
     // handleCobrarConMaquinaTransbank en venta-client.tsx) — por eso no
     // está en PROVEEDORES_MAQUINA (app/actions/pagos-acciones.ts), que es
     // solo para los proveedores que sí se cobran desde el servidor.
-    db.conexionPago.findFirst({ where: { userId: session!.user.id, proveedor: { in: ["mercadopago", "sumup", "tuu", "transbank"] }, activo: true }, orderBy: { proveedor: "asc" } }),
+    db.conexionPago.findFirst({ where: { userId: session!.user.id, proveedor: { in: ["mercadopago", "sumup", "tuu", "transbank", "bcipagos"] }, activo: true }, orderBy: { proveedor: "asc" } }),
   ])
 
   // precio/costo son Decimal de Prisma (instancias de clase, no objetos
