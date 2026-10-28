@@ -84,17 +84,20 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
 
   // ── RENDER ────────────────────────────────────────────────
   return (
-    <div className="max-w-xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
 
-      {/* Selector de tipo */}
+      {/* Selector de tipo — cards más grandes (p-6, texto base) que antes:
+          con solo 3 opciones y nada más en esta pantalla hasta elegir una,
+          las cards chicas dejaban demasiado espacio en blanco alrededor,
+          sobre todo en monitores anchos. */}
       <div>
         <p className="text-sm font-medium text-[var(--c-text2)] mb-3">¿Qué tipo de movimiento quieres registrar?</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {TIPOS.map((t) => (
             <button key={t.value} type="button" onClick={() => handleTipoChange(t.value)}
-              className={`p-4 rounded-xl border-2 text-left transition-all bg-[var(--c-card)] ${tipo === t.value ? t.a : t.i}`}>
-              <span className="font-semibold text-sm block">{t.label}</span>
-              <span className="text-xs opacity-60 block mt-1">{t.desc}</span>
+              className={`p-6 rounded-2xl border-2 text-left transition-all bg-[var(--c-card)] ${tipo === t.value ? t.a : t.i}`}>
+              <span className="font-semibold text-base block">{t.label}</span>
+              <span className="text-sm opacity-70 block mt-1.5">{t.desc}</span>
             </button>
           ))}
         </div>
