@@ -26,11 +26,11 @@ export default async function NuevoMovimientoPage() {
           aparte en vez de ser la vista por defecto — antes el sidebar caía
           en el historial y "+ Nuevo" quedaba como una acción secundaria,
           invertido respecto a cómo funciona Venta.
-          max-w-xl: mismo ancho que FormularioMovimiento más abajo (que ya
-          trae su propio max-w-xl mx-auto) — sin esto el encabezado quedaba
+          max-w-2xl: mismo ancho que FormularioMovimiento más abajo (que ya
+          trae su propio max-w-2xl mx-auto) — sin esto el encabezado quedaba
           a lo ancho completo de la página y el formulario angosto debajo,
           desalineados entre sí. */}
-      <div className="max-w-xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
+      <div className="max-w-2xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center text-xl flex-shrink-0">⇄</div>
           <div className="min-w-0">

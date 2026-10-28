@@ -85,43 +85,49 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               <div className="flex-1 h-px bg-[var(--c-border2)]" />
             </div>
           )}
-          <div className={`flex items-center justify-between py-3 lg:py-4 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-xl lg:text-2xl flex-shrink-0">{et.emoji}</span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`text-xs px-2 py-0.5 rounded-full border ${et.color}`}>{et.label}</span>
-                  {m.categoria && !m.producto && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium"
-                      style={{ color: colorCat!, borderColor: `${colorCat}30`, backgroundColor: `${colorCat}10` }}>
-                      {m.categoria}
-                    </span>
-                  )}
-                  {m.producto && <span className="text-[10px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {m.producto.nombre}</span>}
-                  {/* Cliente/método/fecha se repiten acá SOLO hasta lg — desde
-                      lg tienen su propia columna (ver más abajo), así el
-                      espacio ancho del escritorio se reparte en vez de dejar
-                      un hueco enorme entre el bloque izquierdo y el monto. */}
-                  {m.cliente && <span className="text-[10px] text-sky-400/80 truncate lg:hidden">👤 {m.cliente.nombre} {m.cliente.apellido ?? ""}</span>}
-                  {m.metodoPago && <span className="text-[10px] text-[var(--c-text4)] truncate lg:hidden">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
-                </div>
-                {m.descripcion && <p className="text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
-                {parCambio && (
-                  <p className="text-[11px] text-[var(--c-warning)] mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
+          {/* Desde lg: grid con columnas FIJAS (no flex con justify-between)
+              — con flex, el ancho de la columna de metadata dependía de
+              cuánto medía el bloque de la izquierda en CADA fila (una fila
+              con "Parte de un cambio" es más ancha que una sin eso), así que
+              cliente/método/fecha quedaban en una posición horizontal
+              distinta fila a fila. Con columnas fijas, la 2ª columna
+              (identidad) es la única elástica — absorbe lo que sobra — y
+              las demás quedan exactamente alineadas en todas las filas. */}
+          <div className={`flex items-center gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_240px_200px] lg:gap-4 py-3 lg:py-4 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
+            <span className="text-xl lg:text-2xl flex-shrink-0">{et.emoji}</span>
+            <div className="min-w-0 flex-1 lg:flex-auto">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${et.color}`}>{et.label}</span>
+                {m.categoria && !m.producto && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium"
+                    style={{ color: colorCat!, borderColor: `${colorCat}30`, backgroundColor: `${colorCat}10` }}>
+                    {m.categoria}
+                  </span>
                 )}
-                <p className="text-[11px] text-[var(--c-text3)] mt-0.5 lg:hidden">
-                  {formatFecha(m.fecha)}
-                  {m.realizadoPorNombre && <span className="opacity-70"> · {m.realizadoPorNombre}</span>}
-                  {mounted && m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE })}`}
-                </p>
+                {m.producto && <span className="text-[10px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {m.producto.nombre}</span>}
+                {/* Cliente/método/fecha se repiten acá SOLO hasta lg — desde
+                    lg tienen su propia columna (ver más abajo), así el
+                    espacio ancho del escritorio se reparte en vez de dejar
+                    un hueco enorme entre el bloque izquierdo y el monto. */}
+                {m.cliente && <span className="text-[10px] text-sky-400/80 truncate lg:hidden">👤 {m.cliente.nombre} {m.cliente.apellido ?? ""}</span>}
+                {m.metodoPago && <span className="text-[10px] text-[var(--c-text4)] truncate lg:hidden">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
               </div>
+              {m.descripcion && <p className="text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
+              {parCambio && (
+                <p className="text-[11px] text-[var(--c-warning)] mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
+              )}
+              <p className="text-[11px] text-[var(--c-text3)] mt-0.5 lg:hidden">
+                {formatFecha(m.fecha)}
+                {m.realizadoPorNombre && <span className="opacity-70"> · {m.realizadoPorNombre}</span>}
+                {mounted && m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE })}`}
+              </p>
             </div>
             {/* Columna de metadata — solo desde lg (pantallas de escritorio):
                 mismos datos de cliente/método/fecha que arriba, pero en su
-                propia columna al centro de la fila, para que un monitor
-                ancho no quede con todo apretado a la izquierda y un vacío
-                gigante antes del monto. */}
-            <div className="hidden lg:flex lg:flex-col lg:gap-1 lg:px-6 lg:min-w-[200px] lg:max-w-[260px]">
+                propia columna de ancho fijo al centro de la fila, para que
+                un monitor ancho no quede con todo apretado a la izquierda
+                y un vacío gigante antes del monto. */}
+            <div className="hidden lg:flex lg:flex-col lg:gap-1 lg:justify-center">
               {m.cliente && <span className="text-xs text-sky-400/80 truncate">👤 {m.cliente.nombre} {m.cliente.apellido ?? ""}</span>}
               {m.metodoPago && <span className="text-xs text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
               <span className="text-xs text-[var(--c-text3)] truncate">
@@ -130,7 +136,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 {mounted && m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE })}`}
               </span>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+            <div className="flex items-center justify-end gap-2 flex-shrink-0">
               <div className="text-right">
                 <span className={`text-base lg:text-lg font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
                   {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
