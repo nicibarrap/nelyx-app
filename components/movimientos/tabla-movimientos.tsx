@@ -103,33 +103,41 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 </div>
                 {m.descripcion && <p className="text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
                 {parCambio && (
-                  <p className="text-[10px] text-amber-400/80 mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
+                  <p className="text-[11px] text-[var(--c-warning)] mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
                 )}
-                <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
+                <p className="text-[11px] text-[var(--c-text3)] mt-0.5">
                   {formatFecha(m.fecha)}
-                  {m.realizadoPorNombre && <span className="opacity-60"> · {m.realizadoPorNombre}</span>}
+                  {m.realizadoPorNombre && <span className="opacity-70"> · {m.realizadoPorNombre}</span>}
                   {mounted && m.createdAt && ` · ${new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE })}`}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
               <div className="text-right">
-                <span className={`text-base font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-amber-400" : "text-red-400"}`}>
+                <span className={`text-base font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
                   {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
                 </span>
+                {/* Solo el monto de utilidad, sin el % — el margen relativo no
+                    aporta al vistazo rápido del historial y hacía la línea
+                    más larga de lo necesario. */}
                 {m.tipo === "VENTA" && m.utilidad != null && (
-                  <p className={`text-[10px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
-                    {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util. {m.margen != null ? `(${Number(m.margen).toFixed(0)}%)` : ""}
+                  <p className={`text-[11px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                    {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util.
                   </p>
                 )}
-                <p className={`text-[9px] font-medium mt-0.5 ${esIngreso ? "text-emerald-400/60" : esDevolucion ? "text-amber-400/60" : "text-[var(--c-text4)]"}`}>{esIngreso ? "Pagado" : esDevolucion ? "Devuelto" : "Registrado"}</p>
+                <p className={`text-[10px] font-medium mt-0.5 ${esIngreso ? "text-emerald-400/70" : esDevolucion ? "text-[var(--c-warning)]" : "text-[var(--c-text3)]"}`}>{esIngreso ? "Pagado" : esDevolucion ? "Devuelto" : "Registrado"}</p>
               </div>
-              {puedeCambiarse && (
-                <button onClick={() => router.push(`/dashboard/venta?cambioDeId=${m.id}`)} title="Cambiar por otro producto"
-                  className="p-1.5 text-zinc-700 hover:text-amber-400 hover:bg-amber-950/30 rounded-lg transition-colors">↩️</button>
-              )}
-              <button onClick={() => handleEliminar(m.id)} disabled={isPending}
-                className="p-1.5 text-zinc-700 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors">🗑</button>
+              {/* Apiladas, no en fila — así todas las filas (tengan uno o dos
+                  botones) ocupan el mismo ancho y el bloque de montos queda
+                  alineado parejo en todo el historial. */}
+              <div className="flex flex-col gap-0.5">
+                {puedeCambiarse && (
+                  <button onClick={() => router.push(`/dashboard/venta?cambioDeId=${m.id}`)} title="Cambiar por otro producto"
+                    className="p-1 text-xs text-zinc-700 hover:text-[var(--c-warning)] hover:bg-amber-500/10 rounded-md transition-colors">↩️</button>
+                )}
+                <button onClick={() => handleEliminar(m.id)} disabled={isPending} title="Eliminar"
+                  className="p-1 text-xs text-zinc-700 hover:text-red-400 hover:bg-red-950/30 rounded-md transition-colors">🗑</button>
+              </div>
             </div>
           </div>
           </div>
