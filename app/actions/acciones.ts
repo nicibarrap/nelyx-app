@@ -10,10 +10,12 @@ import { registrarMovimientoStock, DIRECCION_MOTIVO_AJUSTE, TIPO_MOVIMIENTO_LABE
 import { calcularConsumoFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
-import { hoyEnChile } from "@/lib/timezone"
+import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
+import { ETIQUETAS } from "@/lib/utils"
+import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
 
 async function getSession() {
   const session = await auth()
@@ -292,6 +294,49 @@ export async function eliminarMovimiento(id: string) {
   if (mov.tipo === "COSTO_FIJO") revalidatePath("/dashboard/costos-fijos")
   if (mov.proveedorId) revalidatePath("/dashboard/proveedores")
   if (mov.clienteId) revalidatePath("/dashboard/clientes")
+}
+
+/** Arma el CSV de Historial de movimientos respetando exactamente los
+ * mismos filtros (período, tipo, método de pago, búsqueda) que la
+ * pantalla tiene aplicados al momento de exportar — nunca todo el mes
+ * entero si el usuario filtró algo, porque entonces el archivo no
+ * coincide con lo que estaba mirando. Sin paginar: a diferencia del
+ * listado en pantalla, el export trae todas las filas que calzan. */
+export async function exportarMovimientosCSV(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string }): Promise<string> {
+  const session = await getSession()
+  const where = construirWhereMovimientos({ userId: session.user.id, ...filtros })
+  const movimientos = await db.movimiento.findMany({
+    where,
+    include: { producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } } },
+    orderBy: [{ fecha: "desc" }, { createdAt: "desc" }],
+  })
+
+  const encabezados = ["Fecha", "Hora", "Tipo", "Detalle", "Categoría", "Producto", "Cliente", "Método de pago", "Monto", "Costo", "Utilidad", "Margen", "Registrado por"]
+  const filas = movimientos.map(m => [
+    m.fecha.toLocaleDateString("es-CL", { timeZone: "UTC" }),
+    m.createdAt ? new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE }) : "",
+    ETIQUETAS[m.tipo]?.label ?? m.tipo,
+    m.descripcion ?? "",
+    m.categoria ?? "",
+    m.producto?.nombre ?? "",
+    m.cliente ? `${m.cliente.nombre} ${m.cliente.apellido ?? ""}`.trim() : "",
+    m.metodoPago ?? "",
+    Number(m.monto),
+    m.costoUnitario != null ? Number(m.costoUnitario) : "",
+    m.utilidad != null ? Number(m.utilidad) : "",
+    m.margen != null ? Number(m.margen) : "",
+    m.realizadoPorNombre ?? "",
+  ])
+
+  const csvEscape = (v: unknown) => {
+    const s = String(v ?? "")
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lineas = [encabezados, ...filas].map(fila => fila.map(csvEscape).join(","))
+  // BOM UTF-8 al inicio: sin esto, Excel en Windows muestra tildes/ñ
+  // corruptas al abrir el CSV directamente (en vez de importarlo a mano
+  // especificando la codificación).
+  return "﻿" + lineas.join("\r\n")
 }
 
 // ── CAMBIO DE PRODUCTO ──────────────────────────────────────
