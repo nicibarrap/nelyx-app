@@ -16,7 +16,14 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
 
   const movimientosDb = await db.movimiento.findMany({
     where: { userId: session!.user.id, fecha: { gte: new Date(anio, mes - 1, 1), lt: new Date(anio, mes, 1) } },
-    include: { producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } } },
+    include: {
+      producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } },
+      // Para mostrar la devolución y la venta nueva de un cambio de
+      // producto como un par visualmente enlazado (ver registrarCambioProducto)
+      // — cada fila puede apuntar a la otra, o ser apuntada por la otra.
+      movimientoVinculado: { select: { id: true, descripcion: true } },
+      movimientoVinculadoDe: { select: { id: true, descripcion: true } },
+    },
     orderBy: [{ fecha: "desc" }, { createdAt: "desc" }],
   })
   // Decimal de Prisma no es un objeto plano — pasarlo directo a un Client

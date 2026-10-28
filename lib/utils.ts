@@ -20,6 +20,7 @@ export function formatFechaCorta(fecha: Date | string): string {
 
 export const ETIQUETAS: Record<string, { label: string; emoji: string; color: string }> = {
   VENTA:         { label: "Venta",         emoji: "💰", color: "text-green-400 border-green-800 bg-green-950" },
+  DEVOLUCION:    { label: "Devolución",    emoji: "↩️", color: "text-amber-400 border-amber-800 bg-amber-950" },
   GASTO:         { label: "Gasto",         emoji: "🛒", color: "text-red-400 border-red-800 bg-red-950" },
   COSTO_FIJO:    { label: "Costo Fijo",    emoji: "🏠", color: "text-orange-400 border-orange-800 bg-orange-950" },
   INGRESO_EXTRA: { label: "Ingreso Extra", emoji: "➕", color: "text-sky-400 border-sky-800 bg-sky-950" },
@@ -67,8 +68,16 @@ export const ESTADO_CONFIG: Record<EstadoDeuda, { color: string; bg: string; bor
   "Pendiente":           { color: "text-zinc-400",  bg: "bg-zinc-500/10",  border: "border-zinc-500/20" },
 }
 
+// VENTA + INGRESO_EXTRA + DEVOLUCION — toda la plata que entra o sale de la
+// caja por una venta o su reversión. DEVOLUCION se suma acá (su monto es el
+// valor del producto devuelto, igual que una venta) a propósito: una
+// devolución reduce Ingresos/Disponible/Utilidad igual que reduciría una
+// venta que nunca hubiera pasado. No entra, en cambio, a "cantidad de
+// ventas" (ver más abajo) — no es una venta nueva, es la reversión de otra.
+const TIPOS_INGRESO = ["VENTA", "INGRESO_EXTRA", "DEVOLUCION"]
+
 export function calcularMetricas(movimientos: any[], deudasPendientes: number) {
-  const ingresos = movimientos.filter((m) => ["VENTA","INGRESO_EXTRA"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
+  const ingresos = movimientos.filter((m) => TIPOS_INGRESO.includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
   const gastos = movimientos.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
   return {
     totalVentas: movimientos.filter((m) => m.tipo === "VENTA").reduce((a,m) => a+Number(m.monto), 0),
@@ -84,7 +93,7 @@ export function prepararGrafico(movimientos: any[], anio: number, mes: number) {
   const dias = new Date(anio, mes, 0).getDate()
   return Array.from({ length: dias }, (_, i) => {
     const d = movimientos.filter((m) => new Date(m.fecha).getDate() === i + 1)
-    const ventas = d.filter((m) => ["VENTA","INGRESO_EXTRA"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
+    const ventas = d.filter((m) => TIPOS_INGRESO.includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
     const gastos = d.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
     return {
       dia: String(i + 1).padStart(2, "0"),
@@ -106,7 +115,7 @@ const NOMBRES_MES_ABREV = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep"
 export function prepararGraficoAnual(movimientos: any[], anio: number) {
   return Array.from({ length: 12 }, (_, i) => {
     const d = movimientos.filter((m) => new Date(m.fecha).getMonth() === i)
-    const ventas = d.filter((m) => ["VENTA","INGRESO_EXTRA"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
+    const ventas = d.filter((m) => TIPOS_INGRESO.includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
     const gastos = d.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
     return {
       dia: NOMBRES_MES_ABREV[i],

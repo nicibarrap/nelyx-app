@@ -8,61 +8,61 @@ datasource db {
 }
 
 model User {
-  id                    String                 @id @default(cuid())
-  nombre                String
-  email                 String                 @unique
-  password              String
-  rol                   Rol                    @default(USER)
-  activo                Boolean                @default(true)
-  negocio               String?
+  id                                String                   @id @default(cuid())
+  nombre                            String
+  email                             String                   @unique
+  password                          String
+  rol                               Rol                      @default(USER)
+  activo                            Boolean                  @default(true)
+  negocio                           String?
   // Solo se usa hoy para clientes de Nelyx (rol USER, cuentaPrincipalId
   // null) — permite al admin de /admin/clientes contactarlos directo por
   // WhatsApp desde su ficha. Nunca se pide en el registro normal.
-  telefono              String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  telefono                          String?
+  createdAt                         DateTime                 @default(now())
+  updatedAt                         DateTime                 @updatedAt
   // ── Multi-usuario: un dueño puede crear "empleados" que inician sesión
   // por su cuenta (PIN corto), viendo los mismos datos del negocio, pero
   // solo los módulos que el dueño les habilite. Un User con
   // cuentaPrincipalId != null ES un empleado; si es null, es una cuenta
   // dueña normal (como hoy, sin cambios).
-  cuentaPrincipalId     String?
-  cuentaPrincipal       User?                  @relation("EmpleadosDeCuenta", fields: [cuentaPrincipalId], references: [id], onDelete: Cascade)
-  empleados             User[]                 @relation("EmpleadosDeCuenta")
-  pin                   String?                // hash del PIN — solo empleados, nunca texto plano
-  intentosFallidosPin   Int                    @default(0)
-  bloqueadoHastaPin     DateTime?
-  modulosPermitidos     String[]               @default([])
-  movimientos           Movimiento[]
-  movimientosStock      MovimientoStock[]
-  productos             Producto[]
-  deudas                Deuda[]
-  categoriasPersonalizadas CategoriaPersonalizada[]
-  contactosCobranza     ContactoCobranza[]
-  plantillasCobranza    PlantillaCobranza[]
-  costosRecurrentes     CostoFijoRecurrente[]
-  clientes              Cliente[]
-  proveedores           Proveedor[]
-  cuentasPorCobrar      CuentaPorCobrar[]
-  eventosCalendario     EventoCalendario[]
-  proyectosTareas       ProyectoTarea[]
-  seriesRecurrentes     SerieRecurrente[]
-  suscripcionNelyx      SuscripcionNelyx?
-  pushSubscriptions     PushSubscription[]
-  notificaciones        Notificacion[]
-  notificacionConfig    NotificacionConfig?
-  conexionesPago        ConexionPago[]
-  cobrosSumup           CobroSumup[]
-  passwordResetTokens   PasswordResetToken[]
-  conversacionesSoporte ConversacionSoporte[]
+  cuentaPrincipalId                 String?
+  cuentaPrincipal                   User?                    @relation("EmpleadosDeCuenta", fields: [cuentaPrincipalId], references: [id], onDelete: Cascade)
+  empleados                         User[]                   @relation("EmpleadosDeCuenta")
+  pin                               String? // hash del PIN — solo empleados, nunca texto plano
+  intentosFallidosPin               Int                      @default(0)
+  bloqueadoHastaPin                 DateTime?
+  modulosPermitidos                 String[]                 @default([])
+  movimientos                       Movimiento[]
+  movimientosStock                  MovimientoStock[]
+  productos                         Producto[]
+  deudas                            Deuda[]
+  categoriasPersonalizadas          CategoriaPersonalizada[]
+  contactosCobranza                 ContactoCobranza[]
+  plantillasCobranza                PlantillaCobranza[]
+  costosRecurrentes                 CostoFijoRecurrente[]
+  clientes                          Cliente[]
+  proveedores                       Proveedor[]
+  cuentasPorCobrar                  CuentaPorCobrar[]
+  eventosCalendario                 EventoCalendario[]
+  proyectosTareas                   ProyectoTarea[]
+  seriesRecurrentes                 SerieRecurrente[]
+  suscripcionNelyx                  SuscripcionNelyx?
+  pushSubscriptions                 PushSubscription[]
+  notificaciones                    Notificacion[]
+  notificacionConfig                NotificacionConfig?
+  conexionesPago                    ConexionPago[]
+  cobrosSumup                       CobroSumup[]
+  passwordResetTokens               PasswordResetToken[]
+  conversacionesSoporte             ConversacionSoporte[]
   // Ambos apagados por defecto — recordatorios automáticos a CLIENTES (no
   // al dueño) solo deben salir si el dueño explícitamente los activa.
-  recordatoriosCobranzaAutoActivo   Boolean @default(false)
-  recordatoriosCumpleanosAutoActivo Boolean @default(false)
+  recordatoriosCobranzaAutoActivo   Boolean                  @default(false)
+  recordatoriosCumpleanosAutoActivo Boolean                  @default(false)
   // Con cuántos días de anticipación se manda el recordatorio previo al
   // vencimiento — configurable porque el valor fijo anterior (2 días) se
   // saltaba por completo una cuenta creada con vencimiento "mañana".
-  recordatoriosCobranzaDiasAntes    Int     @default(2)
+  recordatoriosCobranzaDiasAntes    Int                      @default(2)
 }
 
 enum Rol {
@@ -71,33 +71,45 @@ enum Rol {
 }
 
 model Movimiento {
-  id           String         @id @default(cuid())
-  tipo         TipoMovimiento
-  monto        Decimal        @db.Decimal(12, 2)
-  fecha        DateTime
-  descripcion  String?
-  categoria    String?
-  productoId   String?
-  producto     Producto?      @relation(fields: [productoId], references: [id], onDelete: SetNull)
-  clienteId    String?
+  id                    String            @id @default(cuid())
+  tipo                  TipoMovimiento
+  monto                 Decimal           @db.Decimal(12, 2)
+  fecha                 DateTime
+  descripcion           String?
+  categoria             String?
+  productoId            String?
+  producto              Producto?         @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  clienteId             String?
   // SetNull, no Cascade — si se elimina un cliente, sus ventas y
   // movimientos pasados deben seguir existiendo en el historial (solo
   // pierden la referencia al cliente, no se borran).
-  cliente      Cliente?       @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  proveedorId  String?
-  proveedor    Proveedor?     @relation(fields: [proveedorId], references: [id])
-  userId       String
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime       @default(now())
-  movimientosStock MovimientoStock[]
-  costoUnitario Decimal?      @db.Decimal(12, 2)
-  utilidad      Decimal?      @db.Decimal(12, 2)
-  margen        Float?
-  metodoPago    String?
+  cliente               Cliente?          @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  proveedorId           String?
+  proveedor             Proveedor?        @relation(fields: [proveedorId], references: [id])
+  userId                String
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime          @default(now())
+  movimientosStock      MovimientoStock[]
+  costoUnitario         Decimal?          @db.Decimal(12, 2)
+  utilidad              Decimal?          @db.Decimal(12, 2)
+  margen                Float?
+  metodoPago            String?
   // Quién lo hizo de verdad — solo se llena cuando fue un empleado (no el
   // dueño), y se guarda el nombre tal cual en ese momento (no una relación
   // a User), para que sobreviva aunque ese empleado se elimine después.
-  realizadoPorNombre String?
+  realizadoPorNombre    String?
+  // Cambio de producto (ver app/actions/acciones.ts → registrarCambioProducto):
+  // enlaza la DEVOLUCION del producto viejo con la VENTA del producto nuevo
+  // que la reemplaza, en ambos sentidos (cada fila apunta a la otra). Nunca
+  // se usa para nada más — todo lo demás del historial sigue sin tocarlo,
+  // queda null. SetNull, no Cascade: si por algún motivo se elimina una de
+  // las dos filas (hoy no hay forma de hacerlo desde la UI, pero nada lo
+  // impide a nivel de datos), la otra debe seguir existiendo con su propio
+  // valor económico intacto, no desaparecer en cascada.
+  movimientoVinculadoId String?           @unique
+  movimientoVinculado   Movimiento?       @relation("CambioProducto", fields: [movimientoVinculadoId], references: [id], onDelete: SetNull)
+  movimientoVinculadoDe Movimiento?       @relation("CambioProducto")
+
   @@index([userId, fecha])
   @@index([userId, tipo, categoria])
   @@index([userId, tipo])
@@ -106,6 +118,14 @@ model Movimiento {
 
 enum TipoMovimiento {
   VENTA
+  // Cambio de producto (ver registrarCambioProducto): devuelve el valor del
+  // producto que el cliente ya no se lleva. A propósito NO es una VENTA con
+  // monto negativo — cantidadVentas y los rankings "más vendido" cuentan
+  // filas VENTA a secas, sin mirar el signo, así que una devolución tipada
+  // como VENTA se contaría como una venta nueva en vez de la reversión de
+  // otra. Sí se suma junto a VENTA/INGRESO_EXTRA en Ingresos/Disponible —
+  // la plata que sale de la caja es real.
+  DEVOLUCION
   GASTO
   COSTO_FIJO
   INGRESO_EXTRA
@@ -113,71 +133,73 @@ enum TipoMovimiento {
 }
 
 model Producto {
-  id          String       @id @default(cuid())
-  nombre      String
-  precio      Decimal?     @db.Decimal(12, 2)
-  costo       Decimal?     @db.Decimal(12, 2)
-  descripcion String?
-  categoria   String?
-  sku         String?
-  codigoBarras String?
-  unidadMedida        String  @default("unidad")
+  id                  String            @id @default(cuid())
+  nombre              String
+  precio              Decimal?          @db.Decimal(12, 2)
+  costo               Decimal?          @db.Decimal(12, 2)
+  descripcion         String?
+  categoria           String?
+  sku                 String?
+  codigoBarras        String?
+  unidadMedida        String            @default("unidad")
   unidadPersonalizada String?
-  formaVenta          String  @default("unidad")
-  controlaInventario  Boolean @default(true)
-  imagenBase64        String? @db.Text
+  formaVenta          String            @default("unidad")
+  controlaInventario  Boolean           @default(true)
+  imagenBase64        String?           @db.Text
   unidadVentaCantidad Float?
   unidadVentaTipo     String?
   ventaMinima         Float?
-  stock       Int?
-  stockMinimo Int?         @default(5)
-  activo      Boolean      @default(true)
-  userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  movimientos Movimiento[]
-  movimientosStock MovimientoStock[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  @@index([userId])
-  @@index([userId, activo])
+  stock               Int?
+  stockMinimo         Int?              @default(5)
+  activo              Boolean           @default(true)
+  userId              String
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movimientos         Movimiento[]
+  movimientosStock    MovimientoStock[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
   @@unique([userId, sku])
   @@unique([userId, codigoBarras])
+  @@index([userId])
+  @@index([userId, activo])
 }
 
 model Deuda {
-  id            String      @id @default(cuid())
-  acreedor      String
-  tipo          String      @default("Otros")
-  entidad       String?
-  monto         Decimal     @db.Decimal(12, 2)
-  montoPagado   Decimal     @default(0) @db.Decimal(12, 2)
-  descripcion   String?
-  fechaDeuda    DateTime
+  id              String      @id @default(cuid())
+  acreedor        String
+  tipo            String      @default("Otros")
+  entidad         String?
+  monto           Decimal     @db.Decimal(12, 2)
+  montoPagado     Decimal     @default(0) @db.Decimal(12, 2)
+  descripcion     String?
+  fechaDeuda      DateTime
   fechaVence      DateTime?
   fechaPrimerPago DateTime?
   cuotaManual     Decimal?    @db.Decimal(12, 2)
   tipoTasa        String?     @default("mensual")
   pagada          Boolean     @default(false)
-  interes       Decimal?    @db.Decimal(5, 2)
-  cuotas        Int?
-  cuotasPagadas Int         @default(0)
-  valorCuota    Decimal?    @db.Decimal(12, 2)
+  interes         Decimal?    @db.Decimal(5, 2)
+  cuotas          Int?
+  cuotasPagadas   Int         @default(0)
+  valorCuota      Decimal?    @db.Decimal(12, 2)
   // El total "de verdad" que muestra el banco — bancos reales suman
   // seguros/impuestos que no se pueden derivar solo de tasa+cuotas, así
   // que se deja como un valor que el usuario puede copiar tal cual desde
   // su banco. Si no se informa, se sigue calculando como cuota × cuotas
   // (comportamiento de siempre, no rompe deudas ya creadas).
-  montoTotal    Decimal?    @db.Decimal(12, 2)
-  userId        String
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  montoTotal      Decimal?    @db.Decimal(12, 2)
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Opcional — vincula esta deuda a un proveedor real de la plataforma,
   // en vez de solo el nombre libre en "acreedor". SetNull, no Cascade: si
   // se elimina el proveedor, la deuda y su historial de pagos se conservan.
-  proveedorId   String?
-  proveedor     Proveedor?  @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
-  pagos         PagoDeuda[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  proveedorId     String?
+  proveedor       Proveedor?  @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  pagos           PagoDeuda[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
   @@index([userId, pagada])
 }
 
@@ -189,6 +211,7 @@ model PagoDeuda {
   fecha       DateTime
   descripcion String?
   createdAt   DateTime @default(now())
+
   @@index([deudaId])
 }
 
@@ -199,24 +222,26 @@ model CategoriaPersonalizada {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
   @@unique([nombre, tipo, userId])
   @@index([userId, tipo])
 }
 
 model CostoFijoRecurrente {
-  id               String            @id @default(cuid())
-  nombre           String
-  monto            Decimal           @db.Decimal(12, 2)
-  categoria        String?
-  descripcion      String?
-  fechaInicio      DateTime          // única fecha que define desde cuándo y en qué día del mes se repite
-  fechaTermino     DateTime?         // opcional — si no se pone, se repite indefinidamente
-  estado           String            @default("activo")
-  userId           String
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generaciones     GeneracionCosto[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id           String            @id @default(cuid())
+  nombre       String
+  monto        Decimal           @db.Decimal(12, 2)
+  categoria    String?
+  descripcion  String?
+  fechaInicio  DateTime // única fecha que define desde cuándo y en qué día del mes se repite
+  fechaTermino DateTime? // opcional — si no se pone, se repite indefinidamente
+  estado       String            @default("activo")
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generaciones GeneracionCosto[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
   @@index([userId])
 }
 
@@ -230,39 +255,41 @@ model GeneracionCosto {
   pagado       Boolean             @default(false)
   fechaPagado  DateTime?
   createdAt    DateTime            @default(now())
+
   @@unique([costoFijoId, mes, anio])
 }
 
 model Cliente {
-  id               String        @id @default(cuid())
-  nombre           String
-  apellido         String?
-  empresa          String?
-  telefono         String?
-  email            String?
-  direccion        String?
-  ciudad           String?
-  tipoCliente      String?       @default("Minorista")
-  frecuenciaCompra String?
-  metodoPago       String?       @default("Efectivo")
-  limiteCredito    Decimal?      @db.Decimal(12, 2)
-  diasPago         Int?          @default(0)
-  esFrecuente      Boolean       @default(false)
-  esVip            Boolean       @default(false)
-  permiteCredito   Boolean       @default(false)
-  activo           Boolean       @default(true)
-  observaciones    String?
+  id                String             @id @default(cuid())
+  nombre            String
+  apellido          String?
+  empresa           String?
+  telefono          String?
+  email             String?
+  direccion         String?
+  ciudad            String?
+  tipoCliente       String?            @default("Minorista")
+  frecuenciaCompra  String?
+  metodoPago        String?            @default("Efectivo")
+  limiteCredito     Decimal?           @db.Decimal(12, 2)
+  diasPago          Int?               @default(0)
+  esFrecuente       Boolean            @default(false)
+  esVip             Boolean            @default(false)
+  permiteCredito    Boolean            @default(false)
+  activo            Boolean            @default(true)
+  observaciones     String?
   // Solo importan día y mes — el año queda fijo en el que se haya elegido
   // al completar el formulario, se ignora al comparar contra "hoy".
-  cumpleanos       DateTime?
-  userId           String
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  movimientos      Movimiento[]
-  notas            NotaCliente[]
-  cuentasPorCobrar CuentaPorCobrar[]
+  cumpleanos        DateTime?
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movimientos       Movimiento[]
+  notas             NotaCliente[]
+  cuentasPorCobrar  CuentaPorCobrar[]
   contactosCobranza ContactoCobranza[]
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
   @@index([userId])
 }
 
@@ -275,26 +302,27 @@ model NotaCliente {
 }
 
 model Proveedor {
-  id            String          @id @default(cuid())
-  nombre        String
-  empresa       String?
-  rut           String?
-  telefono      String?
-  email         String?
-  direccion     String?
-  ciudad        String?
-  categoria     String?         @default("Otros")
-  esFavorito    Boolean         @default(false)
-  activo        Boolean         @default(true)
-  observaciones String?
-  userId        String
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  movimientos   Movimiento[]
+  id               String            @id @default(cuid())
+  nombre           String
+  empresa          String?
+  rut              String?
+  telefono         String?
+  email            String?
+  direccion        String?
+  ciudad           String?
+  categoria        String?           @default("Otros")
+  esFavorito       Boolean           @default(false)
+  activo           Boolean           @default(true)
+  observaciones    String?
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movimientos      Movimiento[]
   movimientosStock MovimientoStock[]
-  notas         NotaProveedor[]
-  deudas        Deuda[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  notas            NotaProveedor[]
+  deudas           Deuda[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
   @@index([userId])
 }
 
@@ -307,52 +335,53 @@ model NotaProveedor {
 }
 
 model CuentaPorCobrar {
-  id             String       @id @default(cuid())
+  id             String             @id @default(cuid())
   numero         Int
   clienteId      String?
   // SetNull, no Cascade — el historial de una cuenta por cobrar (ya
   // pagada o no) es un registro financiero del negocio, debe sobrevivir
   // aunque el cliente se elimine de la plataforma.
-  cliente        Cliente?     @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  cliente        Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   movimientoId   String?
-  montoOriginal  Decimal      @db.Decimal(12, 2)
-  saldoPendiente Decimal      @db.Decimal(12, 2)
+  montoOriginal  Decimal            @db.Decimal(12, 2)
+  saldoPendiente Decimal            @db.Decimal(12, 2)
   fechaVenta     DateTime
   fechaVence     DateTime?
-  estado         String       @default("pendiente")
+  estado         String             @default("pendiente")
   observaciones  String?
-  costoAsociado  Decimal?     @db.Decimal(12, 2)
+  costoAsociado  Decimal?           @db.Decimal(12, 2)
   userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   pagos          PagoCuenta[]
   contactos      ContactoCobranza[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
   @@index([userId])
   @@index([clienteId])
   @@index([userId, estado])
 }
 
 model PagoCuenta {
-  id         String          @id @default(cuid())
-  cuentaId   String
-  cuenta     CuentaPorCobrar @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
-  monto      Decimal         @db.Decimal(12, 2)
-  fecha      DateTime
+  id          String          @id @default(cuid())
+  cuentaId    String
+  cuenta      CuentaPorCobrar @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  monto       Decimal         @db.Decimal(12, 2)
+  fecha       DateTime
   descripcion String?
-  metodoPago  String?        @default("Efectivo")
-  createdAt  DateTime        @default(now())
+  metodoPago  String?         @default("Efectivo")
+  createdAt   DateTime        @default(now())
 }
 
 model EventoCalendario {
-  id          String         @id @default(cuid())
+  id          String           @id @default(cuid())
   titulo      String
   descripcion String?
   fecha       DateTime
-  tipo        String         @default("evento")
-  color       String         @default("azul")
-  estado      String         @default("pendiente")
-  prioridad   String         @default("media")
+  tipo        String           @default("evento")
+  color       String           @default("azul")
+  estado      String           @default("pendiente")
+  prioridad   String           @default("media")
   horaLimite  String?
   proyectoId  String?
   proyecto    ProyectoTarea?   @relation(fields: [proyectoId], references: [id], onDelete: SetNull)
@@ -362,6 +391,7 @@ model EventoCalendario {
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
   @@index([userId, fecha])
   @@index([proyectoId])
   @@index([serieId])
@@ -379,6 +409,7 @@ model ProyectoTarea {
   eventos     EventoCalendario[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+
   @@unique([nombre, userId])
   @@index([userId])
 }
@@ -389,35 +420,37 @@ model ProyectoTarea {
 // Un job perezoso (ver generarOcurrenciasPendientes) va extendiendo el
 // horizonte materializado cada vez que el dueño abre el Calendario.
 model SerieRecurrente {
-  id          String             @id @default(cuid())
-  frecuencia  String             // diaria | semanal | mensual | lun_a_vie
-  diasSemana  Int[]              @default([]) // solo para "semanal": 0=lun..6=dom
-  fechaFin    DateTime?          // null = indefinida
-  userId      String
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventos     EventoCalendario[]
-  createdAt   DateTime           @default(now())
+  id         String             @id @default(cuid())
+  frecuencia String // diaria | semanal | mensual | lun_a_vie
+  diasSemana Int[]              @default([]) // solo para "semanal": 0=lun..6=dom
+  fechaFin   DateTime? // null = indefinida
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventos    EventoCalendario[]
+  createdAt  DateTime           @default(now())
+
   @@index([userId])
 }
 
 model SuscripcionNelyx {
-  id                   String       @id @default(cuid())
-  userId               String       @unique
-  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan                 String       @default("mensual")
-  estado               String       @default("prueba_gratuita")
-  fechaInicio          DateTime     @default(now())
+  id                   String                   @id @default(cuid())
+  userId               String                   @unique
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 String                   @default("mensual")
+  estado               String                   @default("prueba_gratuita")
+  fechaInicio          DateTime                 @default(now())
   fechaFinPrueba       DateTime?
   fechaProximoCobro    DateTime?
-  precioPlan           Decimal      @default(0) @db.Decimal(12,2)
-  renovacionAutomatica Boolean      @default(true)
+  precioPlan           Decimal                  @default(0) @db.Decimal(12, 2)
+  renovacionAutomatica Boolean                  @default(true)
   ultimoAcceso         DateTime?
   notas                String?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
   pagos                PagoNelyx[]
   cobros               CobroNelyx[]
   eventos              SuscripcionNelyxEvento[]
+
   @@index([estado])
 }
 
@@ -440,20 +473,22 @@ model SuscripcionNelyxEvento {
   // nombre del admin cambia después (ni romperse si esa cuenta se borra).
   adminNombre   String?
   createdAt     DateTime         @default(now())
+
   @@index([suscripcionId])
 }
 
 model PagoNelyx {
-  id             String           @id @default(cuid())
-  suscripcionId  String
-  suscripcion    SuscripcionNelyx @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
-  fecha          DateTime         @default(now())
-  monto          Decimal          @db.Decimal(12,2)
-  metodoPago     String           @default("transferencia")
-  observacion    String?
-  estado         String           @default("pagado")
-  createdAt      DateTime         @default(now())
-  cobro          CobroNelyx?
+  id            String           @id @default(cuid())
+  suscripcionId String
+  suscripcion   SuscripcionNelyx @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
+  fecha         DateTime         @default(now())
+  monto         Decimal          @db.Decimal(12, 2)
+  metodoPago    String           @default("transferencia")
+  observacion   String?
+  estado        String           @default("pagado")
+  createdAt     DateTime         @default(now())
+  cobro         CobroNelyx?
+
   @@index([suscripcionId])
 }
 
@@ -465,27 +500,29 @@ model CobroNelyx {
   suscripcionId    String
   suscripcion      SuscripcionNelyx @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
   plan             String
-  monto            Decimal          @db.Decimal(12,2)
+  monto            Decimal          @db.Decimal(12, 2)
   fechaEmision     DateTime         @default(now())
   fechaVencimiento DateTime
   estado           String           @default("pendiente")
   pagoId           String?          @unique
   pago             PagoNelyx?       @relation(fields: [pagoId], references: [id])
   createdAt        DateTime         @default(now())
+
   @@index([suscripcionId])
   @@index([estado])
 }
 
 // ── Notificaciones push ────────────────────────────────────────────────
 model PushSubscription {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint   String   @unique
-  p256dh     String
-  auth       String
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
   @@index([userId])
 }
 
@@ -499,6 +536,7 @@ model IntentoLoginFallido {
   id        String   @id @default(cuid())
   ip        String
   createdAt DateTime @default(now())
+
   @@index([ip, createdAt])
   @@index([createdAt])
 }
@@ -517,6 +555,7 @@ model PasswordResetToken {
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
+
   @@index([userId, createdAt])
 }
 
@@ -529,28 +568,29 @@ model IntentoResetPassword {
   ip        String
   email     String
   createdAt DateTime @default(now())
+
   @@index([ip, createdAt])
   @@index([email, createdAt])
 }
 
 model NotificacionConfig {
-  id             String  @id @default(cuid())
-  userId         String  @unique
-  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  calendario     Boolean @default(true)
-  tareas         Boolean @default(true)
-  deudas         Boolean @default(true)
-  costosFijos    Boolean @default(true)
-  cuentasCobrar  Boolean @default(true)
-  flujoCaja      Boolean @default(true)
-  clientes       Boolean @default(true)
-  inventario     Boolean @default(true)
-  reportes       Boolean @default(true)
-  renovaciones   Boolean @default(true)
-  alertasGenerales Boolean @default(true)
-  soporte        Boolean @default(true)
-  permisoPedido  Boolean @default(false)
-  updatedAt      DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendario       Boolean  @default(true)
+  tareas           Boolean  @default(true)
+  deudas           Boolean  @default(true)
+  costosFijos      Boolean  @default(true)
+  cuentasCobrar    Boolean  @default(true)
+  flujoCaja        Boolean  @default(true)
+  clientes         Boolean  @default(true)
+  inventario       Boolean  @default(true)
+  reportes         Boolean  @default(true)
+  renovaciones     Boolean  @default(true)
+  alertasGenerales Boolean  @default(true)
+  soporte          Boolean  @default(true)
+  permisoPedido    Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
 }
 
 // ── Chat de soporte en vivo: comunicación directa entre una cuenta dueña
@@ -558,48 +598,51 @@ model NotificacionConfig {
 // por cuenta dueña — todos los empleados de un mismo negocio comparten el
 // mismo hilo, cada mensaje queda marcado con quién lo escribió (autorNombre).
 model ConversacionSoporte {
-  id                  String    @id @default(cuid())
+  id                  String           @id @default(cuid())
   userId              String
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  estado              String    @default("abierta") // abierta | resuelta
-  ultimoMensajeDe     String    @default("cliente")  // cliente | soporte | sistema
-  ultimoMensajeAt     DateTime  @default(now())
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  estado              String           @default("abierta") // abierta | resuelta
+  ultimoMensajeDe     String           @default("cliente") // cliente | soporte | sistema
+  ultimoMensajeAt     DateTime         @default(now())
   // Evita reenviar el recordatorio de "¿sigues ahí?" más de una vez por
   // cada espera sin respuesta — se reinicia a false apenas cualquiera de
   // las dos partes vuelve a escribir.
-  recordatorioEnviado Boolean   @default(false)
-  createdAt           DateTime  @default(now())
+  recordatorioEnviado Boolean          @default(false)
+  createdAt           DateTime         @default(now())
   mensajes            MensajeSoporte[]
+
   @@index([estado, ultimoMensajeAt])
 }
 
 model MensajeSoporte {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   conversacionId String
   conversacion   ConversacionSoporte @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
-  de             String   // cliente | soporte | sistema
+  de             String // cliente | soporte | sistema
   autorNombre    String?
   contenido      String
-  paginaOrigen   String?  // ruta desde la que se escribió — contexto para soporte
-  urgente        Boolean  @default(false) // auto-detectado por palabras clave
-  leidoCliente   Boolean  @default(false)
-  leidoSoporte   Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  paginaOrigen   String? // ruta desde la que se escribió — contexto para soporte
+  urgente        Boolean             @default(false) // auto-detectado por palabras clave
+  leidoCliente   Boolean             @default(false)
+  leidoSoporte   Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+
   @@index([conversacionId, createdAt])
 }
 
 model Notificacion {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoria   String   // calendario | tareas | deudas | costosFijos | cuentasCobrar | flujoCaja | clientes | inventario | reportes | renovaciones | alertasGenerales
-  prioridad   String   @default("media") // alta | media | baja
-  titulo      String
-  mensaje     String
-  accionUrl   String?
-  leida       Boolean  @default(false)
-  claveUnica  String   @unique // evita duplicados: ej "cf:<id>:2026-7:3"
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoria  String // calendario | tareas | deudas | costosFijos | cuentasCobrar | flujoCaja | clientes | inventario | reportes | renovaciones | alertasGenerales
+  prioridad  String   @default("media") // alta | media | baja
+  titulo     String
+  mensaje    String
+  accionUrl  String?
+  leida      Boolean  @default(false)
+  claveUnica String   @unique // evita duplicados: ej "cf:<id>:2026-7:3"
+  createdAt  DateTime @default(now())
+
   @@index([userId, leida])
   @@index([userId, createdAt])
 }
@@ -611,25 +654,26 @@ model Notificacion {
 // fila nueva. El stock actual en Producto.stock es siempre el resultado
 // acumulado de este historial.
 model MovimientoStock {
-  id             String    @id @default(cuid())
-  productoId     String
-  producto       Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tipo           String    // venta | reposicion | ajuste_manual | correccion | producto_danado | merma | consumo_interno | regalo | devolucion | inventario_inicial | otro
-  cantidad       Int       // delta real aplicado (positivo = entrada, negativo = salida), ya en unidad interna
-  stockAnterior  Int
-  stockPosterior Int
-  observacion    String?
-  proveedorId    String?
-  proveedor      Proveedor? @relation(fields: [proveedorId], references: [id])
-  movimientoId   String?
-  movimiento     Movimiento? @relation(fields: [movimientoId], references: [id], onDelete: SetNull)
-  costoUnitario  Decimal?  @db.Decimal(12, 2)
-  costoTotal     Decimal?  @db.Decimal(12, 2)
+  id                         String      @id @default(cuid())
+  productoId                 String
+  producto                   Producto    @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  userId                     String
+  user                       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tipo                       String // venta | reposicion | ajuste_manual | correccion | producto_danado | merma | consumo_interno | regalo | devolucion | inventario_inicial | otro
+  cantidad                   Int // delta real aplicado (positivo = entrada, negativo = salida), ya en unidad interna
+  stockAnterior              Int
+  stockPosterior             Int
+  observacion                String?
+  proveedorId                String?
+  proveedor                  Proveedor?  @relation(fields: [proveedorId], references: [id])
+  movimientoId               String?
+  movimiento                 Movimiento? @relation(fields: [movimientoId], references: [id], onDelete: SetNull)
+  costoUnitario              Decimal?    @db.Decimal(12, 2)
+  costoTotal                 Decimal?    @db.Decimal(12, 2)
   fechaVencimiento           DateTime? // opcional — fecha en que vence este lote/reposición específico
-  avisoVencimientoDescartado Boolean   @default(false) // el dueño ya "resolvió" este aviso (lo vendió o lo botó)
-  createdAt      DateTime  @default(now())
+  avisoVencimientoDescartado Boolean     @default(false) // el dueño ya "resolvió" este aviso (lo vendió o lo botó)
+  createdAt                  DateTime    @default(now())
+
   @@index([productoId, createdAt])
   @@index([userId])
   @@index([userId, fechaVencimiento])
@@ -637,17 +681,18 @@ model MovimientoStock {
 
 // ── Centro de Cobranza ──────────────────────────────────────────────────
 model ContactoCobranza {
-  id            String          @id @default(cuid())
-  cuentaId      String
-  cuenta        CuentaPorCobrar @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
-  clienteId     String
-  cliente       Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  canal         String          // whatsapp | email
-  nivel         Int             // 1 | 2 | 3
-  mensaje       String?
-  createdAt     DateTime        @default(now())
+  id        String          @id @default(cuid())
+  cuentaId  String
+  cuenta    CuentaPorCobrar @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  clienteId String
+  cliente   Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canal     String // whatsapp | email
+  nivel     Int // 1 | 2 | 3
+  mensaje   String?
+  createdAt DateTime        @default(now())
+
   @@index([cuentaId, createdAt])
   @@index([clienteId])
 }
@@ -656,9 +701,10 @@ model PlantillaCobranza {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  nivel     Int       // 1 | 2 | 3
+  nivel     Int // 1 | 2 | 3
   mensaje   String   @db.Text
   updatedAt DateTime @updatedAt
+
   @@unique([userId, nivel])
 }
 
@@ -667,16 +713,17 @@ model PlantillaCobranza {
 // proveedor real al negocio (no las genera Nelyx) — acá solo se guardan
 // para poder hablarle a su API cuando se cobra desde Venta.
 model ConexionPago {
-  id                String   @id @default(cuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  proveedor         String   // "mercadopago" | "tuu" | "sumup" | "transbank" | "getnet" | "bancoestado"
-  accessToken       String   @db.Text // para SumUp guarda un JSON {apiKey, merchantCode} cifrado junto, no solo un token
-  terminalId        String?  // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo. Para SumUp: el id del lector ("rdr_...")
-  activo            Boolean  @default(true)
-  ultimaConexionOk  DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proveedor        String // "mercadopago" | "tuu" | "sumup" | "transbank" | "getnet" | "bancoestado"
+  accessToken      String    @db.Text // para SumUp guarda un JSON {apiKey, merchantCode} cifrado junto, no solo un token
+  terminalId       String? // requerido para Mercado Pago Point; otros proveedores pueden no necesitarlo. Para SumUp: el id del lector ("rdr_...")
+  activo           Boolean   @default(true)
+  ultimaConexionOk DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
   @@unique([userId, proveedor])
 }
 
@@ -703,9 +750,8 @@ model CobroSumup {
   // webhooks (confirmado: no hay mecanismo de firma documentado para
   // ReaderCheckoutStatusChange, a diferencia de otros productos de SumUp).
   webhookToken        String   @unique
-  merchantCode        String   // se cruza contra el merchant_code que manda el webhook, defensa en profundidad adicional
+  merchantCode        String // se cruza contra el merchant_code que manda el webhook, defensa en profundidad adicional
   estado              String   @default("pendiente") // "pendiente" | "aprobado" | "rechazado"
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
-

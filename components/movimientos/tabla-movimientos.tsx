@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { formatCLP, formatFecha, ETIQUETAS } from "@/lib/utils"
 import { eliminarMovimiento } from "@/app/actions/acciones"
@@ -17,6 +18,7 @@ const ICONO_METODO_PAGO: Record<string, string> = {
 }
 
 export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   // La hora (a diferencia de la fecha) se muestra recién después de montar:
   // Node (servidor) y el navegador pueden traer datos de Intl ligeramente
@@ -55,7 +57,24 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
       {movimientos.map((m, idx) => {
         const et = ETIQUETAS[m.tipo]
         const esIngreso = m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA"
+        // DEVOLUCION es la única fila cuyo monto se guarda NEGATIVO (ver
+        // registrarCambioProducto) — así una simple suma junto a VENTA en
+        // Resumen/Reportes/Productos resta lo que corresponde sin que esos
+        // lugares necesiten saber que es una reversión. Acá, para mostrarla,
+        // hay que deshacer ese signo: por eso Math.abs + su propio color
+        // ámbar (no verde "ingreso", no rojo "gasto") en vez de reusar
+        // esIngreso.
+        const esDevolucion = m.tipo === "DEVOLUCION"
         const colorCat = m.categoria ? getColorCategoria(m.categoria) : null
+        // Cambio de producto: cada mitad del par (devolución ↔ venta nueva)
+        // apunta a la otra por un lado o el otro — ver registrarCambioProducto.
+        const parCambio = m.movimientoVinculado ?? m.movimientoVinculadoDe ?? null
+        // Solo una VENTA con producto, que todavía no fue cambiada por otra
+        // (movimientoVinculadoDe == null), puede iniciar un cambio nuevo —
+        // mismo chequeo que obtenerMovimientoParaCambio en el servidor,
+        // repetido acá para no ofrecer el botón cuando de todos modos se
+        // va a rechazar.
+        const puedeCambiarse = m.tipo === "VENTA" && !!m.productoId && !m.movimientoVinculadoDe
         const esNuevoDia = idx === 0 || claveDia(m.fecha) !== claveDia(movimientos[idx - 1].fecha)
 
         return (
@@ -83,6 +102,9 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                   {m.metodoPago && <span className="text-[10px] text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
                 </div>
                 {m.descripcion && <p className="text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
+                {parCambio && (
+                  <p className="text-[10px] text-amber-400/80 mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
+                )}
                 <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
                   {formatFecha(m.fecha)}
                   {m.realizadoPorNombre && <span className="opacity-60"> · {m.realizadoPorNombre}</span>}
@@ -92,16 +114,20 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
             </div>
             <div className="flex items-center gap-3 flex-shrink-0 ml-4">
               <div className="text-right">
-                <span className={`text-base font-bold ${esIngreso ? "text-green-400" : "text-red-400"}`}>
-                  {esIngreso ? "+" : "−"}{formatCLP(Number(m.monto))}
+                <span className={`text-base font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-amber-400" : "text-red-400"}`}>
+                  {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
                 </span>
                 {m.tipo === "VENTA" && m.utilidad != null && (
                   <p className={`text-[10px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
                     {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util. {m.margen != null ? `(${Number(m.margen).toFixed(0)}%)` : ""}
                   </p>
                 )}
-                <p className={`text-[9px] font-medium mt-0.5 ${esIngreso ? "text-emerald-400/60" : "text-[var(--c-text4)]"}`}>{esIngreso ? "Pagado" : "Registrado"}</p>
+                <p className={`text-[9px] font-medium mt-0.5 ${esIngreso ? "text-emerald-400/60" : esDevolucion ? "text-amber-400/60" : "text-[var(--c-text4)]"}`}>{esIngreso ? "Pagado" : esDevolucion ? "Devuelto" : "Registrado"}</p>
               </div>
+              {puedeCambiarse && (
+                <button onClick={() => router.push(`/dashboard/venta?cambioDeId=${m.id}`)} title="Cambiar por otro producto"
+                  className="p-1.5 text-zinc-700 hover:text-amber-400 hover:bg-amber-950/30 rounded-lg transition-colors">↩️</button>
+              )}
               <button onClick={() => handleEliminar(m.id)} disabled={isPending}
                 className="p-1.5 text-zinc-700 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors">🗑</button>
             </div>

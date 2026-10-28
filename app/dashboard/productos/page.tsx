@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Productos" }
 export default async function ProductosPage() {
   const session = await auth()
 
-  const [productosRaw, movimientos, vencimientos, categoriasPersonalizadas, unidadesPersonalizadas] = await Promise.all([
+  const [productosRaw, movimientos, devoluciones, vencimientos, categoriasPersonalizadas, unidadesPersonalizadas] = await Promise.all([
     db.producto.findMany({
       where: { userId: session!.user.id },
       orderBy: { createdAt: "desc" },
@@ -31,6 +31,16 @@ export default async function ProductosPage() {
       by: ["productoId"],
       where: { userId: session!.user.id, tipo: "VENTA", productoId: { not: null } },
       _count: { _all: true },
+      _sum: { monto: true, utilidad: true },
+    }),
+    // Aparte de la de arriba: una DEVOLUCION resta del total/utilidad del
+    // producto (ver registrarCambioProducto) pero nunca debe sumar al
+    // conteo de "vendidos" — no es una venta nueva, es la reversión de
+    // otra. Por eso va en su propio groupBy, sin _count, en vez de meterla
+    // junto a VENTA en el groupBy de arriba.
+    db.movimiento.groupBy({
+      by: ["productoId"],
+      where: { userId: session!.user.id, tipo: "DEVOLUCION", productoId: { not: null } },
       _sum: { monto: true, utilidad: true },
     }),
     calcularProximoVencimientoPorProducto(session!.user.id),
@@ -57,6 +67,13 @@ export default async function ProductosPage() {
   for (const g of movimientos) {
     if (!g.productoId) continue
     ventasPorProducto[g.productoId] = { count: g._count._all, total: Number(g._sum.monto ?? 0), utilidad: Number(g._sum.utilidad ?? 0) }
+  }
+  for (const g of devoluciones) {
+    if (!g.productoId) continue
+    const actual = ventasPorProducto[g.productoId] ?? { count: 0, total: 0, utilidad: 0 }
+    actual.total += Number(g._sum.monto ?? 0)
+    actual.utilidad += Number(g._sum.utilidad ?? 0)
+    ventasPorProducto[g.productoId] = actual
   }
 
   const productosData = productosRaw.map(p => ({
