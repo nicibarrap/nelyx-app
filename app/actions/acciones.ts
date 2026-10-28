@@ -478,7 +478,12 @@ async function registrarCambioProductoInterno(
         tipo: "VENTA",
         monto: montoItem,
         fecha: new Date(fecha),
-        descripcion: notas || item.nombre,
+        // Si no hay nota, no repetir el nombre del producto acá: ya se ve en
+        // el chip del producto en Historial, duplicarlo ahí abajo solo
+        // ensucia la fila. Solo se rellena con item.nombre cuando no hay
+        // producto (venta de monto libre) — ahí es el único lugar donde se
+        // puede saber qué fue.
+        descripcion: notas?.trim() || (item.productoId ? null : item.nombre),
         productoId: item.productoId || null,
         clienteId: clienteId || origen.clienteId || null,
         costoUnitario: costoUnitarioSnap,
@@ -685,7 +690,11 @@ async function registrarVentaInterno(items: Array<{
           tipo: "VENTA",
           monto: montoItem,
           fecha: new Date(fecha),
-          descripcion: descripcion || item.nombre,
+          // Mismo criterio que registrarCambioProductoInterno: sin nota, no
+          // repetir el nombre del producto (ya se ve en su propio chip) —
+          // solo se usa como descripción de respaldo en ventas de monto
+          // libre, que no tienen chip de producto que lo muestre.
+          descripcion: descripcion?.trim() || (item.productoId ? null : item.nombre),
           productoId: item.productoId || null,
           clienteId: clienteId || null,
           costoUnitario: costoUnitarioSnap,
