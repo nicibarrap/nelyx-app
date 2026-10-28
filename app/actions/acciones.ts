@@ -294,6 +294,216 @@ export async function eliminarMovimiento(id: string) {
   if (mov.clienteId) revalidatePath("/dashboard/clientes")
 }
 
+// ── CAMBIO DE PRODUCTO ──────────────────────────────────────
+// Un cliente se lleva un producto distinto al que ya pagó (ej. cambia un
+// vino chico por uno grande) — la venta original NUNCA se toca ni se
+// borra (sigue contando como lo que de verdad pasó ese día), y en vez de
+// eso se crean dos movimientos nuevos enlazados entre sí: una DEVOLUCION
+// (revierte el valor y el stock del producto viejo) y una VENTA normal
+// del producto nuevo. La diferencia a cobrar o devolver nunca se guarda
+// como su propio movimiento — ya queda implícita restando ambas filas
+// (ver comentario del enum DEVOLUCION en schema.prisma), así que Resumen
+// y Reportes no necesitan ninguna lógica especial para calcularla.
+//
+// Por qué no hace falta validar "venta a crédito" acá: una venta a
+// crédito nunca llega a crear un Movimiento tipo VENTA (ver
+// registrarVentaInterno — solo crea la CuentaPorCobrar) — así que
+// cualquier fila que SÍ se pueda buscar acá con tipo VENTA fue,
+// necesariamente, al contado. Un cambio sobre una venta a crédito queda
+// fuera de alcance de esta función simplemente porque no hay ninguna fila
+// así que encontrar.
+
+/** Trae lo necesario para mostrar el banner de "modo cambio" en Venta y
+ * para validar, antes de armar el carrito nuevo, que esta venta todavía
+ * se puede cambiar. No modifica nada. */
+export async function obtenerMovimientoParaCambio(id: string) {
+  const session = await getSession()
+  const mov = await db.movimiento.findFirst({
+    where: { id, userId: session.user.id, tipo: "VENTA" },
+    include: { producto: { select: { nombre: true } }, movimientoVinculadoDe: { select: { id: true } } },
+  })
+  if (!mov) throw new Error("Venta no encontrada")
+  if (!mov.productoId) throw new Error("Esta venta no tiene un producto asociado — no se puede cambiar por otro.")
+  if (mov.movimientoVinculadoDe) throw new Error("Esta venta ya fue cambiada por otra.")
+  return {
+    id: mov.id,
+    productoNombre: mov.producto?.nombre ?? mov.descripcion ?? "Producto",
+    monto: Number(mov.monto),
+    fecha: mov.fecha.toISOString(),
+  }
+}
+
+export async function registrarCambioProducto(
+  movimientoOrigenId: string,
+  items: Array<{ productoId?: string | null; nombre: string; precio: number; cantidad: number; cantidadInterna?: number | null }>,
+  fecha: string,
+  clienteId?: string | null,
+  metodoPago?: string,
+  notas?: string,
+): Promise<ResultadoVenta> {
+  try {
+    await registrarCambioProductoInterno(movimientoOrigenId, items, fecha, clienteId, metodoPago, notas)
+    return { ok: true }
+  } catch (err: any) {
+    if (!err?.code) return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el cambio." }
+    console.error("Error en registrarCambioProducto:", err)
+    Sentry.captureException(err)
+    return { ok: false, error: "No se pudo registrar el cambio. Intenta de nuevo — si el problema persiste, contáctanos." }
+  }
+}
+
+async function registrarCambioProductoInterno(
+  movimientoOrigenId: string,
+  items: Array<{ productoId?: string | null; nombre: string; precio: number; cantidad: number; cantidadInterna?: number | null }>,
+  fecha: string,
+  clienteId: string | null | undefined,
+  metodoPago: string | undefined,
+  notas: string | undefined,
+) {
+  const session = await getSessionEscritura("venta")
+  if (!items || items.length === 0) throw new Error("Agrega al menos un producto nuevo")
+
+  const origen = await db.movimiento.findFirst({
+    where: { id: movimientoOrigenId, userId: session.user.id, tipo: "VENTA" },
+    include: { movimientosStock: true, movimientoVinculadoDe: { select: { id: true } } },
+  })
+  if (!origen) throw new Error("Venta original no encontrada")
+  if (!origen.productoId) throw new Error("Esta venta no tiene un producto asociado — no se puede cambiar por otro.")
+  // Chequeo rápido acá (mejor mensaje); la restricción @unique de
+  // movimientoVinculadoId en el schema es la que de verdad protege contra
+  // dos cambios a la vez sobre la misma venta (dos cajeros, o dos pestañas).
+  if (origen.movimientoVinculadoDe) throw new Error("Esta venta ya fue cambiada por otra.")
+
+  if (clienteId) {
+    const clientePropio = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id }, select: { id: true } })
+    if (!clientePropio) throw new Error("Cliente no encontrado")
+  }
+
+  for (const item of items) {
+    if (item.productoId) {
+      const prod = await db.producto.findFirst({ where: { id: item.productoId, userId: session.user.id } })
+      if (!prod) throw new Error("Producto no encontrado")
+      const cantidadDescuento = item.cantidadInterna ?? item.cantidad
+      if (prod.stock !== null && prod.stock < cantidadDescuento) {
+        throw new Error(`Stock insuficiente para "${prod.nombre}". Disponible: ${formatearStock(prod.stock, prod.formaVenta, prod.unidadMedida, prod.unidadPersonalizada)}`)
+      }
+    }
+  }
+
+  // ── Devolución del producto viejo ── revierte cada unidad al mismo lote
+  // (misma fecha de vencimiento) del que salió en la venta original —
+  // igual que hace eliminarMovimiento con una venta completa — pero tipada
+  // "devolucion_cliente" (evento de negocio real), no "devolucion" (que
+  // queda reservada para la reversión interna de eliminarMovimiento).
+  const movsStockDevolucion: { id: string }[] = []
+  for (const ms of origen.movimientosStock) {
+    const resultado = await registrarMovimientoStock({
+      productoId: ms.productoId, userId: session.user.id, tipo: "devolucion_cliente",
+      cantidad: -ms.cantidad, fechaVencimiento: ms.fechaVencimiento,
+      observacion: "Cambio de producto",
+    })
+    if (resultado?.movimiento) movsStockDevolucion.push(resultado.movimiento)
+  }
+
+  const devolucion = await db.movimiento.create({
+    data: {
+      tipo: "DEVOLUCION",
+      // Negado: todo lugar que suma DEVOLUCION junto a VENTA/INGRESO_EXTRA
+      // (lib/utils.ts, Resumen, Productos, Reportes) hace una suma simple,
+      // sin mirar el tipo — un monto negativo es lo que hace que esa suma
+      // termine restando exactamente lo que la venta original había sumado,
+      // sin que ninguno de esos lugares necesite saber que esta fila es una
+      // reversión.
+      monto: -Number(origen.monto),
+      fecha: new Date(fecha),
+      descripcion: `Devolución: ${origen.descripcion ?? "producto"} (cambio)`,
+      categoria: origen.categoria,
+      productoId: origen.productoId,
+      clienteId: origen.clienteId,
+      costoUnitario: origen.costoUnitario,
+      // Misma razón que monto: negada, resta exactamente la utilidad que la
+      // venta original había sumado.
+      utilidad: origen.utilidad != null ? -Number(origen.utilidad) : null,
+      margen: origen.margen,
+      metodoPago: origen.metodoPago,
+      userId: session.user.id,
+      realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+      movimientoVinculadoId: origen.id,
+    },
+  })
+  if (movsStockDevolucion.length > 0) {
+    await db.movimientoStock.updateMany({ where: { id: { in: movsStockDevolucion.map(m => m.id) } }, data: { movimientoId: devolucion.id } })
+  }
+
+  // ── Venta del producto nuevo ── mismo patrón que registrarVentaInterno
+  // (FIFO automático + snapshot de costo/utilidad), item por item. Solo la
+  // PRIMERA fila creada queda enlazada a la devolución (movimientoVinculadoId
+  // es única por fila destino) — si el cambio trae más de un producto
+  // nuevo, el resto se registra igual de bien, solo sin ese enlace visual
+  // en Historial.
+  let primeraVentaId: string | null = null
+  for (const item of items) {
+    const montoItem = Math.round(item.precio * item.cantidad)
+    let costoUnitarioSnap: number | null = null
+    let utilidadSnap: number | null = null
+    let margenSnap: number | null = null
+    if (item.productoId) {
+      const prodCosto = await db.producto.findFirst({ where: { id: item.productoId, userId: session.user.id }, select: { costo: true, unidadMedida: true, unidadVentaCantidad: true } })
+      if (prodCosto?.costo != null) {
+        costoUnitarioSnap = Number(prodCosto.costo)
+        const cantidadDescuento = item.cantidadInterna ?? item.cantidad
+        const cantidadEnUnidadCosto = prodCosto.unidadVentaCantidad ? cantidadDescuento / prodCosto.unidadVentaCantidad : deInterno(cantidadDescuento, prodCosto.unidadMedida)
+        const { utilidad, margen } = calcularUtilidadVenta(montoItem, costoUnitarioSnap, cantidadEnUnidadCosto)
+        utilidadSnap = utilidad
+        margenSnap = margen
+      }
+    }
+
+    const movsStockItem: { id: string }[] = []
+    if (item.productoId) {
+      const cantidadDescuento = item.cantidadInterna ?? item.cantidad
+      const planConsumo = await calcularConsumoFIFO(item.productoId, session.user.id, cantidadDescuento)
+      for (const consumo of planConsumo) {
+        const resultadoStock = await registrarMovimientoStock({
+          productoId: item.productoId, userId: session.user.id, tipo: "venta",
+          cantidad: -consumo.cantidad, fechaVencimiento: consumo.fechaVencimiento,
+          exigirStockSuficiente: true,
+        })
+        if (resultadoStock?.movimiento) movsStockItem.push(resultadoStock.movimiento)
+      }
+    }
+
+    const movVenta = await db.movimiento.create({
+      data: {
+        tipo: "VENTA",
+        monto: montoItem,
+        fecha: new Date(fecha),
+        descripcion: notas || item.nombre,
+        productoId: item.productoId || null,
+        clienteId: clienteId || origen.clienteId || null,
+        costoUnitario: costoUnitarioSnap,
+        utilidad: utilidadSnap,
+        margen: margenSnap,
+        metodoPago: metodoPago || null,
+        userId: session.user.id,
+        realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        movimientoVinculadoId: primeraVentaId === null ? devolucion.id : null,
+      },
+    })
+    if (primeraVentaId === null) primeraVentaId = movVenta.id
+    if (movsStockItem.length > 0) {
+      await db.movimientoStock.updateMany({ where: { id: { in: movsStockItem.map(m => m.id) } }, data: { movimientoId: movVenta.id } })
+    }
+  }
+
+  revalidatePath("/dashboard/movimientos")
+  revalidatePath("/dashboard/resumen")
+  revalidatePath("/dashboard/productos")
+  revalidatePath("/dashboard/alertas")
+  revalidatePath("/dashboard/reportes")
+  if (clienteId || origen.clienteId) revalidatePath("/dashboard/clientes")
+}
+
 // Next.js censura en producción el mensaje de CUALQUIER error lanzado
 // (throw) desde una Server Action — al navegador solo le llega el genérico
 // "An error occurred in the Server Components render...", nunca el texto

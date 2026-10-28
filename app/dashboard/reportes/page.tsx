@@ -55,7 +55,7 @@ export default async function ReportesPage() {
       WHERE "userId" = ${userId}
         AND fecha >= ${inicio12Meses}
         AND fecha < ${finMes}
-        AND tipo::text IN ('VENTA', 'INGRESO_EXTRA')
+        AND tipo::text IN ('VENTA', 'INGRESO_EXTRA', 'DEVOLUCION')
       GROUP BY dow, hora
     `,
     // Rango real de datos usado para el mapa de calor (mismo filtro) — para
@@ -66,7 +66,7 @@ export default async function ReportesPage() {
       WHERE "userId" = ${userId}
         AND fecha >= ${inicio12Meses}
         AND fecha < ${finMes}
-        AND tipo::text IN ('VENTA', 'INGRESO_EXTRA')
+        AND tipo::text IN ('VENTA', 'INGRESO_EXTRA', 'DEVOLUCION')
     `,
     // Mismo motivo: el gráfico anual solo necesita un total por mes/tipo,
     // no cada movimiento individual.
@@ -80,7 +80,7 @@ export default async function ReportesPage() {
       WHERE "userId" = ${userId}
         AND fecha >= ${inicio12Meses}
         AND fecha < ${finMes}
-        AND tipo::text IN ('VENTA', 'GASTO', 'COSTO_FIJO', 'INGRESO_EXTRA', 'RETIRO')
+        AND tipo::text IN ('VENTA', 'GASTO', 'COSTO_FIJO', 'INGRESO_EXTRA', 'RETIRO', 'DEVOLUCION')
       GROUP BY anio, mes, tipo
     `,
     db.deuda.findMany({ where: { userId, pagada: false } }),
@@ -124,13 +124,13 @@ export default async function ReportesPage() {
   // la utilidad/margen del resumen ejecutivo y el diagnóstico no coincidía
   // con la línea de "Resultado neto" del propio gráfico para el mes actual,
   // cualquier mes en que el dueño hiciera un retiro.
-  const ventasMes = movMesActual.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
+  const ventasMes = movMesActual.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA" || m.tipo === "DEVOLUCION")
   const gastosMes = movMesActual.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentas = ventasMes.reduce((a, m) => a + Number(m.monto), 0)
   const totalGastos = gastosMes.reduce((a, m) => a + Number(m.monto), 0)
 
   // ── Mes anterior ──
-  const ventasMesAnt = movMesAnterior.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA")
+  const ventasMesAnt = movMesAnterior.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA" || m.tipo === "DEVOLUCION")
   const gastosMesAnt = movMesAnterior.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentasAnt = ventasMesAnt.reduce((a, m) => a + Number(m.monto), 0)
   const totalGastosAnt = gastosMesAnt.reduce((a, m) => a + Number(m.monto), 0)
@@ -296,7 +296,7 @@ export default async function ReportesPage() {
     // getMonth() (0-11) — de ahí el -1.
     const key = `${row.anio}-${row.mes - 1}`
     if (!mesesMap[key]) continue
-    if (row.tipo === "VENTA" || row.tipo === "INGRESO_EXTRA") mesesMap[key].ingresos += row.total
+    if (row.tipo === "VENTA" || row.tipo === "INGRESO_EXTRA" || row.tipo === "DEVOLUCION") mesesMap[key].ingresos += row.total
     else if (row.tipo === "COSTO_FIJO") mesesMap[key].costosFijos += row.total
     else mesesMap[key].gastos += row.total // GASTO + RETIRO
   }

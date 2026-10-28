@@ -96,6 +96,32 @@ describe("calcularMetricas", () => {
   })
 })
 
+describe("calcularMetricas — DEVOLUCION (cambio de producto)", () => {
+  // Venta original $1000, cambiada por un producto nuevo de $700 — la
+  // devolución resta la plata que ya se había contado como ingreso, pero
+  // NUNCA debe contarse como una venta nueva (ver enum DEVOLUCION en
+  // schema.prisma). Su monto se guarda NEGATIVO (ver registrarCambioProducto
+  // en acciones.ts) — es lo que permite que esta suma simple la reste
+  // correctamente sin que calcularMetricas necesite saber que es una reversión.
+  const movimientos = [
+    { tipo: "VENTA", monto: 1000 },
+    { tipo: "DEVOLUCION", monto: -1000 },
+    { tipo: "VENTA", monto: 700 },
+  ]
+
+  it("totalIngresos incluye DEVOLUCION (resta lo que había sumado la venta que revierte)", () => {
+    expect(calcularMetricas(movimientos, 0).totalIngresos).toBe(1000 - 1000 + 700)
+  })
+
+  it("totalVentas (solo VENTA) no se ve afectado por la DEVOLUCION", () => {
+    expect(calcularMetricas(movimientos, 0).totalVentas).toBe(1000 + 700)
+  })
+
+  it("cantidadVentas nunca cuenta una DEVOLUCION como venta nueva", () => {
+    expect(calcularMetricas(movimientos, 0).cantidadVentas).toBe(2)
+  })
+})
+
 describe("calcularVariacionPct", () => {
   it("anterior 0 y actual positivo da 100% (no división por cero)", () => {
     expect(calcularVariacionPct(500, 0)).toBe(100)
@@ -139,6 +165,17 @@ describe("prepararGrafico", () => {
     expect(dia10.gastos).toBe(200)
     expect(dia10.neto).toBe(800)
     expect(dia11.ventas).toBe(300)
+  })
+
+  it("DEVOLUCION entra al bucket de ventas/ingresos del día, restando su monto", () => {
+    const movimientos = [
+      { tipo: "VENTA", monto: 1000, fecha: new Date(2026, 5, 10) },
+      { tipo: "DEVOLUCION", monto: -1000, fecha: new Date(2026, 5, 10) },
+      { tipo: "VENTA", monto: 700, fecha: new Date(2026, 5, 10) },
+    ]
+    const resultado = prepararGrafico(movimientos, 2026, 6)
+    const dia10 = resultado.find(d => d.dia === "10")!
+    expect(dia10.ventas).toBe(700)
   })
 })
 

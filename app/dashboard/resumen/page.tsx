@@ -44,7 +44,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
     }),
     db.deuda.findMany({ where: { userId: session!.user.id, pagada: false }, orderBy: { fechaVence: "asc" } }),
     Promise.all([
-      db.movimiento.aggregate({ where: { userId: session!.user.id, tipo: { in: ["VENTA","INGRESO_EXTRA"] } }, _sum: { monto: true } }),
+      db.movimiento.aggregate({ where: { userId: session!.user.id, tipo: { in: ["VENTA","INGRESO_EXTRA","DEVOLUCION"] } }, _sum: { monto: true } }),
       db.movimiento.aggregate({ where: { userId: session!.user.id, tipo: { in: ["GASTO","COSTO_FIJO","RETIRO"] } }, _sum: { monto: true } })
     ]),
     db.costoFijoRecurrente.findMany({ where: { userId: session!.user.id, estado: 'activo' }, select: { id: true, nombre: true, monto: true, fechaInicio: true, fechaTermino: true } }),
@@ -96,11 +96,11 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   const m = calcularMetricas(movimientos, totalPendiente)
 
   // ── Comparación vs mes anterior (Financial Engine — misma lógica, sin duplicar) ──
-  const ingresosAnt = movimientosMesAnterior.filter(mv => ["VENTA","INGRESO_EXTRA"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
+  const ingresosAnt = movimientosMesAnterior.filter(mv => ["VENTA","INGRESO_EXTRA","DEVOLUCION"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
   const gastosAnt = movimientosMesAnterior.filter(mv => ["GASTO","COSTO_FIJO","RETIRO"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
   const ventasAntCount = movimientosMesAnterior.filter(mv => mv.tipo === "VENTA").length
   const utilidadNetaAnt = ingresosAnt - gastosAnt
-  const ventasConSnapshotAnt = movimientosMesAnterior.filter(mv => mv.tipo === "VENTA" && mv.utilidad != null)
+  const ventasConSnapshotAnt = movimientosMesAnterior.filter(mv => (mv.tipo === "VENTA" || mv.tipo === "DEVOLUCION") && mv.utilidad != null)
   const utilidadBrutaAnt = ventasConSnapshotAnt.reduce((a,mv) => a+Number(mv.utilidad), 0)
 
   const pctIngresos = calcularVariacionPct(m.totalIngresos, ingresosAnt)
@@ -109,7 +109,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
 
   // Disponible (acumulado histórico) — Hoy
   const hoyMovs = movimientos.filter(mv => new Date(mv.fecha).toDateString() === hoy.toDateString())
-  const ventasHoy = hoyMovs.filter(mv => mv.tipo === "VENTA").reduce((a,mv) => a+Number(mv.monto), 0)
+  const ventasHoy = hoyMovs.filter(mv => mv.tipo === "VENTA" || mv.tipo === "DEVOLUCION").reduce((a,mv) => a+Number(mv.monto), 0)
   const gastosHoy = hoyMovs.filter(mv => ["GASTO","COSTO_FIJO"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
   const cobrosHoy = hoyMovs.filter(mv => mv.tipo === "INGRESO_EXTRA" && mv.categoria === "Cobros").reduce((a,mv) => a+Number(mv.monto), 0)
   const ventasHoyCount = hoyMovs.filter(mv => mv.tipo === "VENTA").length
@@ -124,10 +124,13 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
 
   // Productos más vendidos — Top 5, con utilidad/margen reales (Financial Engine)
   const conteoProductos: Record<string, { nombre: string; count: number; total: number; utilidad: number; conUtilidad: boolean }> = {}
-  movimientos.filter(mv => mv.tipo === "VENTA" && mv.producto).forEach(mv => {
+  // DEVOLUCION entra al total/utilidad (resta lo que había sumado la venta
+  // que revierte), pero nunca al count — una devolución no es una venta
+  // nueva, mismo criterio que cantidadVentas en lib/utils.ts.
+  movimientos.filter(mv => (mv.tipo === "VENTA" || mv.tipo === "DEVOLUCION") && mv.producto).forEach(mv => {
     const id = mv.productoId!
     if (!conteoProductos[id]) conteoProductos[id] = { nombre: mv.producto!.nombre, count: 0, total: 0, utilidad: 0, conUtilidad: false }
-    conteoProductos[id].count++
+    if (mv.tipo === "VENTA") conteoProductos[id].count++
     conteoProductos[id].total += Number(mv.monto)
     if (mv.utilidad != null) { conteoProductos[id].utilidad += Number(mv.utilidad); conteoProductos[id].conUtilidad = true }
   })
@@ -151,7 +154,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
 
   // Utilidad Bruta real (Financial Engine) — a partir del snapshot de costo
   // guardado en cada venta, no de un cálculo aproximado con ingresos-gastos.
-  const ventasConSnapshot = movimientos.filter(mv => mv.tipo === "VENTA" && mv.utilidad != null)
+  const ventasConSnapshot = movimientos.filter(mv => (mv.tipo === "VENTA" || mv.tipo === "DEVOLUCION") && mv.utilidad != null)
   const utilidadBrutaMes = ventasConSnapshot.reduce((a, mv) => a + Number(mv.utilidad), 0)
   const ingresosConSnapshot = ventasConSnapshot.reduce((a, mv) => a + Number(mv.monto), 0)
   const margenPromedioMes = ingresosConSnapshot > 0 ? Math.round((utilidadBrutaMes / ingresosConSnapshot) * 100) : null

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
-import { registrarVenta, eliminarCliente } from "@/app/actions/acciones"
+import { registrarVenta, registrarCambioProducto, eliminarCliente } from "@/app/actions/acciones"
 import { iniciarCobroMaquina, consultarCobroMaquina, iniciarCobroBciPagos } from "@/app/actions/pagos-acciones"
 import { cobrarTransbank } from "@/lib/pagos/transbank-cliente"
 import { VentaRapidaClient } from "@/components/ventas/venta-rapida-client"
@@ -51,8 +51,13 @@ const METODOS_PAGO = [
   { value: "transferencia",label: "Transferencia",icon: "🏛️" },
   { value: "pendiente",    label: "Pendiente",    icon: "📄" },
 ]
+// En un cambio de producto no existe "venta a crédito" — la diferencia se
+// cobra o se devuelve en el momento, nunca queda pendiente.
+const METODOS_PAGO_CAMBIO = METODOS_PAGO.filter(m => m.value !== "pendiente")
 
-export function VentaClient({ productos, clientes, proveedorPagoActivo, terminalIdActivo }: { productos: any[]; clientes: ClienteOption[]; proveedorPagoActivo: string | null; terminalIdActivo?: string | null }) {
+interface CambioOrigen { id: string; productoNombre: string; monto: number; fecha: string }
+
+export function VentaClient({ productos, clientes, proveedorPagoActivo, terminalIdActivo, cambioOrigen, cambioError }: { productos: any[]; clientes: ClienteOption[]; proveedorPagoActivo: string | null; terminalIdActivo?: string | null; cambioOrigen?: CambioOrigen | null; cambioError?: string | null }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [ahora, setAhora] = useState<Date | null>(null)
@@ -66,6 +71,15 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     return () => clearInterval(intervalo)
   }, [])
   const [modoRapido, setModoRapido] = useState(false)
+  const enModoCambio = !!cambioOrigen
+
+  // Si el origen ya no se puede cambiar (venta ajena, sin producto, o ya
+  // cambiada antes), el servidor ya mandó el motivo exacto (ver
+  // obtenerMovimientoParaCambio) — se avisa así en vez de romper la
+  // pantalla, y esta sigue sirviendo como una Venta normal.
+  useEffect(() => {
+    if (cambioError) toast.error(cambioError, { duration: 8000 })
+  }, [cambioError])
 
   // Cliente
   const [clienteId, setClienteId] = useState("")
@@ -130,6 +144,14 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
 
   const subtotal = items.reduce((a, i) => a + i.precio * i.cantidad, 0)
   const total = items.length > 0 ? subtotal : (parseFloat(montoLibre) || 0)
+  // Modo cambio (ver registrarCambioProducto): "total" es el valor del
+  // producto NUEVO que se está armando en el carrito — la diferencia contra
+  // lo que el cliente ya pagó por el producto viejo es lo único que cambia
+  // de manos ahora. montoACobrar es lo que de verdad se le pasa a la
+  // máquina de pago: el total completo en una venta normal, pero solo la
+  // diferencia en un cambio (nunca el valor del producto nuevo completo).
+  const diferencia = enModoCambio ? total - cambioOrigen!.monto : 0
+  const montoACobrar = enModoCambio ? diferencia : total
   // En la venta rápida por peso, "precio" es el TOTAL a cobrar (no precio
   // por unidad) y "cantidad" queda fija en 1 — la fórmula genérica
   // (precio - costo) × cantidad mezclaba ese total con un costo "por Kg",
@@ -332,7 +354,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     startTransition(async () => {
       try {
         const ticket = `nelyx-${Date.now()}`
-        const { aprobado, mensaje } = await cobrarTransbank(terminalIdActivo, total, ticket)
+        const { aprobado, mensaje } = await cobrarTransbank(terminalIdActivo, montoACobrar, ticket)
         if (aprobado) {
           setCobroMaquina({ estado: "aprobado" })
           await confirmarVentaTrasPago("Tarjeta (Transbank)")
@@ -356,7 +378,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     startTransition(async () => {
       try {
         const ticket = `nelyx-${Date.now()}`
-        const { aprobado, mensaje } = await iniciarCobroBciPagos(total, ticket)
+        const { aprobado, mensaje } = await iniciarCobroBciPagos(montoACobrar, ticket)
         if (aprobado) {
           setCobroMaquina({ estado: "aprobado" })
           await confirmarVentaTrasPago("Tarjeta (BCI Pagos)")
@@ -370,7 +392,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
   }
 
   function handleCobrarConMaquina() {
-    if (total <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
+    if (montoACobrar <= 0) { toast.error("Ingresa un monto o agrega al menos un producto"); return }
     const stockInsuf = productoConStockInsuficiente(items)
     if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
 
@@ -383,7 +405,7 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     startTransition(async () => {
       try {
         const referencia = `nelyx-${Date.now()}`
-        const { orderId } = await iniciarCobroMaquina(total, referencia)
+        const { orderId } = await iniciarCobroMaquina(montoACobrar, referencia)
 
         let intentos = 0
         const maxIntentos = 45 // ~90 segundos, consultando cada 2s
@@ -416,15 +438,21 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
   async function confirmarVentaTrasPago(metodoPagoLabel: string) {
     const itemsParaEnviar = items.length > 0
       ? items.map(i => ({ productoId: i.productoId, nombre: i.nombre, precio: i.precio, cantidad: i.cantidad, cantidadInterna: i.cantidadInterna }))
-      : [{ productoId: null, nombre: notas || "Venta", precio: total, cantidad: 1 }]
-    const resultado = await registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, "contado", undefined, metodoPagoLabel)
+      : [{ productoId: null, nombre: notas || (enModoCambio ? "Cambio de producto" : "Venta"), precio: total, cantidad: 1 }]
+    const resultado = enModoCambio
+      ? await registrarCambioProducto(cambioOrigen!.id, itemsParaEnviar, fechaVenta, clienteId || null, metodoPagoLabel, notas || undefined)
+      : await registrarVenta(itemsParaEnviar, fechaVenta, notas || undefined, clienteId || null, undefined, "contado", undefined, metodoPagoLabel)
     if (resultado.ok) {
-      toast.success("✅ Pago aprobado — venta registrada")
-      resetFormulario()
+      toast.success(enModoCambio ? "✅ Pago aprobado — cambio registrado" : "✅ Pago aprobado — venta registrada")
       setCobroMaquina(null)
-      router.refresh()
+      if (enModoCambio) {
+        router.push("/dashboard/movimientos")
+      } else {
+        resetFormulario()
+        router.refresh()
+      }
     } else {
-      toast.error(`El pago se aprobó, pero no se pudo registrar la venta — anótala a mano. (${resultado.error ?? "error desconocido"})`)
+      toast.error(`El pago se aprobó, pero no se pudo registrar ${enModoCambio ? "el cambio" : "la venta"} — anótalo a mano. (${resultado.error ?? "error desconocido"})`)
     }
   }
 
@@ -480,6 +508,49 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     })
   }
 
+  // Equivalente a handleRegistrar, pero para el camino sin máquina de pago
+  // de un cambio de producto — llama a registrarCambioProducto en vez de
+  // registrarVenta. metodoPagoLabel llega undefined cuando la diferencia es
+  // $0 (no hay nada que cobrar ni devolver, ver handleConfirmarCambio).
+  function handleRegistrarCambio(metodoPagoLabel?: string) {
+    if (total <= 0) { toast.error("Ingresa el monto o agrega el producto nuevo"); return }
+    const stockInsuf = productoConStockInsuficiente(items)
+    if (stockInsuf) { toast.error(`Stock insuficiente para "${stockInsuf.nombre}"`); return }
+
+    const itemsParaEnviar = items.length > 0
+      ? items.map(i => ({ productoId: i.productoId, nombre: i.nombre, precio: i.precio, cantidad: i.cantidad, cantidadInterna: i.cantidadInterna }))
+      : [{ productoId: null, nombre: notas || "Cambio de producto", precio: total, cantidad: 1 }]
+
+    startTransition(async () => {
+      try {
+        const resultado = await conTimeout(registrarCambioProducto(cambioOrigen!.id, itemsParaEnviar, fechaVenta, clienteId || null, metodoPagoLabel, notas || undefined))
+        if (resultado.ok) {
+          toast.success("✅ Cambio registrado")
+          router.push("/dashboard/movimientos")
+        } else {
+          toast.error(resultado.error ?? "No se pudo registrar el cambio.", { duration: 8000 })
+        }
+      } catch (err) {
+        toast.error(mensajeErrorAccion(err, "el cambio se registró"), { duration: 8000 })
+      }
+    })
+  }
+
+  // Botón "Registrar cambio" — con diferencia > 0 y Tarjeta elegida, el pago
+  // ya se disparó al tocar ese método (igual que en una venta normal, ver
+  // el botón "Tarjeta" en la tarjeta de Diferencia), así que este botón solo
+  // cubre efectivo/transferencia ahí. Con diferencia < 0 o $0 no hay método
+  // que elegir — se registra directo.
+  function handleConfirmarCambio() {
+    if (diferencia > 0) {
+      if (metodo === "tarjeta" && proveedorPagoActivo) { handleCobrarConMaquina(); return }
+      handleRegistrarCambio(METODOS_PAGO.find(m => m.value === metodo)?.label)
+      return
+    }
+    if (diferencia < 0) { handleRegistrarCambio("Efectivo"); return }
+    handleRegistrarCambio(undefined)
+  }
+
   const horaLabel = ahora ? ahora.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }) : ""
 
   // Venta Rápida — solo celular, pantalla mínima sin producto/cliente/pago,
@@ -530,6 +601,18 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
           <span>⚡</span><span className="sm:hidden">Rápida</span><span className="hidden sm:inline">Venta rápida</span>
         </button>
       </div>
+
+      {/* Banner de modo cambio — ver registrarCambioProducto. Deja claro qué
+          se está devolviendo antes de que se arme el carrito del producto
+          nuevo, para que no se confunda con una venta normal. */}
+      {enModoCambio && cambioOrigen && (
+        <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 mb-5 lg:flex-shrink-0">
+          <p className="text-sm font-bold text-amber-400 flex items-center gap-1.5 mb-1">🔄 Cambio de producto</p>
+          <p className="text-xs text-[var(--c-text2)]">
+            Se devuelve <span className="font-semibold">{cambioOrigen.productoNombre}</span> ({formatCLP(cambioOrigen.monto)}) — agrega abajo el producto nuevo que se lleva el cliente.
+          </p>
+        </div>
+      )}
 
       {/* En celular queda todo en una sola columna, igual que siempre.
           Desde pantallas grandes (lg), se divide en 2 paneles de ALTURA FIJA
@@ -794,8 +877,52 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
         )}
       </div>
 
-      {/* Método de pago */}
-      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
+      {/* Método de pago — en modo cambio se reemplaza por la diferencia a
+          cobrar/devolver (ver registrarCambioProducto): no tiene sentido
+          elegir método si no hay nada que cobrar, y nunca hay "Pendiente"
+          porque la diferencia de un cambio no queda a crédito. */}
+      {enModoCambio ? (
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
+          <p className="text-sm font-semibold text-[var(--c-text)] mb-3 flex items-center gap-1.5">🔄 Diferencia</p>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-[var(--c-text3)]">{diferencia > 0 ? "A cobrar al cliente" : diferencia < 0 ? "A devolver al cliente" : "Diferencia"}</span>
+            <span className={`text-xl font-black ${diferencia > 0 ? "text-sky-400" : diferencia < 0 ? "text-amber-400" : "text-[var(--c-text3)]"}`}>{formatCLP(Math.abs(diferencia))}</span>
+          </div>
+
+          {diferencia > 0 && (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {METODOS_PAGO_CAMBIO.map(m => {
+                  const esCobrable = !!proveedorPagoActivo && m.value === "tarjeta"
+                  return (
+                    <button key={m.value}
+                      onClick={() => esCobrable ? handleCobrarConMaquina() : setMetodo(m.value)}
+                      disabled={esCobrable && (isPending || cobroMaquina?.estado === "esperando")}
+                      className={`relative flex-1 min-w-[92px] flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all disabled:opacity-60 ${metodo === m.value && !esCobrable ? "border-sky-500 bg-sky-500/10 text-sky-400" : "border-[var(--c-border)] text-[var(--c-text3)] hover:border-sky-500/30"}`}>
+                      <span className="text-lg">{m.icon}</span>
+                      <span className="text-[11px] font-semibold text-center leading-tight px-0.5 whitespace-nowrap w-full">{m.label}</span>
+                      {esCobrable && <span className="absolute -top-1.5 -right-1.5 text-xs">🟡</span>}
+                    </button>
+                  )
+                })}
+              </div>
+              {proveedorPagoActivo && (
+                <p className="text-[10px] text-[var(--c-text4)] mt-2 flex items-center gap-1">🟡 Tarjeta cobra directo con tu máquina conectada — solo la diferencia.</p>
+              )}
+            </>
+          )}
+          {diferencia < 0 && (
+            <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5">
+              <span className="text-amber-400 text-xs flex-shrink-0">💵</span>
+              <p className="text-[11px] text-amber-400">Debes devolver {formatCLP(Math.abs(diferencia))} en efectivo al cliente.</p>
+            </div>
+          )}
+          {diferencia === 0 && (
+            <p className="text-[11px] text-[var(--c-text4)]">Sin diferencia — no se cobra ni se devuelve nada.</p>
+          )}
+        </div>
+      ) : (
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4">
         <p className="text-sm font-semibold text-[var(--c-text)] mb-3 flex items-center gap-1.5">💳 Método de pago</p>
 
         {/* flex-wrap + min-w (en vez de grid-cols-5 fijo): en la columna
@@ -866,7 +993,8 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Notas */}
       <div>
@@ -880,10 +1008,10 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
         <button onClick={() => router.push("/dashboard/movimientos")} className="flex-1 h-12 border border-[var(--c-border)] text-[var(--c-text2)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">
           Cancelar
         </button>
-        <button onClick={handleRegistrar} disabled={isPending}
+        <button onClick={enModoCambio ? handleConfirmarCambio : handleRegistrar} disabled={isPending}
           className="flex-[2] h-12 bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-400 hover:to-blue-400 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 flex flex-col items-center justify-center leading-tight">
-          <span>{isPending ? "Registrando..." : "Registrar venta"}</span>
-          <span className="text-[10px] font-normal opacity-80">Se registrará la venta y el movimiento</span>
+          <span>{isPending ? "Registrando..." : enModoCambio ? "Registrar cambio" : "Registrar venta"}</span>
+          <span className="text-[10px] font-normal opacity-80">{enModoCambio ? "Se registrará la devolución y la venta nueva" : "Se registrará la venta y el movimiento"}</span>
         </button>
       </div>
 
