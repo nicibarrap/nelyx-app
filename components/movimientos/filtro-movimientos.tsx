@@ -51,20 +51,25 @@ export function FiltroMovimientos() {
           className="w-full bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl pl-9 pr-4 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
       </div>
       <select value={metodoPago} onChange={e => actualizar({ metodoPago: e.target.value })}
-        className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+        className="w-full sm:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
         <option value="">Todos los métodos</option>
         {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
-      <div className="flex gap-1.5 flex-wrap">
-        <button onClick={() => actualizar({ tipo: "" })} className={chip(!tipo)}>Todos</button>
+      {/* En celular, los chips van en una tira con scroll horizontal en vez
+          de envolver en varias filas — con 6 tipos + "Todos" + "Limpiar",
+          envolver ocupa demasiado alto y empuja la tabla hacia abajo. Desde
+          sm hay más ancho disponible, así que ahí sí se envuelven como
+          siempre. */}
+      <div className="flex gap-1.5 overflow-x-auto flex-nowrap sm:flex-wrap sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 sm:pb-0">
+        <button onClick={() => actualizar({ tipo: "" })} className={`flex-shrink-0 ${chip(!tipo)}`}>Todos</button>
         {TIPOS.map(t => (
-          <button key={t} onClick={() => actualizar({ tipo: tipo === t ? "" : t })} className={chip(tipo === t)}>
+          <button key={t} onClick={() => actualizar({ tipo: tipo === t ? "" : t })} className={`flex-shrink-0 ${chip(tipo === t)}`}>
             {ETIQUETAS[t].emoji} {ETIQUETAS[t].label}
           </button>
         ))}
         {hayFiltrosActivos && (
           <button onClick={() => { setQ(""); actualizar({ q: "", tipo: "", metodoPago: "" }) }}
-            className="text-xs px-3 py-2 rounded-xl border border-[var(--c-border)] text-[var(--c-text3)] hover:text-red-400 hover:border-red-500/20 transition-all">
+            className="flex-shrink-0 text-xs px-3 py-2 rounded-xl border border-[var(--c-border)] text-[var(--c-text3)] hover:text-red-400 hover:border-red-500/20 transition-all">
             ✕ Limpiar
           </button>
         )}
