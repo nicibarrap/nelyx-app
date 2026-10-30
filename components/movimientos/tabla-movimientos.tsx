@@ -23,6 +23,16 @@ const ICONO_METODO_PAGO: Record<string, string> = {
 // misma celda) | Acciones.
 const GRID_COLS = "lg:grid-cols-[76px_140px_minmax(0,1fr)_160px_140px_44px]"
 
+// Normaliza nombres/descripciones guardados en MAYÚSCULA SOSTENIDA (común
+// al tipear rápido desde el celular) a Capitalización de Título — solo
+// cosmético, el dato guardado no se toca. Si el texto no es 100%
+// mayúsculas (o no tiene letras), se deja intacto: así no se arruinan
+// siglas o mayúsculas intencionales (ej. "iPhone 15 Pro", "USB-C").
+function capitalizarSiEsMayuscula(s: string): string {
+  if (s === s.toLowerCase() || s !== s.toUpperCase()) return s
+  return s.toLowerCase().replace(/(^|\s)\p{L}/gu, c => c.toUpperCase())
+}
+
 export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -110,12 +120,17 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
         // se vendió/gastó/etc., con nombre de producto primero si hay uno
         // — y una secundaria con el primer dato de contexto disponible
         // (nota, cliente o categoría) que no repita lo ya dicho arriba.
-        const detallePrincipal = m.producto?.nombre ?? m.descripcion ?? m.categoria ?? et.label
-        const clienteNombre = m.cliente ? `${m.cliente.nombre} ${m.cliente.apellido ?? ""}`.trim() : null
+        // Todo lo que viene de texto libre del usuario pasa por
+        // capitalizarSiEsMayuscula antes de mostrarse.
+        const nombreProducto = m.producto?.nombre ? capitalizarSiEsMayuscula(m.producto.nombre) : null
+        const descripcion = m.descripcion ? capitalizarSiEsMayuscula(m.descripcion) : null
+        const categoria = m.categoria ? capitalizarSiEsMayuscula(m.categoria) : null
+        const detallePrincipal = nombreProducto ?? descripcion ?? categoria ?? et.label
+        const clienteNombre = m.cliente ? capitalizarSiEsMayuscula(`${m.cliente.nombre} ${m.cliente.apellido ?? ""}`.trim()) : null
         const detalleSecundario =
-          m.descripcion && m.descripcion !== detallePrincipal ? { texto: m.descripcion, icono: null as string | null }
+          descripcion && descripcion !== detallePrincipal ? { texto: descripcion, icono: null as string | null }
           : clienteNombre ? { texto: clienteNombre, icono: "👤" }
-          : m.categoria && m.categoria !== detallePrincipal ? { texto: m.categoria, icono: null }
+          : categoria && categoria !== detallePrincipal ? { texto: categoria, icono: null }
           : null
 
         const menuAbierto = menuAbiertoId === m.id
@@ -143,7 +158,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 junto a quién registró el movimiento). */}
             <div className="hidden lg:flex lg:flex-col lg:justify-center">
               <span className="text-xs text-[var(--c-text3)]">{horaDe(m)}</span>
-              {m.realizadoPorNombre && <span className="text-[10px] text-[var(--c-text4)] truncate">{m.realizadoPorNombre}</span>}
+              {m.realizadoPorNombre && <span className="text-[11px] text-[var(--c-text4)] truncate">{m.realizadoPorNombre}</span>}
             </div>
             {/* Tipo — solo desde lg, columna propia con la misma etiqueta de
                 siempre (ya no hay un emoji grande aparte: esta es la única
@@ -161,32 +176,32 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                   solo se arma la línea "Detalle" (principal + secundaria). */}
               <div className="flex items-center gap-1.5 flex-wrap lg:hidden">
                 <span className={`text-xs px-2 py-0.5 rounded-full border ${et.color}`}>{et.label}</span>
-                {m.categoria && !m.producto && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium"
+                {categoria && !m.producto && (
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full border font-medium"
                     style={{ color: colorCat!, borderColor: `${colorCat}30`, backgroundColor: `${colorCat}10` }}>
-                    {m.categoria}
+                    {categoria}
                   </span>
                 )}
-                {m.producto && <span className="text-[10px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {m.producto.nombre}</span>}
-                {clienteNombre && <span className="text-[10px] text-sky-400/80 truncate">👤 {clienteNombre}</span>}
-                {m.metodoPago && <span className="text-[10px] text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
+                {nombreProducto && <span className="text-[11px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {nombreProducto}</span>}
+                {clienteNombre && <span className="text-[11px] text-sky-400/80 truncate">👤 {clienteNombre}</span>}
+                {m.metodoPago && <span className="text-[11px] text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
               </div>
               <p className="hidden lg:block text-sm text-[var(--c-text)] truncate">{detallePrincipal}</p>
               {/* En mobile la descripción va suelta (como siempre); desde lg
                   usa la secundaria ya resuelta arriba (nota, cliente o
                   categoría — la primera que aporte algo nuevo). */}
-              {m.descripcion && <p className="lg:hidden text-xs text-[var(--c-text3)] truncate mt-0.5">{m.descripcion}</p>}
+              {descripcion && <p className="lg:hidden text-xs text-[var(--c-text3)] truncate mt-0.5">{descripcion}</p>}
               {detalleSecundario && (
                 <p className="hidden lg:block text-xs text-[var(--c-text3)] truncate mt-0.5">{detalleSecundario.icono ? `${detalleSecundario.icono} ` : ""}{detalleSecundario.texto}</p>
               )}
               {parCambio && (
-                <p className="text-[11px] text-[var(--c-warning)] truncate mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
+                <p className="text-xs text-[var(--c-warning)] truncate mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ? capitalizarSiEsMayuscula(parCambio.descripcion) : "ver par"}</p>
               )}
               {/* La fecha ya la da el separador "Miércoles, 28 de Octubre" de
                   arriba — repetirla en cada fila es redundante, tanto acá
                   (mobile) como en la columna Hora de escritorio: en ambos
                   casos solo queda la hora + quién la registró. */}
-              <p className="text-[11px] text-[var(--c-text3)] mt-0.5 lg:hidden">
+              <p className="text-xs text-[var(--c-text3)] mt-0.5 lg:hidden">
                 {horaDe(m)}
                 {m.realizadoPorNombre && <span className="opacity-70"> · {m.realizadoPorNombre}</span>}
               </p>
@@ -202,11 +217,11 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 egreso, un "Pagado/Registrado" repetido en cada fila no
                 sumaba información nueva. */}
             <div className="hidden lg:block lg:text-right">
-              <span className={`text-sm font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
+              <span className={`text-base font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
                 {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
               </span>
               {m.tipo === "VENTA" && m.utilidad != null && (
-                <p className={`text-[11px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                <p className={`text-xs font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
                   {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util.
                 </p>
               )}
@@ -220,7 +235,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                   {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
                 </span>
                 {m.tipo === "VENTA" && m.utilidad != null && (
-                  <p className={`text-[11px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                  <p className={`text-xs font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
                     {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util.
                   </p>
                 )}
@@ -238,8 +253,11 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 botones de arriba se quedan siempre visibles como antes: con
                 tan poco ancho, un menú desplegable no suma nada). */}
             <div className="hidden lg:flex lg:items-center lg:justify-end relative">
+              {/* Fondo y borde sutiles YA en reposo (no solo al hacer hover):
+                  sin esto, tres puntos grises sueltos no se leían como
+                  clickeables hasta pasar el mouse por encima. */}
               <button onClick={toggleMenu} title="Acciones"
-                className="p-1.5 text-[var(--c-text4)] hover:text-[var(--c-text)] hover:bg-[var(--c-hover)] rounded-md transition-colors">⋮</button>
+                className="p-1.5 text-[var(--c-text3)] bg-[var(--c-card2)] border border-[var(--c-border)] hover:text-[var(--c-text)] hover:border-[var(--c-border2)] hover:bg-[var(--c-hover)] rounded-full transition-colors">⋮</button>
               {menuAbierto && (
                 <div onClick={e => e.stopPropagation()}
                   className="absolute right-0 top-full mt-1 z-20 w-48 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl shadow-2xl overflow-hidden py-1">
