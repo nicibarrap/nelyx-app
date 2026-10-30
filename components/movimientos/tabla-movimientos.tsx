@@ -238,8 +238,11 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 botones de arriba se quedan siempre visibles como antes: con
                 tan poco ancho, un menú desplegable no suma nada). */}
             <div className="hidden lg:flex lg:items-center lg:justify-end relative">
+              {/* Fondo y borde sutiles YA en reposo (no solo al hacer hover):
+                  sin esto, tres puntos grises sueltos no se leían como
+                  clickeables hasta pasar el mouse por encima. */}
               <button onClick={toggleMenu} title="Acciones"
-                className="p-1.5 text-[var(--c-text4)] hover:text-[var(--c-text)] hover:bg-[var(--c-hover)] rounded-md transition-colors">⋮</button>
+                className="p-1.5 text-[var(--c-text3)] bg-[var(--c-card2)] border border-[var(--c-border)] hover:text-[var(--c-text)] hover:border-[var(--c-border2)] hover:bg-[var(--c-hover)] rounded-full transition-colors">⋮</button>
               {menuAbierto && (
                 <div onClick={e => e.stopPropagation()}
                   className="absolute right-0 top-full mt-1 z-20 w-48 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl shadow-2xl overflow-hidden py-1">
