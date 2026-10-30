@@ -84,8 +84,22 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
     <div>
       {/* Encabezado de columnas — solo desde lg, el mismo grid que cada fila
           de abajo. En mobile no hace falta: ahí todo va apilado en una sola
-          columna y un encabezado de tabla no tendría a qué apuntar. */}
-      <div className={`hidden lg:grid ${GRID_COLS} lg:gap-3 px-1 pb-2 text-[10px] font-bold text-[var(--c-text4)] uppercase tracking-wide border-b border-[var(--c-border2)]`}>
+          columna y un encabezado de tabla no tendría a qué apuntar.
+          sticky top-0: al hacer scroll dentro del área de contenido, este
+          encabezado queda fijo arriba (como en Chipax) en vez de
+          desaparecer con el resto — necesita su propio fondo opaco
+          (bg-[var(--c-card)], el mismo de la tarjeta que lo contiene)
+          porque las filas siguen pasando por detrás una vez que queda fijo.
+          top: -20px (en vez de 0): <main>, el contenedor que de verdad
+          scrollea, tiene su propio padding-top (lg:p-5, 20px) — ese
+          padding NO es un margen fijo que siempre queda vacío arriba: una
+          vez que se scrollea, pasa a ser parte del lienzo scrolleable, así
+          que con top:0 una fila podía asomar justo en esa franja de 20px,
+          por encima de donde este header quedaba pegado. Adelantando el
+          punto de "pegado" esos mismos 20px, el header queda pegado bien
+          arriba (al ras, como en Chipax) y su propio fondo tapa toda esa
+          franja. */}
+      <div className={`hidden lg:grid ${GRID_COLS} lg:gap-3 px-1 pt-2 pb-2 text-[10px] font-bold text-[var(--c-text4)] uppercase tracking-wide border-b border-[var(--c-border2)] sticky -top-5 z-10 bg-[var(--c-card)]`}>
         <span>Hora</span>
         <span>Tipo</span>
         <span>Detalle</span>
@@ -139,7 +153,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
         return (
           <div key={m.id}>
           {esNuevoDia && (
-            <div className={`flex items-center gap-3 ${idx === 0 ? "pb-2" : "pt-5 pb-2"}`}>
+            <div className={`flex items-center gap-3 ${idx === 0 ? "pb-2" : "pt-4 pb-2"}`}>
               <span className="text-[11px] font-bold text-[var(--c-text3)] capitalize whitespace-nowrap">{labelDia(m.fecha)}</span>
               <div className="flex-1 h-px bg-[var(--c-border2)]" />
             </div>
@@ -153,7 +167,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               Detalle es la única elástica — absorbe lo que sobra — y todas
               las demás (incluido el encabezado) quedan exactamente
               alineadas en todo el historial. */}
-          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-3 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
+          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-2 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
             {/* Hora — solo desde lg, columna propia (en mobile va más abajo,
                 junto a quién registró el movimiento). */}
             <div className="hidden lg:flex lg:flex-col lg:justify-center">
