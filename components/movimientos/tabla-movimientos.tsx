@@ -202,7 +202,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 egreso, un "Pagado/Registrado" repetido en cada fila no
                 sumaba información nueva. */}
             <div className="hidden lg:block lg:text-right">
-              <span className={`text-sm font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
+              <span className={`text-base font-bold ${esIngreso ? "text-green-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
                 {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
               </span>
               {m.tipo === "VENTA" && m.utilidad != null && (
