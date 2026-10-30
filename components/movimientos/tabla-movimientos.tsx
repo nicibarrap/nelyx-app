@@ -143,7 +143,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 junto a quién registró el movimiento). */}
             <div className="hidden lg:flex lg:flex-col lg:justify-center">
               <span className="text-xs text-[var(--c-text3)]">{horaDe(m)}</span>
-              {m.realizadoPorNombre && <span className="text-[10px] text-[var(--c-text4)] truncate">{m.realizadoPorNombre}</span>}
+              {m.realizadoPorNombre && <span className="text-[11px] text-[var(--c-text4)] truncate">{m.realizadoPorNombre}</span>}
             </div>
             {/* Tipo — solo desde lg, columna propia con la misma etiqueta de
                 siempre (ya no hay un emoji grande aparte: esta es la única
@@ -162,14 +162,14 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               <div className="flex items-center gap-1.5 flex-wrap lg:hidden">
                 <span className={`text-xs px-2 py-0.5 rounded-full border ${et.color}`}>{et.label}</span>
                 {m.categoria && !m.producto && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium"
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full border font-medium"
                     style={{ color: colorCat!, borderColor: `${colorCat}30`, backgroundColor: `${colorCat}10` }}>
                     {m.categoria}
                   </span>
                 )}
-                {m.producto && <span className="text-[10px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {m.producto.nombre}</span>}
-                {clienteNombre && <span className="text-[10px] text-sky-400/80 truncate">👤 {clienteNombre}</span>}
-                {m.metodoPago && <span className="text-[10px] text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
+                {m.producto && <span className="text-[11px] text-[var(--c-text3)] truncate">{getEmojiProducto(m.producto.nombre)} {m.producto.nombre}</span>}
+                {clienteNombre && <span className="text-[11px] text-sky-400/80 truncate">👤 {clienteNombre}</span>}
+                {m.metodoPago && <span className="text-[11px] text-[var(--c-text4)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
               </div>
               <p className="hidden lg:block text-sm text-[var(--c-text)] truncate">{detallePrincipal}</p>
               {/* En mobile la descripción va suelta (como siempre); desde lg
@@ -180,13 +180,13 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 <p className="hidden lg:block text-xs text-[var(--c-text3)] truncate mt-0.5">{detalleSecundario.icono ? `${detalleSecundario.icono} ` : ""}{detalleSecundario.texto}</p>
               )}
               {parCambio && (
-                <p className="text-[11px] text-[var(--c-warning)] truncate mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
+                <p className="text-xs text-[var(--c-warning)] truncate mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ?? "ver par"}</p>
               )}
               {/* La fecha ya la da el separador "Miércoles, 28 de Octubre" de
                   arriba — repetirla en cada fila es redundante, tanto acá
                   (mobile) como en la columna Hora de escritorio: en ambos
                   casos solo queda la hora + quién la registró. */}
-              <p className="text-[11px] text-[var(--c-text3)] mt-0.5 lg:hidden">
+              <p className="text-xs text-[var(--c-text3)] mt-0.5 lg:hidden">
                 {horaDe(m)}
                 {m.realizadoPorNombre && <span className="opacity-70"> · {m.realizadoPorNombre}</span>}
               </p>
@@ -206,7 +206,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
               </span>
               {m.tipo === "VENTA" && m.utilidad != null && (
-                <p className={`text-[11px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                <p className={`text-xs font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
                   {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util.
                 </p>
               )}
@@ -220,7 +220,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                   {esIngreso ? "+" : "−"}{formatCLP(Math.abs(Number(m.monto)))}
                 </span>
                 {m.tipo === "VENTA" && m.utilidad != null && (
-                  <p className={`text-[11px] font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                  <p className={`text-xs font-semibold ${Number(m.utilidad) >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
                     {Number(m.utilidad) >= 0 ? "+" : ""}{formatCLP(Number(m.utilidad))} util.
                   </p>
                 )}
