@@ -92,13 +92,20 @@ function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean 
 export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole: string; modulosPermitidos?: string[] | null; esEmpleado?: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Vista previa flotante al pasar el mouse por encima del riel colapsado
+  // (solo escritorio/tablet) — igual que Chipax: el riel se queda en su
+  // mismo ancho angosto (el contenido de la página no se mueve ni un
+  // píxel), y por encima aparece una versión expandida con las etiquetas,
+  // que se cierra sola al sacar el mouse.
+  const [hoverExpanded, setHoverExpanded] = useState(false)
   const [noLeidosSoporte, setNoLeidosSoporte] = useState(0)
   const pathname = usePathname()
 
-  // Cierra el menú móvil apenas cambia la ruta — sin esto, al tocar un
-  // módulo desde el celular, el menú se quedaba abierto encima de la
-  // pantalla nueva en vez de cerrarse solo.
-  useEffect(() => { setMobileOpen(false) }, [pathname])
+  // Cierra el menú móvil y la vista previa flotante apenas cambia la ruta
+  // — sin esto, al tocar un módulo desde el celular el menú se quedaba
+  // abierto encima de la pantalla nueva en vez de cerrarse solo, y la
+  // vista previa del riel se quedaba destapando el riel real de abajo.
+  useEffect(() => { setMobileOpen(false); setHoverExpanded(false) }, [pathname])
 
   // Número de mensajes de clientes sin leer, junto a "Soporte NELYX" — mismo
   // patrón de polling que ya usa el widget de soporte del lado del cliente.
@@ -128,16 +135,26 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
     if (mq.matches) setCollapsed(true)
   }, [])
 
-  const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
+  const SidebarContent = ({ isMobile = false, forceExpanded = false }: { isMobile?: boolean; forceExpanded?: boolean }) => {
+    // efectivo: si este render debe verse "colapsado" (solo íconos) — nunca
+    // en mobile, y nunca en la vista previa flotante (forceExpanded), que
+    // siempre muestra todo aunque el riel real esté colapsado debajo.
+    const efectivo = !isMobile && collapsed && !forceExpanded
+    // mostrarControles: los botones de expandir/ocultar menú solo tienen
+    // sentido en los dos renders "reales" (riel colapsado o sidebar
+    // expandido) — en la vista previa flotante no aportan nada, ya que es
+    // temporal y se cierra sola al sacar el mouse.
+    const mostrarControles = !isMobile && !forceExpanded
+    return (
     <>
-      <div className={`px-4 py-5 border-b border-[var(--c-border2)] flex items-center ${collapsed && !isMobile ? "justify-center" : "justify-between"}`}>
-        {(!collapsed || isMobile) && (
+      <div className={`px-4 py-5 border-b border-[var(--c-border2)] flex items-center ${efectivo ? "justify-center" : "justify-between"}`}>
+        {!efectivo && (
           <>
             <img src="/logos/sidebar-wordmark-dark.png" alt="Nelyx" className="logo-dark h-7 sm:h-8 w-auto max-w-[150px] object-contain flex-shrink-0" />
             <img src="/logos/sidebar-wordmark-light.png" alt="Nelyx" className="logo-light h-7 sm:h-8 w-auto max-w-[150px] object-contain flex-shrink-0" />
           </>
         )}
-        {collapsed && !isMobile && (
+        {mostrarControles && efectivo && (
           // El propio ícono expande el menú — así no compite por espacio
           // con un botón aparte dentro de una franja de apenas 64px, que
           // es justo lo que hacía que el botón de abrir quedara sin
@@ -147,7 +164,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
             <img src="/icon-x-light.png" alt="Expandir menú" className="logo-light w-8 h-8 object-contain" />
           </button>
         )}
-        {!isMobile && !collapsed && (
+        {mostrarControles && !efectivo && (
           // Sin fondo ni caja a propósito — solo la flecha, para que lea
           // como un control sutil de la cabecera y no como un botón más.
           // El color usa las mismas variables de texto que el resto del
@@ -164,25 +181,25 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
       </div>
 
       <nav className="flex-1 px-2 py-2 overflow-y-auto space-y-0.5">
-        <SectionLabel label="Principal" collapsed={!isMobile && collapsed} />
-        {NAV_PRINCIPAL.map(item => <NavItem key={item.href} {...item} collapsed={!isMobile && collapsed} modulosPermitidos={modulosPermitidos} />)}
+        <SectionLabel label="Principal" collapsed={efectivo} />
+        {NAV_PRINCIPAL.map(item => <NavItem key={item.href} {...item} collapsed={efectivo} modulosPermitidos={modulosPermitidos} />)}
 
-        <SectionLabel label="Finanzas" collapsed={!isMobile && collapsed} />
-        {NAV_FINANZAS.map(item => <NavItem key={item.href} {...item} collapsed={!isMobile && collapsed} modulosPermitidos={modulosPermitidos} />)}
+        <SectionLabel label="Finanzas" collapsed={efectivo} />
+        {NAV_FINANZAS.map(item => <NavItem key={item.href} {...item} collapsed={efectivo} modulosPermitidos={modulosPermitidos} />)}
 
-        <SectionLabel label="Herramientas" collapsed={!isMobile && collapsed} />
-        {NAV_EXTRA.map(item => <NavItem key={item.href} {...item} collapsed={!isMobile && collapsed} modulosPermitidos={modulosPermitidos} />)}
+        <SectionLabel label="Herramientas" collapsed={efectivo} />
+        {NAV_EXTRA.map(item => <NavItem key={item.href} {...item} collapsed={efectivo} modulosPermitidos={modulosPermitidos} />)}
 
         {!esEmpleado && (
           <>
-            <SectionLabel label="Equipo" collapsed={!isMobile && collapsed} />
-            <NavItem href="/dashboard/usuarios" icon="👥" label="Usuarios" activo collapsed={!isMobile && collapsed} />
+            <SectionLabel label="Equipo" collapsed={efectivo} />
+            <NavItem href="/dashboard/usuarios" icon="👥" label="Usuarios" activo collapsed={efectivo} />
           </>
         )}
 
         {userRole === "ADMIN" && !esEmpleado && (
           <>
-            <SectionLabel label="Administración" collapsed={!isMobile && collapsed} />
+            <SectionLabel label="Administración" collapsed={efectivo} />
             {[
               { href: "/admin/clientes", icon: "👥", label: "Clientes NELYX" },
               { href: "/admin/soporte", icon: "💬", label: "Soporte NELYX" },
@@ -194,14 +211,14 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
                     : "text-[var(--c-text2)] hover:text-[var(--c-text)] hover:bg-[var(--c-card2)]"
                 }`}>
                 <span className="text-sm w-5 text-center">{item.icon}</span>
-                {(!collapsed || isMobile) && <span className="flex-1">{item.label}</span>}
+                {!efectivo && <span className="flex-1">{item.label}</span>}
                 {item.href === "/admin/soporte" && noLeidosSoporte > 0 && (
                   <span
                     className={`flex-shrink-0 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none ${
-                      collapsed && !isMobile ? "absolute top-1 right-1 w-2 h-2" : "min-w-[18px] h-[18px] px-1"
+                      efectivo ? "absolute top-1 right-1 w-2 h-2" : "min-w-[18px] h-[18px] px-1"
                     }`}
                   >
-                    {(!collapsed || isMobile) && (noLeidosSoporte > 99 ? "99+" : noLeidosSoporte)}
+                    {!efectivo && (noLeidosSoporte > 99 ? "99+" : noLeidosSoporte)}
                   </span>
                 )}
                 <SincronizarPendiente />
@@ -211,13 +228,14 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
         )}
       </nav>
 
-      {(!collapsed || isMobile) && (
+      {!efectivo && (
         <div className="px-4 py-3 border-t border-[var(--c-border2)]">
           <p className="text-[10px] text-[var(--c-text4)]">© {new Date().getFullYear()} Nelyx</p>
         </div>
       )}
     </>
-  )
+    )
+  }
 
   return (
     <>
@@ -239,10 +257,32 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
         </>
       )}
 
-      {/* Desktop/tablet sidebar */}
-      <aside className={`hidden md:flex ${collapsed ? "w-16" : "w-60"} min-h-screen bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex-col transition-all duration-300 flex-shrink-0`}>
+      {/* Desktop/tablet sidebar — el riel real, el que reserva espacio en
+          el layout. Su ancho (w-16/w-60) es lo único que empuja el
+          contenido de la página; la vista previa de abajo nunca lo toca. */}
+      <aside
+        onMouseEnter={() => { if (collapsed) setHoverExpanded(true) }}
+        className={`hidden md:flex ${collapsed ? "w-16" : "w-60"} min-h-screen bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex-col transition-all duration-300 flex-shrink-0`}
+      >
         <SidebarContent />
       </aside>
+
+      {/* Vista previa flotante al pasar el mouse por el riel colapsado —
+          mismo patrón que Chipax: un velo semitransparente atrás y el
+          menú completo (con etiquetas) por encima, en position:fixed, así
+          que no empuja ni achica el contenido real de la página. Se cierra
+          sola al sacar el mouse de ahí (o al navegar, o clickeando el velo). */}
+      {collapsed && hoverExpanded && (
+        <>
+          <div className="hidden md:block fixed inset-0 bg-black/30 z-40" onClick={() => setHoverExpanded(false)} />
+          <aside
+            onMouseLeave={() => setHoverExpanded(false)}
+            className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 bg-[var(--c-sidebar)] border-r border-[var(--c-border2)] flex-col z-50 shadow-2xl"
+          >
+            <SidebarContent forceExpanded />
+          </aside>
+        </>
+      )}
     </>
   )
 }
