@@ -153,7 +153,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
         return (
           <div key={m.id}>
           {esNuevoDia && (
-            <div className={`flex items-center gap-3 ${idx === 0 ? "pb-2" : "pt-5 pb-2"}`}>
+            <div className={`flex items-center gap-3 ${idx === 0 ? "pb-2" : "pt-4 pb-2"}`}>
               <span className="text-[11px] font-bold text-[var(--c-text3)] capitalize whitespace-nowrap">{labelDia(m.fecha)}</span>
               <div className="flex-1 h-px bg-[var(--c-border2)]" />
             </div>
@@ -167,7 +167,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               Detalle es la única elástica — absorbe lo que sobra — y todas
               las demás (incluido el encabezado) quedan exactamente
               alineadas en todo el historial. */}
-          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-3 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
+          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-2 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
             {/* Hora — solo desde lg, columna propia (en mobile va más abajo,
                 junto a quién registró el movimiento). */}
             <div className="hidden lg:flex lg:flex-col lg:justify-center">
