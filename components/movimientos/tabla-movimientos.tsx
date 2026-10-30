@@ -18,10 +18,14 @@ const ICONO_METODO_PAGO: Record<string, string> = {
 }
 
 // Mismas columnas en el encabezado y en cada fila — si se desalinean entre
-// sí, el encabezado deja de servir de guía visual. Hora | Tipo | Detalle
-// (único elástico) | Medio de pago | Importe (con la utilidad debajo,
-// misma celda) | Acciones.
-const GRID_COLS = "lg:grid-cols-[76px_140px_minmax(0,1fr)_160px_140px_44px]"
+// sí, el encabezado deja de servir de guía visual. Hora | Tipo | Medio de
+// pago | Detalle (único elástico) | Importe (con la utilidad debajo,
+// misma celda) | Acciones. Medio de pago va junto a Tipo (los dos son
+// "chips" de vocabulario fijo) y Detalle queda pegado a Importe — así el
+// producto/descripción de cada venta queda al lado de su valor, más fácil
+// de escanear de un vistazo (mismo patrón que usa Chipax: Descripción
+// justo al lado de Cargo/Abono).
+const GRID_COLS = "lg:grid-cols-[76px_140px_160px_minmax(0,1fr)_140px_44px]"
 
 // Normaliza nombres/descripciones guardados en MAYÚSCULA SOSTENIDA (común
 // al tipear rápido desde el celular) a Capitalización de Título — solo
@@ -102,8 +106,8 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
       <div className={`hidden lg:grid ${GRID_COLS} lg:gap-3 px-1 pt-2 pb-2 text-[10px] font-bold text-[var(--c-text4)] uppercase tracking-wide border-b border-[var(--c-border2)] sticky -top-5 z-10 bg-[var(--c-card)]`}>
         <span>Hora</span>
         <span>Tipo</span>
-        <span>Detalle</span>
         <span>Medio de pago</span>
+        <span>Detalle</span>
         <span className="text-right">Importe</span>
         <span />
       </div>
@@ -191,6 +195,12 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
             <div className="hidden lg:flex lg:items-center">
               <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full border font-medium whitespace-nowrap ${et.color}`}>{et.label}</span>
             </div>
+            {/* Medio de pago — columna propia desde lg, junto a Tipo (los
+                dos son "chips" de vocabulario fijo); en mobile ya va como
+                chip arriba, junto al resto. */}
+            <div className="hidden lg:flex lg:items-center">
+              {m.metodoPago && <span className="text-xs text-[var(--c-text3)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
+            </div>
             <div className="min-w-0 flex-1 lg:flex-auto">
               {/* En mobile se mantiene el bloque de chips de siempre (tipo +
                   categoría/producto + cliente + método), ahora sin el emoji
@@ -230,11 +240,6 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                 {horaDe(m)}
                 {m.realizadoPorNombre && <span className="opacity-70"> · {m.realizadoPorNombre}</span>}
               </p>
-            </div>
-            {/* Medio de pago — columna propia desde lg; en mobile ya va
-                como chip arriba, junto al resto. */}
-            <div className="hidden lg:flex lg:items-center">
-              {m.metodoPago && <span className="text-xs text-[var(--c-text3)] truncate">{ICONO_METODO_PAGO[m.metodoPago] ?? "💳"} {m.metodoPago}</span>}
             </div>
             {/* Importe — en la misma celda va la utilidad debajo (cuando
                 aplica), sin un estado de pago aparte: con el color del
