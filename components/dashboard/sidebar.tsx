@@ -101,11 +101,21 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
   const [noLeidosSoporte, setNoLeidosSoporte] = useState(0)
   const pathname = usePathname()
 
-  // Cierra el menú móvil y la vista previa flotante apenas cambia la ruta
-  // — sin esto, al tocar un módulo desde el celular el menú se quedaba
-  // abierto encima de la pantalla nueva en vez de cerrarse solo, y la
-  // vista previa del riel se quedaba destapando el riel real de abajo.
-  useEffect(() => { setMobileOpen(false); setHoverExpanded(false) }, [pathname])
+  // Cierra el menú móvil apenas cambia la ruta — sin esto, al tocar un
+  // módulo desde el celular el menú se quedaba abierto encima de la
+  // pantalla nueva en vez de cerrarse solo.
+  //
+  // OJO: la vista previa flotante (hoverExpanded) NO se cierra acá a
+  // propósito. usePathname() cambia apenas Next.js hace commit de la
+  // navegación — bastante antes de que el contenido de la página nueva
+  // termine de cargar — así que cerrarla en este efecto hacía que la
+  // vista previa desapareciera de golpe (incluso con el mouse todavía
+  // encima) y dejara ver, por una fracción de segundo, la página VIEJA
+  // (o el spinner de carga) de atrás, antes de que recién ahí apareciera
+  // la página nueva. Dejarla cerrarse solo con onMouseLeave evita ese
+  // parpadeo: se queda tapando todo hasta que el usuario saca el mouse,
+  // momento en el que la navegación ya terminó en la gran mayoría de los casos.
+  useEffect(() => { setMobileOpen(false) }, [pathname])
 
   // Número de mensajes de clientes sin leer, junto a "Soporte NELYX" — mismo
   // patrón de polling que ya usa el widget de soporte del lado del cliente.
