@@ -90,7 +90,12 @@ function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean 
 }
 
 export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole: string; modulosPermitidos?: string[] | null; esEmpleado?: boolean }) {
-  const [collapsed, setCollapsed] = useState(false)
+  // Arranca siempre colapsado (solo íconos) en tablet y desktop — igual que
+  // Chipax: el estado de reposo es el riel angosto, y recién al pasar el
+  // mouse por encima aparece la vista previa con las etiquetas (ver
+  // hoverExpanded más abajo). El usuario puede fijarlo expandido en
+  // cualquier momento con el botón de siempre.
+  const [collapsed, setCollapsed] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
   // Vista previa flotante al pasar el mouse por encima del riel colapsado
   // (solo escritorio/tablet) — igual que Chipax: el riel se queda en su
@@ -132,18 +137,6 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
     const interval = setInterval(chequear, 20000)
     return () => { activo = false; clearInterval(interval) }
   }, [userRole, esEmpleado])
-
-  // El sidebar fijo ahora arranca en md (tablet), no solo en lg (desktop) —
-  // antes una tablet caía al mismo ☰ superpuesto que un celular, sin
-  // aprovechar que ya tiene ancho de sobra para una navegación siempre
-  // visible. Arranca colapsado (solo íconos) únicamente en el rango de
-  // tablet para no comerse tanto ancho — en desktop sigue expandido por
-  // defecto, como antes. El usuario puede expandir/colapsar manualmente
-  // en cualquier tamaño con el botón de siempre.
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px) and (max-width: 1023px)")
-    if (mq.matches) setCollapsed(true)
-  }, [])
 
   const SidebarContent = ({ isMobile = false, forceExpanded = false }: { isMobile?: boolean; forceExpanded?: boolean }) => {
     // efectivo: si este render debe verse "colapsado" (solo íconos) — nunca
