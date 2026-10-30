@@ -52,11 +52,13 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
   }))
 
   return (
-    // max-w-[1480px]: en monitores anchos, la tabla ya no se estira hasta el
+    // max-w-[1360px]: en monitores anchos, la tabla ya no se estira hasta el
     // borde — eso dejaba la columna Detalle (la única elástica) con un hueco
     // enorme sin contenido entre el producto y Medio de pago. En pantallas
     // normales (laptop, 1080p) este tope nunca se activa, no cambia nada.
-    <div className="space-y-5 max-w-[1480px] mx-auto">
+    // Se achicó de 1480 a 1360 para que el margen lateral se note más
+    // (estilo Chipax, que deja un respiro visible a los costados).
+    <div className="space-y-5 max-w-[1360px] mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold text-[var(--c-text)]">Historial de movimientos</h1>

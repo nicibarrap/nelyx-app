@@ -153,9 +153,15 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
         return (
           <div key={m.id}>
           {esNuevoDia && (
-            <div className={`flex items-center gap-3 ${idx === 0 ? "pb-2" : "pt-4 pb-2"}`}>
+            // idx === 0: antes no llevaba padding-top, así que el primer
+            // separador de día quedaba pegado contra el encabezado de
+            // columnas (ahora sticky) — se le da el mismo aire que a los
+            // demás. La línea usa --c-border (más marcado que --c-border2,
+            // que es lo que separa cada fila dentro de un mismo día) para
+            // que el corte entre días se note más que el de cada movimiento.
+            <div className="flex items-center gap-3 pt-4 pb-2">
               <span className="text-[11px] font-bold text-[var(--c-text3)] capitalize whitespace-nowrap">{labelDia(m.fecha)}</span>
-              <div className="flex-1 h-px bg-[var(--c-border2)]" />
+              <div className="flex-1 h-px bg-[var(--c-border)]" />
             </div>
           )}
           {/* Desde lg: grid con columnas FIJAS (no flex con justify-between)
@@ -167,7 +173,12 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               Detalle es la única elástica — absorbe lo que sobra — y todas
               las demás (incluido el encabezado) quedan exactamente
               alineadas en todo el historial. */}
-          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-2 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[#1A1A1A]" : ""}`}>
+          {/* border-[var(--c-border2)] (no el #1A1A1A fijo de antes): ese
+              hex quedaba bien en oscuro por pura coincidencia (es casi del
+              mismo tono que la tarjeta), pero en modo claro se veía como
+              una línea negra dura sobre blanco — la variable ya resuelve a
+              un gris sutil en cada tema. */}
+          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-2 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[var(--c-border2)]" : ""}`}>
             {/* Hora — solo desde lg, columna propia (en mobile va más abajo,
                 junto a quién registró el movimiento). */}
             <div className="hidden lg:flex lg:flex-col lg:justify-center">
