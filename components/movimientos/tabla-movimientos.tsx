@@ -24,8 +24,11 @@ const ICONO_METODO_PAGO: Record<string, string> = {
 // "chips" de vocabulario fijo) y Detalle queda pegado a Importe — así el
 // producto/descripción de cada venta queda al lado de su valor, más fácil
 // de escanear de un vistazo (mismo patrón que usa Chipax: Descripción
-// justo al lado de Cargo/Abono).
-const GRID_COLS = "lg:grid-cols-[76px_140px_160px_minmax(0,1fr)_140px_44px]"
+// justo al lado de Cargo/Abono). Hora/Tipo/Medio de pago un poco más
+// anchas que lo mínimo que necesita su contenido (igual que en Chipax) —
+// así le restan ancho a Detalle (la columna elástica), que en pantallas
+// anchas se ve menos "lejos" de Importe cuando el texto es corto.
+const GRID_COLS = "lg:grid-cols-[92px_150px_170px_minmax(0,1fr)_150px_44px]"
 
 // Normaliza nombres/descripciones guardados en MAYÚSCULA SOSTENIDA (común
 // al tipear rápido desde el celular) a Capitalización de Título — solo
@@ -103,7 +106,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
           punto de "pegado" esos mismos 20px, el header queda pegado bien
           arriba (al ras, como en Chipax) y su propio fondo tapa toda esa
           franja. */}
-      <div className={`hidden lg:grid ${GRID_COLS} lg:gap-3 px-1 pt-2 pb-2 text-[10px] font-bold text-[var(--c-text4)] uppercase tracking-wide border-b border-[var(--c-border2)] sticky -top-5 z-10 bg-[var(--c-card)]`}>
+      <div className={`hidden lg:grid ${GRID_COLS} lg:gap-3 px-1 lg:px-4 pt-2 pb-2 text-[10px] font-bold text-[var(--c-text4)] uppercase tracking-wide border-b border-[var(--c-border2)] sticky -top-5 z-10 bg-[var(--c-card)]`}>
         <span>Hora</span>
         <span>Tipo</span>
         <span>Medio de pago</span>
@@ -182,7 +185,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               mismo tono que la tarjeta), pero en modo claro se veía como
               una línea negra dura sobre blanco — la variable ya resuelve a
               un gris sutil en cada tema. */}
-          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-2 px-1 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[var(--c-border2)]" : ""}`}>
+          <div className={`flex items-center gap-3 lg:grid ${GRID_COLS} lg:gap-3 py-3 lg:py-2 px-1 lg:px-4 hover:bg-white/[0.02] rounded-lg transition-colors ${!esNuevoDia ? "border-t border-[var(--c-border2)]" : ""}`}>
             {/* Hora — solo desde lg, columna propia (en mobile va más abajo,
                 junto a quién registró el movimiento). */}
             <div className="hidden lg:flex lg:flex-col lg:justify-center">
