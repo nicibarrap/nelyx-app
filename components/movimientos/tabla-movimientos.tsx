@@ -148,10 +148,17 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
         const categoria = m.categoria ? capitalizarSiEsMayuscula(m.categoria) : null
         const detallePrincipal = nombreProducto ?? descripcion ?? categoria ?? et.label
         const clienteNombre = m.cliente ? capitalizarSiEsMayuscula(`${m.cliente.nombre} ${m.cliente.apellido ?? ""}`.trim()) : null
+        // categoria queda afuera de esta cadena a propósito — en escritorio
+        // ya tiene su propia etiqueta con color junto al Tipo (ver más
+        // abajo), así que no compite por este único renglón secundario.
+        // Antes, un gasto con categoría Y descripción a la vez (el caso más
+        // común: "Bencina camión" + categoría "Combustible") mostraba la
+        // descripción acá pero la categoría quedaba sin mostrarse en
+        // ningún lado — desaparecida del todo en escritorio, aunque sí se
+        // veía en mobile (como chip, en un lugar aparte).
         const detalleSecundario =
           descripcion && descripcion !== detallePrincipal ? { texto: descripcion, icono: null as string | null }
           : clienteNombre ? { texto: clienteNombre, icono: "👤" }
-          : categoria && categoria !== detallePrincipal ? { texto: categoria, icono: null }
           : null
 
         const menuAbierto = menuAbiertoId === m.id
@@ -194,9 +201,19 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
             </div>
             {/* Tipo — solo desde lg, columna propia con la misma etiqueta de
                 siempre (ya no hay un emoji grande aparte: esta es la única
-                marca visual del tipo de movimiento). */}
-            <div className="hidden lg:flex lg:items-center">
-              <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full border font-medium whitespace-nowrap ${et.color}`}>{et.label}</span>
+                marca visual del tipo de movimiento). La categoría (cuando
+                hay, ej. en un Gasto) va debajo, con su propio color — mismo
+                criterio que ya usa el chip de categoría en mobile, para que
+                un gasto con categoría Y descripción no termine escondiendo
+                la categoría del todo en escritorio (ver nota en
+                detalleSecundario más abajo). */}
+            <div className="hidden lg:flex lg:flex-col lg:justify-center lg:gap-1">
+              <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full border font-medium whitespace-nowrap w-fit ${et.color}`}>{et.label}</span>
+              {categoria && (
+                <span className="text-[11px] font-medium truncate pl-0.5" style={{ color: colorCat! }}>
+                  {categoria}
+                </span>
+              )}
             </div>
             {/* Medio de pago — columna propia desde lg, junto a Tipo (los
                 dos son "chips" de vocabulario fijo); en mobile ya va como

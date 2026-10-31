@@ -1,5 +1,5 @@
 "use client"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -46,6 +46,15 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
   const categoriasCustom = tipo === "GASTO" ? catsPersonalizadas.GASTO : tipo === "COSTO_FIJO" ? catsPersonalizadas.COSTO_FIJO : []
   const todasCategorias = [...categoriasBase, ...categoriasCustom.filter(c => !categoriasBase.includes(c))]
 
+  // El selector de tipo nunca se deshabilita mientras un envío anterior
+  // está en curso (a propósito: así se puede seguir cargando movimientos
+  // sin esperar). Este ref deja leer, dentro del callback async del envío,
+  // qué tipo está REALMENTE elegido en pantalla en ese instante — a
+  // diferencia de la variable `tipo` del closure, que quedó fija en lo que
+  // era al momento del submit.
+  const tipoRef = useRef(tipo)
+  tipoRef.current = tipo
+
   function handleTipoChange(t: string) {
     setTipo(t)
     setCategoria("")
@@ -59,12 +68,20 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
     if (necesitaCategoria && !categoria) { toast.error("Selecciona una categoría"); return }
     const fd = new FormData(e.currentTarget)
     const form = e.currentTarget
+    // Qué tipo se está enviando en ESTE submit — se compara contra
+    // tipoRef.current (ver más arriba) cuando el envío termina, para saber
+    // si el usuario ya cambió de tarjeta mientras tanto. Sin este chequeo,
+    // el reset de acá abajo pisaba ciegamente esa selección nueva con
+    // null — dejando la pantalla sin ningún tipo marcado, con el
+    // formulario desaparecido de golpe, apenas terminaba el envío anterior.
+    const tipoEnviado = tipo
     startTransition(async () => {
       try {
         if (tipo === "GASTO" && proveedorId) fd.append("proveedorId", proveedorId)
         await ingresarMovimiento(fd)
         toast.success("¡Movimiento registrado!")
-        form.reset(); setTipo(null); setCategoria("")
+        form.reset()
+        if (tipoRef.current === tipoEnviado) { setTipo(null); setCategoria("") }
       } catch { toast.error("No se pudo guardar") }
     })
   }
