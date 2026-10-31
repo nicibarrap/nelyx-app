@@ -148,17 +148,17 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
         const categoria = m.categoria ? capitalizarSiEsMayuscula(m.categoria) : null
         const detallePrincipal = nombreProducto ?? descripcion ?? categoria ?? et.label
         const clienteNombre = m.cliente ? capitalizarSiEsMayuscula(`${m.cliente.nombre} ${m.cliente.apellido ?? ""}`.trim()) : null
-        // categoria queda afuera de esta cadena a propósito — en escritorio
-        // ya tiene su propia etiqueta con color junto al Tipo (ver más
-        // abajo), así que no compite por este único renglón secundario.
-        // Antes, un gasto con categoría Y descripción a la vez (el caso más
-        // común: "Bencina camión" + categoría "Combustible") mostraba la
-        // descripción acá pero la categoría quedaba sin mostrarse en
-        // ningún lado — desaparecida del todo en escritorio, aunque sí se
-        // veía en mobile (como chip, en un lugar aparte).
+        // La categoría entra en esta misma cadena (y ya no debajo del
+        // badge de Tipo — ver columna Tipo más abajo): quedaba "sucio"
+        // tener dos colores compitiendo en una columna angosta pensada
+        // para un solo badge. Se filtra igual que la descripción (solo si
+        // aporta algo que detallePrincipal no dijo ya) para no repetir
+        // "Bolsas" dos veces cuando un gasto no tiene descripción propia y
+        // la categoría ya es el texto principal.
         const detalleSecundario =
-          descripcion && descripcion !== detallePrincipal ? { texto: descripcion, icono: null as string | null }
-          : clienteNombre ? { texto: clienteNombre, icono: "👤" }
+          descripcion && descripcion !== detallePrincipal ? { texto: descripcion, icono: null as string | null, color: null as string | null }
+          : categoria && categoria !== detallePrincipal ? { texto: categoria, icono: "🏷️", color: colorCat }
+          : clienteNombre ? { texto: clienteNombre, icono: "👤", color: null }
           : null
 
         const menuAbierto = menuAbiertoId === m.id
@@ -199,21 +199,13 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
               <span className="text-xs text-[var(--c-text3)]">{horaDe(m)}</span>
               {m.realizadoPorNombre && <span className="text-[11px] text-[var(--c-text4)] truncate">{m.realizadoPorNombre}</span>}
             </div>
-            {/* Tipo — solo desde lg, columna propia con la misma etiqueta de
-                siempre (ya no hay un emoji grande aparte: esta es la única
-                marca visual del tipo de movimiento). La categoría (cuando
-                hay, ej. en un Gasto) va debajo, con su propio color — mismo
-                criterio que ya usa el chip de categoría en mobile, para que
-                un gasto con categoría Y descripción no termine escondiendo
-                la categoría del todo en escritorio (ver nota en
-                detalleSecundario más abajo). */}
-            <div className="hidden lg:flex lg:flex-col lg:justify-center lg:gap-1">
+            {/* Tipo — solo desde lg, columna propia: un único badge, nada
+                más. La categoría (cuando hay) se muestra en Detalle, como
+                línea secundaria — ver detalleSecundario más arriba —, no
+                acá debajo: dos colores compitiendo en esta columna angosta
+                se sentía "sucio" en vez de limpio. */}
+            <div className="hidden lg:flex lg:items-center">
               <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full border font-medium whitespace-nowrap w-fit ${et.color}`}>{et.label}</span>
-              {categoria && (
-                <span className="text-[11px] font-medium truncate pl-0.5" style={{ color: colorCat! }}>
-                  {categoria}
-                </span>
-              )}
             </div>
             {/* Medio de pago — columna propia desde lg, junto a Tipo (los
                 dos son "chips" de vocabulario fijo); en mobile ya va como
@@ -247,7 +239,9 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
                   categoría — la primera que aporte algo nuevo). */}
               {descripcion && <p className="lg:hidden text-xs text-[var(--c-text3)] truncate mt-0.5">{descripcion}</p>}
               {detalleSecundario && (
-                <p className="hidden lg:block text-xs text-[var(--c-text3)] truncate mt-0.5">{detalleSecundario.icono ? `${detalleSecundario.icono} ` : ""}{detalleSecundario.texto}</p>
+                <p className={`hidden lg:block text-xs truncate mt-0.5 ${detalleSecundario.color ? "font-medium" : ""}`} style={{ color: detalleSecundario.color ?? "var(--c-text3)" }}>
+                  {detalleSecundario.icono ? `${detalleSecundario.icono} ` : ""}{detalleSecundario.texto}
+                </p>
               )}
               {parCambio && (
                 <p className="text-xs text-[var(--c-warning)] truncate mt-0.5">🔄 Parte de un cambio — {parCambio.descripcion ? capitalizarSiEsMayuscula(parCambio.descripcion) : "ver par"}</p>
