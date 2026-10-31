@@ -117,19 +117,32 @@ function buildWeekRibbon(anioIni:number,mesIni:number,anioFin:number,mesFin:numb
     }
     let dueño="",max=-1
     conteo.forEach((n,k)=>{if(n>max){max=n;dueño=k}})
-    weeks.push(dias.map(c=>({...c,fueraDeMes:`${c.anio}-${c.mes}`!==dueño,esInicioMes:false})))
+    // esInicioMes se calcula acá, por el día calendario real (day===1) —
+    // no por si la celda cae en la semana "dueña" del mes nuevo. Un mes
+    // cuyo día 1 cae viernes/sábado/domingo (como noviembre 2026, que cae
+    // domingo) queda en una semana que todavía pertenece mayoritariamente
+    // al mes anterior (p. ej. 6 días de octubre vs 1 de noviembre), así
+    // que calcularlo a partir del dueño de la semana mostraba la etiqueta
+    // del mes recién en el primer día de la semana SIGUIENTE (ya 100% del
+    // mes nuevo) en vez del día 1 real.
+    //
+    // Por el mismo motivo, el día 1 de un mes NUNCA se marca fueraDeMes
+    // (atenuado) aunque su semana pertenezca mayoritariamente al mes
+    // anterior — es, sin ambigüedad, un día real de SU mes, no un día de
+    // relleno del mes vecino para dar contexto (que es lo único que
+    // fueraDeMes debería atenuar). Sin esta excepción, esa celda mostraría
+    // a la vez la etiqueta "ahí empieza el mes" y el estilo atenuado de
+    // "esto no es really de este mes" — contradictorio.
+    weeks.push(dias.map(c=>({...c,fueraDeMes:c.day===1?false:`${c.anio}-${c.mes}`!==dueño,esInicioMes:c.day===1})))
   }
   return weeks
 }
 
 // Agrupa la cinta de semanas en secciones por mes "dueño" — mismo formato
 // {anio,mes,weeks} que antes, para que el resto del componente (goMes,
-// ventana de meses, etc.) no tenga que cambiar. De paso marca esInicioMes
-// en la primera celda (cronológicamente) de cada mes — nunca
-// necesariamente el día 1 en la columna 1, así que se busca la primera
-// celda de la semana que ya pertenece al mes nuevo — para que el label
-// del mes se muestre AHÍ, dentro de la celda (estilo Asana), en vez de
-// una barra separadora horizontal aparte.
+// ventana de meses, etc.) no tenga que cambiar. esInicioMes (dónde se
+// muestra el label del mes, estilo Asana) ya viene resuelto desde
+// buildWeekRibbon por día calendario real — acá no se toca.
 function agruparPorMes(weeks:DiaCelda[][]):{anio:number;mes:number;weeks:DiaCelda[][]}[]{
   const secciones:{anio:number;mes:number;weeks:DiaCelda[][]}[]=[]
   for(const week of weeks){
@@ -138,8 +151,6 @@ function agruparPorMes(weeks:DiaCelda[][]):{anio:number;mes:number;weeks:DiaCeld
     if(last&&last.anio===dueño.anio&&last.mes===dueño.mes){
       last.weeks.push(week)
     }else{
-      const primera=week.find(c=>c.anio===dueño.anio&&c.mes===dueño.mes)
-      if(primera)primera.esInicioMes=true
       secciones.push({anio:dueño.anio,mes:dueño.mes,weeks:[week]})
     }
   }
