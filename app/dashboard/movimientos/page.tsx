@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { hoyEnChile } from "@/lib/timezone"
 import { TablaMovimientos } from "@/components/movimientos/tabla-movimientos"
 import { FiltroPeriodo } from "@/components/shared/filtro-periodo"
 import { FiltroMovimientos } from "@/components/movimientos/filtro-movimientos"
@@ -16,7 +17,11 @@ const POR_PAGINA = 25
 export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string; q?: string; tipo?: string; metodoPago?: string; page?: string }> }) {
   const searchParams = await props.searchParams;
   const session = await auth()
-  const hoy = new Date()
+  // hoyEnChile(), no new Date() crudo — Vercel corre en UTC, así que de
+  // noche en Chile un new Date() ya piensa que es el mes/día siguiente y
+  // el historial abría por defecto en el mes que viene, con el mes actual
+  // (y los movimientos de hoy) escondidos hasta cambiar el filtro a mano.
+  const hoy = hoyEnChile()
   const mes = parseInt(searchParams.mes ?? String(hoy.getMonth() + 1))
   const anio = parseInt(searchParams.anio ?? String(hoy.getFullYear()))
   const pagina = Math.max(1, parseInt(searchParams.page ?? "1") || 1)
