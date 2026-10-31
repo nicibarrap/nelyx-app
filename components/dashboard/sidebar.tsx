@@ -5,7 +5,19 @@ import { useState, useEffect } from "react"
 import { ChevronLeft } from "lucide-react"
 import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 import { contarNoLeidosAdmin } from "@/app/actions/soporte-acciones"
-import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
+import { useNavegacionPendiente } from "@/components/dashboard/navegacion-provider"
+
+// Click normal (sin modificadores) de un link del Sidebar: navega a través
+// de navegarA (ver navegacion-provider.tsx) en vez de dejar que el <Link>
+// maneje la transición por su cuenta — necesario para que el estado
+// "cargando módulo" sobreviva aunque el <Link> que el usuario tocó se
+// desmonte a mitad de camino (pasa con la vista previa flotante del riel
+// colapsado, que se cierra sola al sacar el mouse). Ctrl/Cmd/Shift/clic
+// derecho/clic de rueda se dejan pasar sin interceptar, para no romper
+// "abrir en pestaña nueva" y el resto de los atajos nativos del navegador.
+function esClickNormal(e: React.MouseEvent) {
+  return !e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+}
 
 const NAV_PRINCIPAL = [
   { href: "/dashboard/resumen",     icon: "◈", label: "Resumen",     activo: true, moduloKey: "resumen" },
@@ -32,6 +44,7 @@ type NavItemProps = { href: string; matchHref?: string; icon: string; label: str
 
 function NavItem({ href, matchHref, icon, label, badge, activo, collapsed, moduloKey, modulosPermitidos }: NavItemProps) {
   const pathname = usePathname()
+  const { navegarA } = useNavegacionPendiente()
   // matchHref: para Movimientos, el link va directo al formulario (como
   // Venta) pero el ítem debe seguir "activo" también al ver el historial
   // (/dashboard/movimientos) — sin esto, el resaltado del sidebar se perdía
@@ -67,6 +80,7 @@ function NavItem({ href, matchHref, icon, label, badge, activo, collapsed, modul
 
   return (
     <Link href={href}
+      onClick={e => { if (esClickNormal(e)) { e.preventDefault(); navegarA(href) } }}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all group ${
         isActive
           ? "bg-sky-500/10 text-sky-400 border border-sky-500/20 shadow-sm"
@@ -78,7 +92,6 @@ function NavItem({ href, matchHref, icon, label, badge, activo, collapsed, modul
       {!collapsed && <span className="flex-1">{label}</span>}
       {!collapsed && soloLectura && <span className="text-[10px] text-[var(--c-text4)]" title="Solo puedes ver, no modificar">👁</span>}
       {!collapsed && isActive && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
-      <SincronizarPendiente />
     </Link>
   )
 }
@@ -105,6 +118,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
   const [hoverExpanded, setHoverExpanded] = useState(false)
   const [noLeidosSoporte, setNoLeidosSoporte] = useState(0)
   const pathname = usePathname()
+  const { navegarA } = useNavegacionPendiente()
 
   // Cierra el menú móvil apenas cambia la ruta — sin esto, al tocar un
   // módulo desde el celular el menú se quedaba abierto encima de la
@@ -208,6 +222,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
               { href: "/admin/soporte", icon: "💬", label: "Soporte NELYX" },
             ].map(item => (
               <Link key={item.href} href={item.href}
+                onClick={e => { if (esClickNormal(e)) { e.preventDefault(); navegarA(item.href) } }}
                 className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
                   pathname === item.href
                     ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
@@ -224,7 +239,6 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
                     {!efectivo && (noLeidosSoporte > 99 ? "99+" : noLeidosSoporte)}
                   </span>
                 )}
-                <SincronizarPendiente />
               </Link>
             ))}
           </>
