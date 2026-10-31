@@ -11,7 +11,7 @@ import { ConexionMaquinaPagoClient } from "@/components/configuracion/conexion-m
 import { AutomatizacionesClienteClient } from "@/components/configuracion/automatizaciones-cliente-client"
 import { ProyectosTareaClient } from "@/components/configuracion/proyectos-tarea-client"
 import { CategoriasConfigClient } from "@/components/configuracion/categorias-config-client"
-import { SeccionColapsable } from "@/components/configuracion/seccion-colapsable"
+import { ConfiguracionLayout, type SeccionConfig } from "@/components/configuracion/configuracion-layout"
 
 export const metadata: Metadata = { title: "Configuración" }
 export const dynamic = "force-dynamic"
@@ -23,6 +23,24 @@ export default async function ConfiguracionPage() {
   const cfg: Record<string, boolean> = {}
   for (const campo of CAMPOS) cfg[campo] = cfgRaw[campo]
 
+  // Mismo orden de siempre = importancia/frecuencia de uso para el día a
+  // día del negocio: primero cómo te enteras de lo que pasa
+  // (Notificaciones) y cómo cobras (Cobranza, Pagos), después cómo
+  // organizas tus tareas, y por último una herramienta de soporte que casi
+  // nunca hace falta tocar (Diagnóstico técnico). ConfiguracionLayout
+  // decide cómo mostrar esta lista según el tamaño de pantalla: acordeón
+  // apilado en celular/tablet (como siempre), menú lateral + panel en
+  // escritorio.
+  const secciones: SeccionConfig[] = [
+    { id: "notificaciones", icon: "🔔", titulo: "Notificaciones", content: <ConfigNotificacionesClient cfg={cfg} /> },
+    { id: "cobranza", icon: "📋", titulo: "Cobranza", content: <PlantillasCobranzaClient plantillas={plantillas} /> },
+    { id: "pagos", icon: "💳", titulo: "Pagos", content: <ConexionMaquinaPagoClient conexiones={conexionesPago} /> },
+    { id: "automatizaciones", icon: "🎂", titulo: "Automatizaciones de clientes", content: <AutomatizacionesClienteClient valores={automatizaciones} /> },
+    { id: "tareas", icon: "🗂️", titulo: "Tareas", content: <ProyectosTareaClient proyectos={proyectosTarea} /> },
+    { id: "categorias", icon: "🏷️", titulo: "Categorías", content: <CategoriasConfigClient categorias={categorias} /> },
+    { id: "diagnostico", icon: "🔧", titulo: "Diagnóstico técnico", content: <DiagnosticoPushClient /> },
+  ]
+
   return (
     <div className="space-y-5 animate-fade-up max-w-6xl">
       <div>
@@ -30,21 +48,7 @@ export default async function ConfiguracionPage() {
         <p className="text-sm text-[var(--c-text3)] mt-0.5">Administra tus preferencias en NELYX.</p>
       </div>
 
-      {/* Orden de arriba hacia abajo = importancia/frecuencia de uso para
-          el día a día del negocio: primero cómo te enteras de lo que pasa
-          (Notificaciones) y cómo cobras (Cobranza, Pagos), después cómo
-          organizas tus tareas (Tareas) y por último una herramienta de
-          soporte que casi nunca hace falta tocar (Diagnóstico técnico).
-
-          Cada sección es un acordeón colapsado — solo Notificaciones
-          arranca abierta — para no obligar a hacer scroll por todo de
-          una. Antes en pc (lg:+) todo quedaba forzado a expandido en 2
-          columnas, lo que con secciones de largo muy distinto (10
-          notificaciones vs. 1 tarjeta de pago) dejaba columnas muy
-          desparejas. Una sola columna se ve igual de ordenada en
-          cualquier tamaño de pantalla.
-
-          "Automatizaciones de clientes" ya no manda correos a nombre del
+      {/* "Automatizaciones de clientes" ya no manda correos a nombre del
           dueño (decisión explícita: Nelyx no le escribe a los clientes sin
           que el dueño lo sepa) — el recordatorio de cobranza automática se
           retiró por completo, y el de cumpleaños ahora solo avisa adentro
@@ -52,34 +56,16 @@ export default async function ConfiguracionPage() {
           Gmail (botón "Email" en el centro de cobranza) sigue funcionando
           igual que siempre.
 
-          El ancho máximo crece con la pantalla (hasta max-w-5xl en
-          monitores grandes) en vez de quedar fijo en max-w-2xl — las filas
-          internas son todas "ícono + etiqueta a la izquierda, control a la
-          derecha" (toggles, tarjetas), un patrón que se ve bien con más
-          aire entre ambos lados; fijarlo angosto solo dejaba medio monitor
-          vacío sin motivo en pantallas grandes. */}
-      <div className="space-y-5 max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl">
-        <SeccionColapsable icon="🔔" titulo="Notificaciones" defaultOpen>
-          <ConfigNotificacionesClient cfg={cfg} />
-        </SeccionColapsable>
-        <SeccionColapsable icon="📋" titulo="Cobranza">
-          <PlantillasCobranzaClient plantillas={plantillas} />
-        </SeccionColapsable>
-        <SeccionColapsable icon="💳" titulo="Pagos">
-          <ConexionMaquinaPagoClient conexiones={conexionesPago} />
-        </SeccionColapsable>
-        <SeccionColapsable icon="🎂" titulo="Automatizaciones de clientes">
-          <AutomatizacionesClienteClient valores={automatizaciones} />
-        </SeccionColapsable>
-        <SeccionColapsable icon="🗂️" titulo="Tareas">
-          <ProyectosTareaClient proyectos={proyectosTarea} />
-        </SeccionColapsable>
-        <SeccionColapsable icon="🏷️" titulo="Categorías">
-          <CategoriasConfigClient categorias={categorias} />
-        </SeccionColapsable>
-        <SeccionColapsable icon="🔧" titulo="Diagnóstico técnico">
-          <DiagnosticoPushClient />
-        </SeccionColapsable>
+          El ancho máximo crece con la pantalla (hasta max-w-6xl en
+          monitores grandes) en vez de quedar fijo angosto — en celular es
+          el acordeón de siempre (una columna angosta se ve bien ahí), pero
+          en escritorio el menú lateral + panel de ConfiguracionLayout
+          necesita más aire: la columna del menú (fija, ~240px) más el
+          panel de contenido (que repite el mismo patrón "ícono + etiqueta
+          a la izquierda, control a la derecha" de antes) se ven apretados
+          en un ancho pensado para una sola columna de acordeón. */}
+      <div className="max-w-2xl md:max-w-3xl lg:max-w-6xl">
+        <ConfiguracionLayout secciones={secciones} />
       </div>
     </div>
   )

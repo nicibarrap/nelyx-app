@@ -220,11 +220,16 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
       <h2 className="text-sm font-bold text-[var(--c-text)] mb-1">💳 Máquinas de pago</h2>
       <p className="text-xs text-[var(--c-text3)] mb-4">Conecta tu máquina para cobrar directo desde Venta, sin tipear el monto dos veces.</p>
 
-      <div className="space-y-2">
+      {/* 2 columnas desde sm: — como la mayoría de las tarjetas son solo
+          "ícono + nombre + botón" (sin formulario abierto), aprovechan
+          mejor el ancho del panel que una sola columna larga. La que tenga
+          el formulario de conexión desplegado pasa a sm:col-span-2 para
+          que los campos no queden apretados en la mitad del ancho. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {MARCAS.map(marca => {
           const conectada = conexiones.find(c => c.proveedor === marca.id)
           return (
-            <div key={marca.id} className="border border-[var(--c-border)] rounded-xl overflow-hidden">
+            <div key={marca.id} className={`border border-[var(--c-border)] rounded-xl overflow-hidden ${marcaAbierta === marca.id ? "sm:col-span-2" : ""}`}>
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   <span className="text-lg">{marca.emoji}</span>
