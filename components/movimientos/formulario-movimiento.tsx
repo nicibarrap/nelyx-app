@@ -167,7 +167,7 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
         <>
           {/* Selector de categoría */}
           {necesitaCategoria && (
-            <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 space-y-3">
+            <div key={tipo} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 space-y-3">
               <p className="text-xs font-semibold text-[var(--c-text)]">
                 {tipo === "GASTO" ? "🛒 Categoría del gasto" : "🏠 Tipo de costo fijo"}
               </p>
@@ -210,7 +210,13 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
 
           {/* Formulario simple */}
           {(!necesitaCategoria || categoria) && (
-            <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6">
+            // key={tipo}: fuerza a React a desmontar y crear de cero este bloque
+            // cada vez que cambia el tipo, en vez de solo actualizar el texto del
+            // <p> de abajo in-place. Esto cierra la puerta a que el encabezado se
+            // quede "pegado" en el tipo anterior si algo externo a React (una
+            // extensión del navegador que escanea/reescribe texto de la página,
+            // por ejemplo) llegó a tocar ese nodo de texto entre un render y otro.
+            <div key={tipo} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6">
               <p className="text-sm font-semibold text-[var(--c-text)] mb-5">
                 {tipoActual?.label}{categoria ? ` — ${categoria}` : ""}
               </p>
