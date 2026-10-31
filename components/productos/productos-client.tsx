@@ -16,6 +16,7 @@ import { DIRECCION_MOTIVO_AJUSTE, MOTIVOS_PERDIDA_RECONOCIDA, type TipoMovimient
 import { obtenerHistorialProducto } from "@/app/actions/kardex-acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { LotesProducto } from "@/components/productos/lotes-producto"
+import { PanelLateral } from "@/components/shared/panel-lateral"
 import dynamic from "next/dynamic"
 // Carga perezosa: ver nota en escanear-nuevos-client.tsx.
 const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-codigo-barras").then(m => m.EscanerCodigoBarras), { ssr: false })
@@ -582,8 +583,14 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
   }
 
   return (
-    <div className="bg-[var(--c-card)] border border-sky-500/20 rounded-2xl overflow-hidden animate-fade-up">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
+    // Vive dentro de PanelLateral (ver ProductosClient más abajo) — ya no
+    // es una tarjeta suelta en el flujo de la página, así que no necesita
+    // su propio fondo/borde/sombra; solo el encabezado sticky para que el
+    // nombre del producto y el botón de cerrar queden siempre a la vista
+    // aunque el resto de la ficha (lotes, historial) sea larga y haga
+    // scroll dentro del panel.
+    <div>
+      <div className="sticky top-0 z-10 bg-[var(--c-card)] flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)]">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-[var(--c-text)] flex items-center gap-1.5">{getEmojiProducto(producto.nombre, producto.categoria)} {producto.nombre}</h3>
@@ -1096,28 +1103,33 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
         </div>
       </div>
 
-      {/* Product detail */}
-      {selectedProducto && !editingProducto && (
-        <ProductoDetalle
-          // key remonta la ficha al cambiar de producto — sin esto, el
-          // formulario de "Ajustar stock" (cantidad, motivo, costo, etc.)
-          // quedaba pegado al producto anterior: tipear una cantidad sin
-          // enviar y seleccionar otro producto dejaba ese valor viejo
-          // cargado en el ajuste del producto nuevo.
-          key={selectedProducto.id}
-          producto={selectedProducto}
-          // La propia ficha del producto manda, no el interruptor de la
-          // página — antes, un producto que SÍ controla inventario perdía
-          // su sección de stock/Kardex/lotes en la ficha (y peor, sus
-          // campos en el formulario de edición) con solo tener el
-          // interruptor "Control de inventario" de la página en apagado
-          // (el valor por defecto en cualquier sesión nueva).
-          inventarioActivo={selectedProducto.controlaInventario}
-          onEdit={() => { setEditingProducto(selectedProducto); setShowForm(false) }}
-          onClose={() => setSelectedId(null)}
-          onDeleted={() => setSelectedId(null)}
-        />
-      )}
+      {/* Ficha del producto — panel lateral, no incrustada en el flujo de
+          la página (ver nota en PanelLateral: antes quedaba fija arriba
+          de la tabla, lejos de donde se hacía click si el producto
+          elegido estaba más abajo en la lista). */}
+      <PanelLateral abierto={!!selectedProducto && !editingProducto} onClose={() => setSelectedId(null)}>
+        {selectedProducto && (
+          <ProductoDetalle
+            // key remonta la ficha al cambiar de producto — sin esto, el
+            // formulario de "Ajustar stock" (cantidad, motivo, costo, etc.)
+            // quedaba pegado al producto anterior: tipear una cantidad sin
+            // enviar y seleccionar otro producto dejaba ese valor viejo
+            // cargado en el ajuste del producto nuevo.
+            key={selectedProducto.id}
+            producto={selectedProducto}
+            // La propia ficha del producto manda, no el interruptor de la
+            // página — antes, un producto que SÍ controla inventario perdía
+            // su sección de stock/Kardex/lotes en la ficha (y peor, sus
+            // campos en el formulario de edición) con solo tener el
+            // interruptor "Control de inventario" de la página en apagado
+            // (el valor por defecto en cualquier sesión nueva).
+            inventarioActivo={selectedProducto.controlaInventario}
+            onEdit={() => { setEditingProducto(selectedProducto); setShowForm(false) }}
+            onClose={() => setSelectedId(null)}
+            onDeleted={() => setSelectedId(null)}
+          />
+        )}
+      </PanelLateral>
 
       {/* Tabla de productos */}
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
@@ -1144,12 +1156,23 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
                     <th className="text-center text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3 hidden md:table-cell">Vencimiento</th>
                   )}
                   <th className="text-right text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3">Precio venta</th>
-                  {inventarioActivo && <>
+                  {/* Costo/Stock/Vendidos/Utilidad se esconden mientras hay
+                      un producto seleccionado — el panel lateral que se
+                      abre a la derecha ya muestra esos mismos datos
+                      completos, así que no se pierde nada, solo se le da
+                      más aire al panel en vez de competir por ancho con
+                      columnas que en ese momento son redundantes.
+                      Categoría y Vencimiento NO entran en esta regla: se
+                      quedan siempre visibles (a pedido explícito), con su
+                      mismo criterio responsive de antes. */}
+                  {inventarioActivo && !selectedProducto && <>
                     <th className="text-right text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3 hidden md:table-cell">Costo</th>
                     <th className="text-center text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3 hidden lg:table-cell">Stock</th>
                   </>}
-                  <th className="text-right text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3 hidden sm:table-cell">Vendidos</th>
-                  {inventarioActivo && (
+                  {!selectedProducto && (
+                    <th className="text-right text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3 hidden sm:table-cell">Vendidos</th>
+                  )}
+                  {inventarioActivo && !selectedProducto && (
                     <th className="text-right text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3 hidden lg:table-cell">Utilidad</th>
                   )}
                   <th className="text-center text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider px-3 py-3">Estado</th>
@@ -1181,7 +1204,7 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
                       <td className="px-3 py-3.5 text-right">
                         <span className="text-sm font-semibold text-[var(--c-text)]">{p.precio ? formatCLP(p.precio) : "—"}</span>
                       </td>
-                      {inventarioActivo && <>
+                      {inventarioActivo && !selectedProducto && <>
                         <td className="px-3 py-3.5 text-right hidden md:table-cell">
                           <span className="text-sm text-[var(--c-text2)]">{p.costo ? formatCLP(p.costo) : "—"}</span>
                         </td>
@@ -1189,10 +1212,12 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
                           <StockBadge stock={p.stock} stockMinimo={p.stockMinimo} formaVenta={p.formaVenta} unidadMedida={p.unidadMedida} unidadPersonalizada={p.unidadPersonalizada} />
                         </td>
                       </>}
-                      <td className="px-3 py-3.5 text-right hidden sm:table-cell">
-                        <span className="text-sm text-[var(--c-text2)]">{p.ventasCount}</span>
-                      </td>
-                      {inventarioActivo && (
+                      {!selectedProducto && (
+                        <td className="px-3 py-3.5 text-right hidden sm:table-cell">
+                          <span className="text-sm text-[var(--c-text2)]">{p.ventasCount}</span>
+                        </td>
+                      )}
+                      {inventarioActivo && !selectedProducto && (
                         <td className="px-3 py-3.5 text-right hidden lg:table-cell">
                           {margen ? (
                             <div>
@@ -1208,9 +1233,14 @@ export function ProductosClient({ productosData, customCategorias = [], customUn
                         </span>
                       </td>
                       <td className="px-3 py-3.5">
+                        {/* "›" (ver ficha) / "✕" (cerrarla) — ya no "▲"/"▼":
+                            esos implicaban que el detalle se expandía
+                            debajo de esta fila, que dejó de ser cierto
+                            ahora que vive en el panel lateral. */}
                         <button onClick={e => { e.stopPropagation(); setSelectedId(isSelected ? null : p.id) }}
-                          className="text-[var(--c-text3)] hover:text-sky-400 transition-colors text-sm">
-                          {isSelected ? "▲" : "▼"}
+                          title={isSelected ? "Cerrar ficha" : "Ver ficha"}
+                          className={`transition-colors text-sm ${isSelected ? "text-sky-400" : "text-[var(--c-text3)] hover:text-sky-400"}`}>
+                          {isSelected ? "✕" : "›"}
                         </button>
                       </td>
                     </tr>

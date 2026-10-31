@@ -7,6 +7,7 @@ import { formatCLP, formatFechaCorta, ESTADO_CONFIG, EstadoDeuda } from "@/lib/u
 import { eliminarDeuda, registrarPago } from "@/app/actions/acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { CampoFecha } from "@/components/shared/campo-fecha"
+import { PanelLateral } from "@/components/shared/panel-lateral"
 
 interface Deuda {
   id: string
@@ -264,10 +265,13 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
         )}
       </div>
 
-      {/* Panel de detalle */}
-      {deudaDetalle && (
-        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between p-5 border-b border-[var(--c-border2)]">
+      {/* Ficha de la deuda — panel lateral, no incrustada en el flujo de
+          la página (antes quedaba fija debajo de toda la lista, lejos de
+          donde se hacía click si la deuda elegida estaba más arriba). */}
+      <PanelLateral abierto={!!deudaDetalle} onClose={() => seleccionarDeuda(null)}>
+        {deudaDetalle && (
+        <div>
+          <div className="sticky top-0 z-10 bg-[var(--c-card)] flex items-center justify-between p-5 border-b border-[var(--c-border2)]">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-[var(--c-text)]">{deudaDetalle.acreedor}</h3>
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${ESTADO_CONFIG[deudaDetalle.estado].color} ${ESTADO_CONFIG[deudaDetalle.estado].bg} ${ESTADO_CONFIG[deudaDetalle.estado].border}`}>
@@ -427,7 +431,8 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
             </div>
           )}
         </div>
-      )}
+        )}
+      </PanelLateral>
     </div>
 
     {/* Modal: advertencia pago mayor a cuota */}
