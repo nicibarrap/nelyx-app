@@ -180,6 +180,7 @@ export default async function DeudasPage(props: { searchParams: Promise<{ filtro
           <ListaDeudas
             deudas={deudasFiltradas}
             filtroActual={filtro}
+            proveedores={proveedores}
             conteos={{
               todas: deudasConEstado.length,
               alDia: deudasConEstado.filter(d => d.estado === "Al día" || d.estado === "Parcialmente pagada").length,
@@ -199,7 +200,13 @@ export default async function DeudasPage(props: { searchParams: Promise<{ filtro
               <div className="space-y-3">
                 {proximosPagos.map(d => {
                   const cfg = ESTADO_CONFIG[d.estado]
-                  const monto = d.valorCuota ? Number(d.valorCuota) : saldoDe(d)
+                  // En la última cuota se muestra el saldo real pendiente,
+                  // no el valor de cuota "de siempre" — mismo criterio que
+                  // ya usa el formulario de "Registrar pago" (los bancos
+                  // casi nunca cobran una última cuota idéntica a las
+                  // demás, por el redondeo).
+                  const esUltimaCuota = d.cuotas != null && d.cuotasPagadas + 1 >= d.cuotas
+                  const monto = esUltimaCuota ? saldoDe(d) : (d.valorCuota ? Number(d.valorCuota) : saldoDe(d))
                   return (
                     <div key={d.id} className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-xl ${cfg.bg} border ${cfg.border} flex items-center justify-center text-xs font-bold ${cfg.color} flex-shrink-0`}>

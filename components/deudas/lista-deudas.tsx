@@ -1,6 +1,6 @@
 "use client"
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { formatCLP, formatFechaCorta, ESTADO_CONFIG, EstadoDeuda } from "@/lib/utils"
@@ -8,6 +8,7 @@ import { eliminarDeuda, registrarPago } from "@/app/actions/acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { PanelLateral } from "@/components/shared/panel-lateral"
+import { FormularioDeuda } from "@/components/deudas/formulario-deuda"
 
 interface Deuda {
   id: string
@@ -15,18 +16,19 @@ interface Deuda {
   tipo: string
   entidad: string | null
   monto: any
-  montoTotal?: any
+  montoTotal: any
   montoPagado: any
   descripcion: string | null
   fechaDeuda: Date
   fechaVence: Date | null
-  fechaPrimerPago?: Date | null
+  fechaPrimerPago: Date | null
   pagada: boolean
   interes: any
   saldoPendiente?: any
   cuotas: number | null
   cuotasPagadas: number
   valorCuota: any
+  proveedorId?: string | null
   estado: EstadoDeuda
   pagos: { id: string; monto: any; fecha: Date; descripcion: string | null; createdAt: Date }[]
 }
@@ -35,6 +37,7 @@ interface Props {
   deudas: Deuda[]
   filtroActual: string
   conteos: { todas: number; alDia: number; proximas: number; vencidas: number; pagadas: number }
+  proveedores: { id: string; nombre: string }[]
 }
 
 const inp = "w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
@@ -65,13 +68,26 @@ function getAlertaBadge(dias: number | null) {
   return null
 }
 
-export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
+export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Props) {
   const router = useRouter()
   const [deudaDetalle, setDeudaDetalle] = useState<Deuda | null>(null)
+  const [editando, setEditando] = useState<Deuda | null>(null)
   const [showPago, setShowPago] = useState(false)
   const [pagoMontoDisplay, setPagoMontoDisplay] = useState("")
   const [pagoWarning, setPagoWarning] = useState<{ monto: number; cuota: number; saldo: number; fd: FormData } | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // `deudaDetalle` es una copia del objeto que llegó por props al momento
+  // de abrir el panel — registrar un pago revalida la página (actualiza
+  // `deudas`), pero sin esto esa copia nunca se refrescaba: la fila de la
+  // lista ya mostraba "Pagada"/$0 mientras el panel abierto seguía
+  // mostrando el saldo viejo hasta cerrarlo y volver a abrirlo. Si la deuda
+  // ya no aparece en la pestaña actual (ej. se completó estando en "Al
+  // día"), se cierra el panel en vez de dejarlo con datos que no cuadran
+  // con ninguna fila visible.
+  useEffect(() => {
+    setDeudaDetalle(prev => prev ? (deudas.find(d => d.id === prev.id) ?? null) : prev)
+  }, [deudas])
 
   const tabs = [
     { key: "todas", label: "Todas", count: conteos.todas },
@@ -268,17 +284,24 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
       {/* Ficha de la deuda — panel lateral, no incrustada en el flujo de
           la página (antes quedaba fija debajo de toda la lista, lejos de
           donde se hacía click si la deuda elegida estaba más arriba). */}
-      <PanelLateral abierto={!!deudaDetalle} onClose={() => seleccionarDeuda(null)}>
+      {/* Se cierra al editar (igual que en Productos) — Editar abre su
+          propio modal centrado, y dejar el panel abierto detrás lo tapaba
+          (PanelLateral vive a z-[60], por encima de este modal). */}
+      <PanelLateral abierto={!!deudaDetalle && !editando} onClose={() => seleccionarDeuda(null)}>
         {deudaDetalle && (
         <div>
           <div className="sticky top-0 z-10 bg-[var(--c-card)] flex items-center justify-between p-5 border-b border-[var(--c-border2)]">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-[var(--c-text)]">{deudaDetalle.acreedor}</h3>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${ESTADO_CONFIG[deudaDetalle.estado].color} ${ESTADO_CONFIG[deudaDetalle.estado].bg} ${ESTADO_CONFIG[deudaDetalle.estado].border}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-sm font-semibold text-[var(--c-text)] truncate">{deudaDetalle.acreedor}</h3>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full border flex-shrink-0 ${ESTADO_CONFIG[deudaDetalle.estado].color} ${ESTADO_CONFIG[deudaDetalle.estado].bg} ${ESTADO_CONFIG[deudaDetalle.estado].border}`}>
                 {deudaDetalle.estado}
               </span>
             </div>
-            <button onClick={() => seleccionarDeuda(null)} className="text-[var(--c-text3)] hover:text-[var(--c-text)]">×</button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={() => setEditando(deudaDetalle)} title="Editar deuda"
+                className="text-[var(--c-text3)] hover:text-sky-400 w-7 h-7 rounded-lg hover:bg-[var(--c-card2)] flex items-center justify-center text-sm transition-colors">✏️</button>
+              <button onClick={() => seleccionarDeuda(null)} className="text-[var(--c-text3)] hover:text-[var(--c-text)] w-7 h-7 rounded-lg hover:bg-[var(--c-card2)] flex items-center justify-center text-lg">×</button>
+            </div>
           </div>
 
           {/* grid-cols-2 fijo, sin sm:grid-cols-4 — mismo motivo que en la
@@ -414,7 +437,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
               <h4 className="text-xs font-semibold text-[var(--c-text)] mb-3">Historial de pagos</h4>
               <div className="space-y-2">
                 {deudaDetalle.pagos.map((p, i) => {
-                  const saldoTras = Number(deudaDetalle.monto) -
+                  // totalRealDetalle (no deudaDetalle.monto): si la deuda
+                  // tiene montoTotal (con interés), restar solo contra el
+                  // capital original mostraba un saldo más bajo del que
+                  // realmente faltaba — inconsistente con "Saldo pendiente"
+                  // que se muestra arriba, calculado con la misma base.
+                  const saldoTras = totalRealDetalle -
                     deudaDetalle.pagos.slice(i).reduce((a, pg) => a + Number(pg.monto), 0)
                   return (
                     <div key={p.id} className="grid grid-cols-3 gap-2 py-2 border-b border-[var(--c-border2)] last:border-0">
@@ -439,6 +467,11 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
         )}
       </PanelLateral>
     </div>
+
+    {/* Modal: editar deuda */}
+    {editando && (
+      <FormularioDeuda deudaEditar={editando} proveedores={proveedores} onClose={() => setEditando(null)} />
+    )}
 
     {/* Modal: advertencia pago mayor a cuota */}
     {pagoWarning && (
