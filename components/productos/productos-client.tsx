@@ -606,7 +606,12 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
         <button onClick={onClose} className="text-[var(--c-text3)] hover:text-[var(--c-text)] w-7 h-7 rounded-lg hover:bg-[var(--c-card2)] flex items-center justify-center text-lg">×</button>
       </div>
 
-      <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
+      {/* grid-cols-1 fijo, sin sm:grid-cols-3 — el panel mide 460px fijos
+          desde el breakpoint sm en adelante (no el ancho del viewport), así
+          que en tablet vertical y en PC 3 columnas quedan apretadas igual
+          que en un teléfono angosto; una sola columna es la que ya se ve
+          bien en celular, y acá se ve igual de bien a cualquier ancho. */}
+      <div className="p-5 grid grid-cols-1 gap-5">
         {/* Info general */}
         <div>
           <h4 className="text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wider mb-3">Información</h4>

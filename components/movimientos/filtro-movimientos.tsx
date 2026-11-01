@@ -43,7 +43,13 @@ export function FiltroMovimientos() {
   const hayFiltrosActivos = !!(q || tipo || metodoPago)
 
   return (
-    <div className="flex flex-col sm:flex-row gap-3">
+    // flex-col hasta lg (no sm): en tablet vertical hay ancho de sobra para
+    // que cada fila (buscador, método, chips) se vea ordenada en columna,
+    // pero no el suficiente para que las 8 opciones de tipo quepan al lado
+    // del buscador sin envolver en una torre angosta — eso es justo lo que
+    // pasaba con el corte en sm. Desde lg (tablet horizontal y PC) sí hay
+    // espacio real para la fila completa.
+    <div className="flex flex-col lg:flex-row gap-3">
       <div className="relative flex-1 min-w-[200px]">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">🔍</span>
         <input value={q} onChange={e => handleQChange(e.target.value)}
@@ -51,7 +57,7 @@ export function FiltroMovimientos() {
           className="w-full bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl pl-9 pr-4 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
       </div>
       <select value={metodoPago} onChange={e => actualizar({ metodoPago: e.target.value })}
-        className="w-full sm:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+        className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
         <option value="">Todos los métodos</option>
         {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
