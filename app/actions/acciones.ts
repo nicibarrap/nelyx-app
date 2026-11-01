@@ -1371,6 +1371,11 @@ export async function crearDeuda(formData: FormData) {
   revalidatePath("/dashboard/deudas")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/proveedores")
+  // Una deuda recién creada puede nacer ya "Vencida"/"Próxima a vencer"
+  // (fechaVence en el pasado o dentro de 7 días) — sin esto, Alertas podía
+  // quedar mostrando una versión vieja de la página hasta la próxima
+  // revalidación natural.
+  revalidatePath("/dashboard/alertas")
 }
 
 function calcularValorCuota(monto: number, interesMensual: number, cuotas: number): number {
@@ -1440,6 +1445,9 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   // la ficha del proveedor quedaba desactualizada hasta la próxima
   // navegación que sí disparara una revalidación.
   revalidatePath("/dashboard/proveedores")
+  // Mismo motivo — un pago puede cambiar el estado que ve Alertas (parcial
+  // → al día, o completar la deuda y que desaparezca de ahí).
+  revalidatePath("/dashboard/alertas")
   if (pagadaCompleta) await cancelarNotificacionesPorPrefijo(`deuda:${deudaId}:`)
 }
 
@@ -1473,6 +1481,18 @@ export async function editarDeuda(id: string, formData: FormData) {
   const monto = montoForm > 0 ? montoForm : (valorCuota && cuotas ? valorCuota * cuotas : montoForm)
   if (monto <= 0) throw new Error("Ingresa el monto original o la cuota mensual")
 
+  // Editar no toca montoPagado (los pagos ya registrados no se tocan) —
+  // pero bajar el total por debajo de lo ya pagado dejaría un saldo
+  // negativo invisible: la deuda seguiría mostrándose "Al día"/"Parcialmente
+  // pagada" con una barra de progreso rota (>100%). Se recalcula "pagada"
+  // con el nuevo total por la misma razón: si el total sube por encima de
+  // lo ya pagado, una deuda que estaba completa deja de estarlo de verdad.
+  const totalRealNuevo = montoTotal ?? monto
+  const montoPagadoActual = Number(deuda.montoPagado)
+  if (totalRealNuevo < montoPagadoActual) {
+    throw new Error(`El total no puede quedar por debajo de lo ya pagado ($${Math.round(montoPagadoActual).toLocaleString("es-CL")})`)
+  }
+
   const proveedorIdForm = (formData.get("proveedorId") as string) || null
   const proveedorId = proveedorIdForm
     ? (await db.proveedor.findFirst({ where: { id: proveedorIdForm, userId: session.user.id }, select: { id: true } }))?.id ?? null
@@ -1495,6 +1515,7 @@ export async function editarDeuda(id: string, formData: FormData) {
       cuotaManual,
       montoTotal,
       proveedorId,
+      pagada: montoPagadoActual >= totalRealNuevo,
     }
   })
   revalidatePath("/dashboard/deudas")
@@ -1512,6 +1533,7 @@ export async function eliminarDeuda(id: string) {
   // Misma razón que en registrarPago — esta deuda puede estar vinculada a
   // un proveedor, y su ficha también muestra deudas pendientes.
   revalidatePath("/dashboard/proveedores")
+  revalidatePath("/dashboard/alertas")
 }
 
 
