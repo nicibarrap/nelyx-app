@@ -281,7 +281,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos }: Props) {
             <button onClick={() => seleccionarDeuda(null)} className="text-[var(--c-text3)] hover:text-[var(--c-text)]">×</button>
           </div>
 
-          <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* grid-cols-2 fijo, sin sm:grid-cols-4 — mismo motivo que en la
+              ficha de Productos: el panel mide 460px fijos desde sm en
+              adelante (no el ancho del viewport), así que 4 columnas quedan
+              apretadas en tablet vertical y en PC igual que en un celular
+              angosto. 2 columnas es lo que ya se ve bien en celular. */}
+          <div className="p-5 grid grid-cols-2 gap-4">
             <div>
               <p className="text-[10px] text-[var(--c-text3)] mb-1">Monto original</p>
               <p className="text-sm font-bold text-[var(--c-text)]">{formatCLP(Number(deudaDetalle.monto))}</p>

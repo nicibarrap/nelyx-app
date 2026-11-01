@@ -146,7 +146,13 @@ export default function LoginPage() {
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 lg:px-10" style={{background:"#080f23"}}>
 
           {/* ── MOBILE ONLY branding ── */}
-          <div className="lg:hidden w-full max-w-sm mb-8 animate-fade-up">
+          {/* max-w escalonado: en celular max-w-sm ya llena la pantalla, pero
+              en tablet vertical (640-1023px, por debajo de lg) ese mismo
+              ancho fijo dejaba todo este bloque como una isla angosta
+              flotando en medio de mucho espacio vacío — acá crece con el
+              viewport hasta que en lg entra en juego el panel de marca de
+              escritorio (este bloque se oculta) y deja de importar. */}
+          <div className="lg:hidden w-full max-w-sm sm:max-w-md md:max-w-lg mb-8 animate-fade-up">
             {/* Logo mobile — left aligned */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={LOGO_B64} alt="NELYX" className="animate-zoom-in" style={{width:"65%",maxWidth:"260px",height:"auto",display:"block",objectFit:"contain",marginBottom:"20px"}}/>
@@ -174,7 +180,12 @@ export default function LoginPage() {
           </div>
 
           {/* ── LOGIN CARD ── */}
-          <div className="w-full max-w-[440px] animate-fade-up" style={{animationDelay:"100ms",animationFillMode:"backwards"}}>
+          {/* Mismo escalonado que el bloque de marca de arriba — crece en
+              tablet vertical para no quedar chica en medio de pantalla, y
+              vuelve a 440px en lg porque ahí ya vive dentro de la columna
+              angosta (38%) del layout de dos paneles, que le deja justo
+              ese ancho cómodo. */}
+          <div className="w-full max-w-[440px] sm:max-w-[520px] md:max-w-[640px] lg:max-w-[440px] animate-fade-up" style={{animationDelay:"100ms",animationFillMode:"backwards"}}>
             <div className="rounded-2xl border border-white/10 p-8 shadow-2xl transition-shadow duration-300 hover:shadow-[0_0_60px_-15px_rgba(59,130,246,0.25)]"
               style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(20px)"}}>
 
