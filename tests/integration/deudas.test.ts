@@ -85,6 +85,64 @@ describe("registrarPago", () => {
     const pagos = await db.pagoDeuda.findMany({ where: { deudaId: deuda.id } })
     expect(pagos).toHaveLength(0)
   })
+
+  it("sin montoTotal, el pago queda 100% capital y el Movimiento no resta nada de la utilidad", async () => {
+    await crearUsuario()
+    const deuda = await db.deuda.create({
+      data: { acreedor: "Sin interés", tipo: "Otros", monto: 100000, cuotas: 2, valorCuota: 50000, fechaDeuda: new Date(), userId: sesionActual!.user.id },
+    })
+    await registrarPago(deuda.id, formData({ monto: "50000", fecha: new Date().toISOString() }))
+
+    const pago = await db.pagoDeuda.findFirstOrThrow({ where: { deudaId: deuda.id } })
+    expect(Number(pago.montoCapital)).toBe(50000)
+    expect(Number(pago.montoInteres)).toBe(0)
+
+    const mov = await db.movimiento.findFirstOrThrow({ where: { userId: sesionActual!.user.id, tipo: "GASTO" } })
+    expect(Number(mov.montoNoOperativo)).toBe(50000) // todo el pago es capital → todo no-operativo
+  })
+
+  it("con montoTotal, reparte capital/interés proporcional y guarda el desglose en el Movimiento", async () => {
+    await crearUsuario()
+    // monto=90.000, montoTotal=100.000 → 10% de cada pago es interés
+    const deuda = await db.deuda.create({
+      data: { acreedor: "Con interés", tipo: "Otros", monto: 90000, montoTotal: 100000, cuotas: 2, valorCuota: 50000, fechaDeuda: new Date(), userId: sesionActual!.user.id },
+    })
+    await registrarPago(deuda.id, formData({ monto: "50000", fecha: new Date().toISOString() }))
+
+    const pago = await db.pagoDeuda.findFirstOrThrow({ where: { deudaId: deuda.id } })
+    expect(Number(pago.montoCapital)).toBe(45000)
+    expect(Number(pago.montoInteres)).toBe(5000)
+
+    const mov = await db.movimiento.findFirstOrThrow({ where: { userId: sesionActual!.user.id, tipo: "GASTO" } })
+    expect(Number(mov.monto)).toBe(50000) // el Historial sigue mostrando el pago completo
+    expect(Number(mov.montoNoOperativo)).toBe(45000) // pero solo 5.000 (el interés) cuenta como gasto real
+  })
+
+  it("usa el desglose que manda el formulario (editado por el usuario) si suma exacto el pago", async () => {
+    await crearUsuario()
+    const deuda = await db.deuda.create({
+      data: { acreedor: "Desglose manual", tipo: "Otros", monto: 90000, montoTotal: 100000, cuotas: 2, valorCuota: 50000, fechaDeuda: new Date(), userId: sesionActual!.user.id },
+    })
+    // El usuario ajustó el interés a lo que de verdad le cobró el banco ese mes (8.000, no los 5.000 sugeridos)
+    await registrarPago(deuda.id, formData({ monto: "50000", fecha: new Date().toISOString(), montoCapital: "42000", montoInteres: "8000" }))
+
+    const pago = await db.pagoDeuda.findFirstOrThrow({ where: { deudaId: deuda.id } })
+    expect(Number(pago.montoCapital)).toBe(42000)
+    expect(Number(pago.montoInteres)).toBe(8000)
+  })
+
+  it("ignora un desglose del formulario que no suma el monto pagado y recalcula el propio", async () => {
+    await crearUsuario()
+    const deuda = await db.deuda.create({
+      data: { acreedor: "Desglose inválido", tipo: "Otros", monto: 90000, montoTotal: 100000, cuotas: 2, valorCuota: 50000, fechaDeuda: new Date(), userId: sesionActual!.user.id },
+    })
+    // 42000 + 8000 = 50000, pero el pago es de 60000 — no cuadra, se ignora
+    await registrarPago(deuda.id, formData({ monto: "60000", fecha: new Date().toISOString(), montoCapital: "42000", montoInteres: "8000" }))
+
+    const pago = await db.pagoDeuda.findFirstOrThrow({ where: { deudaId: deuda.id } })
+    expect(Number(pago.montoCapital) + Number(pago.montoInteres)).toBe(60000)
+    expect(Number(pago.montoInteres)).toBe(6000) // 10% de 60.000, calculado solo
+  })
 })
 
 describe("editarDeuda", () => {

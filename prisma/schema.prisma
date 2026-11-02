@@ -109,6 +109,13 @@ model Movimiento {
   movimientoVinculadoId String?           @unique
   movimientoVinculado   Movimiento?       @relation("CambioProducto", fields: [movimientoVinculadoId], references: [id], onDelete: SetNull)
   movimientoVinculadoDe Movimiento?       @relation("CambioProducto")
+  // Parte de "monto" que NO debería bajar la Utilidad aunque sí sea plata
+  // real que salió de la caja (sí cuenta en Disponible). Dos casos: el
+  // capital de un pago de deuda (devolver algo que ya era tuyo no es un
+  // gasto del negocio) y un Retiro completo (es tuyo, no un costo operativo).
+  // Default 0 = todo el monto es gasto operativo, el comportamiento de
+  // siempre para cualquier movimiento que no sea uno de esos dos casos.
+  montoNoOperativo      Decimal           @default(0) @db.Decimal(12, 2)
 
   @@index([userId, fecha])
   @@index([userId, tipo, categoria])
@@ -208,6 +215,14 @@ model PagoDeuda {
   deudaId     String
   deuda       Deuda    @relation(fields: [deudaId], references: [id], onDelete: Cascade)
   monto       Decimal  @db.Decimal(12, 2)
+  // Desglose contable del pago — capital devuelve algo que ya era tuyo (no
+  // es gasto, solo baja la deuda), interés es el costo real de haber pedido
+  // el crédito (sí es gasto, sí baja la utilidad). Antes "monto" se cargaba
+  // completo como gasto. Los pagos registrados antes de este campo quedan
+  // con 0/0 (no con monto/0) — el desglose real de esos pagos viejos no se
+  // puede reconstruir, así que no se les asigna uno a la fuerza.
+  montoCapital Decimal @default(0) @db.Decimal(12, 2)
+  montoInteres Decimal @default(0) @db.Decimal(12, 2)
   fecha       DateTime
   descripcion String?
   createdAt   DateTime @default(now())

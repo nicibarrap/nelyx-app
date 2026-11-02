@@ -68,6 +68,26 @@ export const ESTADO_CONFIG: Record<EstadoDeuda, { color: string; bg: string; bor
   "Pendiente":           { color: "text-zinc-400",  bg: "bg-zinc-500/10",  border: "border-zinc-500/20" },
 }
 
+/** Desglosa un pago de deuda en capital (devuelve algo que ya era tuyo, no
+ * es gasto) e interés (el costo real de haber pedido el crédito, sí es
+ * gasto). Proporcional al costo financiero total de la deuda — no fijo por
+ * cuota — para que cualquier mezcla de pagos (regulares, uno más grande,
+ * el último ajustado al saldo exacto) siempre sume exactamente el costo
+ * financiero total al terminar de pagar, sin importar cuántos pagos fueron
+ * ni de qué tamaño cada uno.
+ *
+ * Si la deuda no tiene "Total a pagar" cargado (campo opcional — el usuario
+ * nunca confirmó que pagaría más que el capital), da $0 de interés: todo el
+ * pago es capital, el comportamiento de siempre para quien no usa este
+ * desglose. */
+export function calcularDesglosePago(deuda: { monto: any; montoTotal?: any }, montoPago: number): { capital: number; interes: number } {
+  const totalReal = Number(deuda.montoTotal ?? deuda.monto)
+  const costoFinanciero = Math.max(0, totalReal - Number(deuda.monto))
+  const proporcionInteres = totalReal > 0 ? costoFinanciero / totalReal : 0
+  const interes = Math.round(montoPago * proporcionInteres)
+  return { capital: montoPago - interes, interes }
+}
+
 // VENTA + INGRESO_EXTRA + DEVOLUCION — toda la plata que entra o sale de la
 // caja por una venta o su reversión. DEVOLUCION se suma acá (su monto es el
 // valor del producto devuelto, igual que una venta) a propósito: una
@@ -78,7 +98,11 @@ const TIPOS_INGRESO = ["VENTA", "INGRESO_EXTRA", "DEVOLUCION"]
 
 export function calcularMetricas(movimientos: any[], deudasPendientes: number) {
   const ingresos = movimientos.filter((m) => TIPOS_INGRESO.includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
-  const gastos = movimientos.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
+  // montoNoOperativo: la parte de un gasto que no debería bajar la utilidad
+  // aunque sí haya sido plata real que salió de la caja (capital de un pago
+  // de deuda, o un Retiro completo) — ver comentario en el schema. 0 para
+  // cualquier otro movimiento, así que no cambia nada para quien no usa esto.
+  const gastos = movimientos.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto)-Number(m.montoNoOperativo ?? 0), 0)
   return {
     totalVentas: movimientos.filter((m) => m.tipo === "VENTA").reduce((a,m) => a+Number(m.monto), 0),
     totalIngresos: ingresos,
@@ -94,7 +118,7 @@ export function prepararGrafico(movimientos: any[], anio: number, mes: number) {
   return Array.from({ length: dias }, (_, i) => {
     const d = movimientos.filter((m) => new Date(m.fecha).getDate() === i + 1)
     const ventas = d.filter((m) => TIPOS_INGRESO.includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
-    const gastos = d.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
+    const gastos = d.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto)-Number(m.montoNoOperativo ?? 0), 0)
     return {
       dia: String(i + 1).padStart(2, "0"),
       ventas,
@@ -116,7 +140,7 @@ export function prepararGraficoAnual(movimientos: any[], anio: number) {
   return Array.from({ length: 12 }, (_, i) => {
     const d = movimientos.filter((m) => new Date(m.fecha).getMonth() === i)
     const ventas = d.filter((m) => TIPOS_INGRESO.includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
-    const gastos = d.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto), 0)
+    const gastos = d.filter((m) => ["GASTO","COSTO_FIJO","RETIRO"].includes(m.tipo)).reduce((a,m) => a+Number(m.monto)-Number(m.montoNoOperativo ?? 0), 0)
     return {
       dia: NOMBRES_MES_ABREV[i],
       mesCompleto: NOMBRES_MES[i],

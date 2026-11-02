@@ -70,12 +70,18 @@ export default async function ReportesPage() {
     `,
     // Mismo motivo: el gráfico anual solo necesita un total por mes/tipo,
     // no cada movimiento individual.
+    // SUM(monto - "montoNoOperativo"): para VENTA/INGRESO_EXTRA/DEVOLUCION
+    // montoNoOperativo siempre es 0 (no-op), así que esto no les cambia
+    // nada — solo descuenta de GASTO/COSTO_FIJO/RETIRO el capital de un
+    // pago de deuda o un Retiro completo (ver comentario del campo en el
+    // schema), igual que totalGastos/totalGastosAnt más abajo en esta
+    // misma página.
     db.$queryRaw<{ anio: number; mes: number; tipo: string; total: number }[]>`
       SELECT
         EXTRACT(YEAR FROM fecha)::int AS anio,
         EXTRACT(MONTH FROM fecha)::int AS mes,
         tipo::text AS tipo,
-        SUM(monto)::float8 AS total
+        SUM(monto - "montoNoOperativo")::float8 AS total
       FROM "Movimiento"
       WHERE "userId" = ${userId}
         AND fecha >= ${inicio12Meses}
@@ -127,13 +133,16 @@ export default async function ReportesPage() {
   const ventasMes = movMesActual.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA" || m.tipo === "DEVOLUCION")
   const gastosMes = movMesActual.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentas = ventasMes.reduce((a, m) => a + Number(m.monto), 0)
-  const totalGastos = gastosMes.reduce((a, m) => a + Number(m.monto), 0)
+  // montoNoOperativo: capital de un pago de deuda o un Retiro completo —
+  // plata real que salió de la caja, pero no es un gasto del negocio (ver
+  // comentario del campo en el schema).
+  const totalGastos = gastosMes.reduce((a, m) => a + Number(m.monto) - Number(m.montoNoOperativo ?? 0), 0)
 
   // ── Mes anterior ──
   const ventasMesAnt = movMesAnterior.filter(m => m.tipo === "VENTA" || m.tipo === "INGRESO_EXTRA" || m.tipo === "DEVOLUCION")
   const gastosMesAnt = movMesAnterior.filter(m => m.tipo === "GASTO" || m.tipo === "COSTO_FIJO" || m.tipo === "RETIRO")
   const totalVentasAnt = ventasMesAnt.reduce((a, m) => a + Number(m.monto), 0)
-  const totalGastosAnt = gastosMesAnt.reduce((a, m) => a + Number(m.monto), 0)
+  const totalGastosAnt = gastosMesAnt.reduce((a, m) => a + Number(m.monto) - Number(m.montoNoOperativo ?? 0), 0)
 
   const pct = calcularVariacionPct
 

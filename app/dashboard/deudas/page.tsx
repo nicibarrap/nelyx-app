@@ -42,7 +42,7 @@ export default async function DeudasPage(props: { searchParams: Promise<{ filtro
     cuotaManual: d.cuotaManual != null ? Number(d.cuotaManual) : null,
     interes: d.interes != null ? Number(d.interes) : null,
     valorCuota: d.valorCuota != null ? Number(d.valorCuota) : null,
-    pagos: d.pagos.map(p => ({ ...p, monto: Number(p.monto) })),
+    pagos: d.pagos.map(p => ({ ...p, monto: Number(p.monto), montoCapital: Number(p.montoCapital), montoInteres: Number(p.montoInteres) })),
     estado: calcularEstadoDeuda(d) as EstadoDeuda,
   }))
 
