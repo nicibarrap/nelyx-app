@@ -78,6 +78,16 @@ no una que garantice que el módulo queda perfecto. Ver la sección final
       incluye `GASTO` + `COSTO_FIJO` + `RETIRO` en todos los lugares que
       agregan movimientos — no solo `GASTO`/`COSTO_FIJO` (bug real en
       Reportes, PR #80).
+- [ ] Si un módulo suma `monto` de movimientos para calcular Utilidad/gasto
+      "real" del negocio (no Disponible/caja), restar `montoNoOperativo` —
+      es la parte de ese gasto que es plata real que salió de la caja pero
+      no es un costo del negocio (capital de un pago de deuda, un Retiro
+      completo). Disponible/caja SÍ debe seguir sumando el monto completo,
+      sin restarlo — ahí el objetivo es la plata real que se movió, no la
+      rentabilidad. Confundir los dos es la misma clase de bug que el ítem
+      anterior (Utilidad y Disponible desalineados) — ver `calcularMetricas`,
+      `prepararGrafico`/`prepararGraficoAnual` y `registrarPago`/
+      `ingresarMovimiento` en `app/actions/acciones.ts` para el patrón.
 
 ## 5. Caché / datos derivados que pueden quedar obsoletos
 

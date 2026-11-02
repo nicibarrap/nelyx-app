@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest"
 import {
   calcularEstadoDeuda, calcularMetricas, calcularVariacionPct,
   prepararGrafico, prepararGraficoAnual, calcularFlujoAcumulado,
+  calcularDesglosePago,
 } from "@/lib/utils"
 
 // calcularEstadoDeuda usa hoyEnChile() internamente — se fija la hora del
@@ -60,6 +61,37 @@ describe("calcularEstadoDeuda", () => {
   })
 })
 
+describe("calcularDesglosePago", () => {
+  it("sin montoTotal, todo el pago es capital (comportamiento de siempre)", () => {
+    expect(calcularDesglosePago({ monto: 100000 }, 50000)).toEqual({ capital: 50000, interes: 0 })
+  })
+
+  it("con montoTotal igual al monto (sin interés real cargado), todo capital", () => {
+    expect(calcularDesglosePago({ monto: 100000, montoTotal: 100000 }, 50000)).toEqual({ capital: 50000, interes: 0 })
+  })
+
+  it("reparte proporcionalmente: 10% del total es interés, 10% de cada pago es interés", () => {
+    // monto=90.000, montoTotal=100.000 → costo financiero=10.000, 10% del total
+    const d = { monto: 90000, montoTotal: 100000 }
+    expect(calcularDesglosePago(d, 50000)).toEqual({ capital: 45000, interes: 5000 })
+  })
+
+  it("pagos irregulares (uno grande, uno chico) siguen sumando exacto el costo financiero total", () => {
+    const d = { monto: 90000, montoTotal: 100000 }
+    const pago1 = calcularDesglosePago(d, 70000) // interés: 7000
+    const pago2 = calcularDesglosePago(d, 30000) // interés: 3000
+    expect(pago1.interes + pago2.interes).toBe(10000)
+    expect(pago1.capital + pago2.capital).toBe(90000)
+  })
+
+  it("capital nunca queda negativo aunque el pago sea menor al interés proporcional", () => {
+    const d = { monto: 10, montoTotal: 100000 } // costo financiero ~100% del pago
+    const { capital, interes } = calcularDesglosePago(d, 1000)
+    expect(capital).toBeGreaterThanOrEqual(0)
+    expect(capital + interes).toBe(1000)
+  })
+})
+
 describe("calcularMetricas", () => {
   const movimientos = [
     { tipo: "VENTA", monto: 1000 },
@@ -89,6 +121,18 @@ describe("calcularMetricas", () => {
 
   it("cantidadVentas cuenta transacciones, no unidades ni monto", () => {
     expect(calcularMetricas(movimientos, 0).cantidadVentas).toBe(2)
+  })
+
+  it("totalGastos resta montoNoOperativo (capital de deuda, Retiro completo) — no baja la utilidad aunque sí sea plata real que salió", () => {
+    const conNoOperativo = [
+      { tipo: "GASTO", monto: 300, montoNoOperativo: 0 },
+      // Pago de deuda: 150 capital (no operativo) + 50 interés (sí gasto)
+      { tipo: "GASTO", monto: 200, montoNoOperativo: 150 },
+      // Retiro completo: no es gasto del negocio
+      { tipo: "RETIRO", monto: 100, montoNoOperativo: 100 },
+    ]
+    // Solo cuenta: 300 (gasto normal) + 50 (la porción interés del pago de deuda) = 350
+    expect(calcularMetricas(conNoOperativo, 0).totalGastos).toBe(350)
   })
 
   it("pasa deudasPendientes tal cual, sin recalcularlo", () => {

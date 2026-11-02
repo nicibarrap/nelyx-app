@@ -3,7 +3,7 @@ const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${St
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { formatCLP, formatFechaCorta, ESTADO_CONFIG, EstadoDeuda } from "@/lib/utils"
+import { formatCLP, formatFechaCorta, calcularDesglosePago, ESTADO_CONFIG, EstadoDeuda } from "@/lib/utils"
 import { eliminarDeuda, registrarPago } from "@/app/actions/acciones"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { CampoFecha } from "@/components/shared/campo-fecha"
@@ -30,7 +30,7 @@ interface Deuda {
   valorCuota: any
   proveedorId?: string | null
   estado: EstadoDeuda
-  pagos: { id: string; monto: any; fecha: Date; descripcion: string | null; createdAt: Date }[]
+  pagos: { id: string; monto: any; montoCapital?: any; montoInteres?: any; fecha: Date; descripcion: string | null; createdAt: Date }[]
 }
 
 interface Props {
@@ -74,6 +74,13 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
   const [editando, setEditando] = useState<Deuda | null>(null)
   const [showPago, setShowPago] = useState(false)
   const [pagoMontoDisplay, setPagoMontoDisplay] = useState("")
+  // Desglose capital/interés del pago — interesEditado sigue el mismo
+  // patrón que "Total a pagar" en FormularioDeuda: mientras el usuario no
+  // toque el campo, el interés sugerido se recalcula solo a medida que
+  // cambia el monto del pago; apenas lo edita, queda "trabado" en lo que
+  // escribió (no se le pisa con cada tecla que tipee en el monto).
+  const [interesEditado, setInteresEditado] = useState(false)
+  const [interesDisplay, setInteresDisplay] = useState("")
   const [pagoWarning, setPagoWarning] = useState<{ monto: number; cuota: number; saldo: number; fd: FormData } | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -109,6 +116,8 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
     setDeudaDetalle(d)
     setShowPago(false)
     setPagoMontoDisplay("")
+    setInteresEditado(false)
+    setInteresDisplay("")
     setPagoWarning(null)
   }
 
@@ -178,6 +187,16 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
   const totalRealDetalle = deudaDetalle ? Number(deudaDetalle.montoTotal ?? deudaDetalle.monto) : 0
   const saldoPendiente = deudaDetalle ? totalRealDetalle - Number(deudaDetalle.montoPagado) : 0
   const pctPagado = deudaDetalle ? Math.min(100, Math.round((Number(deudaDetalle.montoPagado) / totalRealDetalle) * 100)) : 0
+
+  // El desglose solo tiene sentido si la deuda tiene un "Total a pagar"
+  // por encima del capital — si no, calcularDesglosePago siempre da $0 de
+  // interés y mostrar el campo sería ruido para quien no lo necesita.
+  const tieneInteres = !!deudaDetalle && totalRealDetalle > Number(deudaDetalle.monto)
+  const pagoMontoNum = Number(pagoMontoDisplay.replace(/\./g, "")) || 0
+  const interesSugerido = deudaDetalle ? calcularDesglosePago(deudaDetalle, pagoMontoNum).interes : 0
+  const interesMostrado = interesEditado ? (Number(interesDisplay.replace(/\./g, "")) || 0) : interesSugerido
+  const capitalMostrado = Math.max(0, pagoMontoNum - interesMostrado)
+  const interesAcumulado = deudaDetalle ? deudaDetalle.pagos.reduce((a, p) => a + Number(p.montoInteres ?? 0), 0) : 0
 
   return (
     <>
@@ -328,6 +347,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
               <p className="text-[10px] text-[var(--c-text3)] mb-1">Saldo pendiente</p>
               <p className="text-sm font-bold text-orange-400">{formatCLP(saldoPendiente)}</p>
             </div>
+            {interesAcumulado > 0 && (
+              <div>
+                <p className="text-[10px] text-[var(--c-text3)] mb-1">Interés pagado</p>
+                <p className="text-sm font-bold text-violet-400">{formatCLP(interesAcumulado)}</p>
+              </div>
+            )}
             <div>
               <p className="text-[10px] text-[var(--c-text3)] mb-1">Progreso</p>
               <p className="text-sm font-bold text-sky-400">{pctPagado}%</p>
@@ -389,6 +414,8 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
                     const esUltimaCuota = deudaDetalle.cuotas != null && deudaDetalle.cuotasPagadas + 1 >= deudaDetalle.cuotas
                     const sugerido = esUltimaCuota ? saldoPendiente : (deudaDetalle.valorCuota ? Number(deudaDetalle.valorCuota) : saldoPendiente)
                     setPagoMontoDisplay(sugerido > 0 ? Math.round(sugerido).toLocaleString("es-CL") : "")
+                    setInteresEditado(false)
+                    setInteresDisplay("")
                     setShowPago(true)
                   }}
                   className="w-full h-9 bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-semibold rounded-xl hover:bg-sky-500/20 transition-colors"
@@ -420,6 +447,39 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
                       <input name="descripcion" placeholder="Ej: Cuota 3 de 12" className={inp} />
                     </div>
                   </div>
+
+                  {/* Desglose capital/interés — el capital no es gasto (es
+                      plata que ya era tuya volviendo), el interés sí. Solo
+                      el interés es editable: el capital se deriva solo
+                      (monto del pago menos el interés), igual que "Total a
+                      pagar" en el formulario de nueva deuda. */}
+                  {tieneInteres && (
+                    <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-lg p-3 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 items-end">
+                        <div>
+                          <label className="text-[10px] text-[var(--c-text3)] block mb-1">Interés de este pago ($)</label>
+                          <input name="montoInteres" type="hidden" value={interesMostrado} />
+                          <input type="text" inputMode="numeric" placeholder="0"
+                            value={interesEditado ? interesDisplay : (interesMostrado > 0 ? interesMostrado.toLocaleString("es-CL") : "")}
+                            onChange={e => {
+                              const v = e.target.value.replace(/[^0-9]/g, "")
+                              setInteresEditado(true)
+                              setInteresDisplay(v ? Number(v).toLocaleString("es-CL") : "")
+                            }}
+                            className={inp} />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-[var(--c-text3)] block mb-1">Capital</label>
+                          <input name="montoCapital" type="hidden" value={capitalMostrado} />
+                          <p className="h-10 flex items-center text-sm font-semibold text-[var(--c-text)]">{formatCLP(capitalMostrado)}</p>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-[var(--c-text4)] leading-relaxed">
+                        💡 Sugerido en proporción al costo financiero total de la deuda. El capital no baja tu utilidad (es plata que ya era tuya) — solo el interés cuenta como gasto real.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setShowPago(false)} className="flex-1 h-9 border border-[var(--c-border)] text-[var(--c-text3)] text-xs rounded-xl hover:bg-[var(--c-hover)]">Cancelar</button>
                     <button type="submit" disabled={isPending} className="flex-1 h-9 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl">
@@ -450,7 +510,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
                         <p className="text-[10px] text-[var(--c-text3)]">{formatFechaCorta(p.fecha)}</p>
                         {p.descripcion && <p className="text-[10px] text-[var(--c-text4)] truncate">{p.descripcion}</p>}
                       </div>
-                      <p className="text-xs font-semibold text-green-400 text-center">{formatCLP(Number(p.monto))}</p>
+                      <div className="text-center">
+                        <p className="text-xs font-semibold text-green-400">{formatCLP(Number(p.monto))}</p>
+                        {Number(p.montoInteres ?? 0) > 0 && (
+                          <p className="text-[10px] text-violet-400">{formatCLP(Number(p.montoInteres))} interés</p>
+                        )}
+                      </div>
                       <p className="text-xs text-orange-400 text-right">{formatCLP(Math.max(0, saldoTras))}</p>
                     </div>
                   )

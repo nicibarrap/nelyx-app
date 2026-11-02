@@ -52,7 +52,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
     // Mes anterior — solo los campos necesarios para las comparaciones (liviano, sin traer filas completas)
     db.movimiento.findMany({
       where: { userId: session!.user.id, fecha: { gte: new Date(anioAnt,mesAnt-1,1), lt: new Date(anioAnt,mesAnt,1) } },
-      select: { tipo: true, monto: true, utilidad: true },
+      select: { tipo: true, monto: true, utilidad: true, montoNoOperativo: true },
     }),
     // No se filtra por estado:"vencida" directo: ese campo solo se
     // refresca cuando se visita /dashboard/cuentas-cobrar (que corre un
@@ -97,7 +97,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
 
   // ── Comparación vs mes anterior (Financial Engine — misma lógica, sin duplicar) ──
   const ingresosAnt = movimientosMesAnterior.filter(mv => ["VENTA","INGRESO_EXTRA","DEVOLUCION"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
-  const gastosAnt = movimientosMesAnterior.filter(mv => ["GASTO","COSTO_FIJO","RETIRO"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
+  const gastosAnt = movimientosMesAnterior.filter(mv => ["GASTO","COSTO_FIJO","RETIRO"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto)-Number(mv.montoNoOperativo ?? 0), 0)
   const ventasAntCount = movimientosMesAnterior.filter(mv => mv.tipo === "VENTA").length
   const utilidadNetaAnt = ingresosAnt - gastosAnt
   const ventasConSnapshotAnt = movimientosMesAnterior.filter(mv => (mv.tipo === "VENTA" || mv.tipo === "DEVOLUCION") && mv.utilidad != null)
@@ -110,7 +110,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   // Disponible (acumulado histórico) — Hoy
   const hoyMovs = movimientos.filter(mv => new Date(mv.fecha).toDateString() === hoy.toDateString())
   const ventasHoy = hoyMovs.filter(mv => mv.tipo === "VENTA" || mv.tipo === "DEVOLUCION").reduce((a,mv) => a+Number(mv.monto), 0)
-  const gastosHoy = hoyMovs.filter(mv => ["GASTO","COSTO_FIJO"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto), 0)
+  const gastosHoy = hoyMovs.filter(mv => ["GASTO","COSTO_FIJO"].includes(mv.tipo)).reduce((a,mv) => a+Number(mv.monto)-Number(mv.montoNoOperativo ?? 0), 0)
   const cobrosHoy = hoyMovs.filter(mv => mv.tipo === "INGRESO_EXTRA" && mv.categoria === "Cobros").reduce((a,mv) => a+Number(mv.monto), 0)
   const ventasHoyCount = hoyMovs.filter(mv => mv.tipo === "VENTA").length
 
@@ -118,7 +118,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   const gastosPorCat: Record<string, number> = {}
   movimientos.filter(mv => mv.tipo === "GASTO" || mv.tipo === "COSTO_FIJO").forEach(mv => {
     const cat = mv.categoria || "Sin categoría"
-    gastosPorCat[cat] = (gastosPorCat[cat] || 0) + Number(mv.monto)
+    gastosPorCat[cat] = (gastosPorCat[cat] || 0) + Number(mv.monto) - Number(mv.montoNoOperativo ?? 0)
   })
   const topGastos = Object.entries(gastosPorCat).sort((a,b) => b[1]-a[1]).slice(0,5)
 

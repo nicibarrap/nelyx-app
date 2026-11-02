@@ -14,7 +14,7 @@ import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
-import { ETIQUETAS } from "@/lib/utils"
+import { ETIQUETAS, calcularDesglosePago } from "@/lib/utils"
 import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
 
 async function getSession() {
@@ -203,6 +203,10 @@ async function ingresarMovimientoInterno(formData: FormData) {
         costoUnitario: costoUnitarioSnap,
         utilidad: utilidadSnap,
         margen: margenSnap,
+        // Un retiro es plata tuya saliendo del negocio, no un costo
+        // operativo — baja el Disponible (sí es caja real) pero no debería
+        // bajar la Utilidad (ver comentario del campo en el schema).
+        montoNoOperativo: tipo === "RETIRO" ? monto : 0,
         userId: session.user.id,
         realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
       }
@@ -1391,6 +1395,19 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   const descripcion = (formData.get("descripcion") as string) || null
   if (isNaN(montoPago) || montoPago <= 0) throw new Error("Monto inválido")
 
+  // Desglose capital/interés — el formulario manda su propia estimación
+  // (editable, calculada con calcularDesglosePago) para que el usuario
+  // pueda ajustarla al número exacto de su banco; si no viene (otro
+  // llamador, o el campo quedó vacío), se recalcula acá mismo más abajo,
+  // ya con la deuda real en mano. Solo se usa lo que venga del form si
+  // de verdad suma el monto pagado — nunca un desglose que no cuadra.
+  const montoCapitalForm = formData.get("montoCapital") != null ? parseFloat(formData.get("montoCapital") as string) : null
+  const montoInteresForm = formData.get("montoInteres") != null ? parseFloat(formData.get("montoInteres") as string) : null
+  const desgloseValido = montoCapitalForm != null && montoInteresForm != null
+    && !isNaN(montoCapitalForm) && !isNaN(montoInteresForm)
+    && montoCapitalForm >= 0 && montoInteresForm >= 0
+    && Math.round(montoCapitalForm) + Math.round(montoInteresForm) === Math.round(montoPago)
+
   let pagadaCompleta = false
   try {
     pagadaCompleta = await conTransaccionSerializable(async (tx) => {
@@ -1413,14 +1430,21 @@ export async function registrarPago(deudaId: string, formData: FormData) {
       // chequeo en el cliente que comparaba contra el monto ORIGINAL, no
       // contra el saldo real).
       if (montoPago > saldoActual) throw new Error(`El pago supera el saldo pendiente ($${Math.round(saldoActual).toLocaleString("es-CL")})`)
+      const { capital, interes } = desgloseValido
+        ? { capital: Math.round(montoCapitalForm!), interes: Math.round(montoInteresForm!) }
+        : calcularDesglosePago(deuda, montoPago)
       const nuevoMontoPagado = Number(deuda.montoPagado) + montoPago
       const completa = totalReal - nuevoMontoPagado <= 0
-      await tx.pagoDeuda.create({ data: { deudaId, monto: montoPago, fecha, descripcion } })
+      await tx.pagoDeuda.create({ data: { deudaId, monto: montoPago, montoCapital: capital, montoInteres: interes, fecha, descripcion } })
       await tx.deuda.update({ where: { id: deudaId }, data: { montoPagado: nuevoMontoPagado, pagada: completa, cuotasPagadas: { increment: 1 } } })
       await tx.movimiento.create({
         data: {
           tipo: "GASTO",
           monto: montoPago,
+          // El capital devuelve algo que ya era tuyo — no es un gasto del
+          // negocio, aunque sí sea plata real que salió de la caja (ver
+          // comentario del campo en el schema).
+          montoNoOperativo: capital,
           fecha,
           descripcion: `Pago deuda: ${deuda.acreedor}${descripcion ? ` - ${descripcion}` : ""}`,
           categoria: "Otros",
