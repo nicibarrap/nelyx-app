@@ -8,8 +8,8 @@ const MODULO_RELACIONADO: Record<string, { label: string; href: string }> = {
   "Ingresos": { label: "Movimientos", href: "/dashboard/movimientos" },
   "Gastos": { label: "Movimientos", href: "/dashboard/movimientos" },
   "Costos Fijos": { label: "Costos fijos", href: "/dashboard/costos-fijos" },
+  "Utilidad Bruta": { label: "Resumen", href: "/dashboard/resumen" },
   "Utilidad Neta": { label: "Resumen", href: "/dashboard/resumen" },
-  "Flujo de Caja": { label: "Resumen", href: "/dashboard/resumen" },
   "Margen de Ganancia": { label: "Reportes", href: "/dashboard/reportes" },
   "Punto de Equilibrio": { label: "Costos fijos", href: "/dashboard/costos-fijos" },
   "Inventario": { label: "Productos", href: "/dashboard/productos" },
@@ -17,7 +17,7 @@ const MODULO_RELACIONADO: Record<string, { label: string; href: string }> = {
   "Retiro": { label: "Movimientos", href: "/dashboard/movimientos" },
   "Ingreso Extra": { label: "Movimientos", href: "/dashboard/movimientos" },
   "Disponible": { label: "Resumen", href: "/dashboard/resumen" },
-  "Ticket Promedio": { label: "Reportes", href: "/dashboard/reportes" },
+  "Ticket Promedio": { label: "Clientes", href: "/dashboard/clientes" },
   "Código de Barras": { label: "Productos", href: "/dashboard/productos" },
   "Lotes y Fecha de Vencimiento": { label: "Productos", href: "/dashboard/productos" },
   "Cuentas por Cobrar": { label: "Cuentas por cobrar", href: "/dashboard/cuentas-cobrar" },
@@ -40,12 +40,30 @@ function agruparPorCategoria(conceptos: readonly Concepto[]) {
 
 const ETIQUETA_SECCION = "text-xs font-bold uppercase tracking-wider mb-1.5"
 const TEXTO_CUERPO = "text-sm text-[var(--c-text2)] leading-relaxed"
+// Más claro que TEXTO_CUERPO — para las dos secciones que un dueño sin
+// formación contable necesita que salten a la vista primero: el ejemplo
+// con números reales, y el error común a evitar.
+const TEXTO_CUERPO_DESTACADO = "text-sm text-[var(--c-text)] leading-relaxed"
 
-function Seccion({ label, icon, color, bg, border, children, mono = false }: { label: string; icon: string; color: string; bg: string; border: string; children: React.ReactNode; mono?: boolean }) {
+// Resalta montos ($1.000.000) y porcentajes (40%, 16,67%) dentro de un
+// ejemplo — son el dato que un dueño de local escanea primero, antes de
+// leer la oración completa.
+function resaltarMontos(texto: string) {
+  const partes = texto.split(/(\$[\d.,]+|\d+(?:,\d+)?%)/g)
+  return partes.map((parte, i) =>
+    /^(\$[\d.,]+|\d+(?:,\d+)?%)$/.test(parte)
+      ? <strong key={i} className="font-bold text-[var(--c-text)] tabular-nums">{parte}</strong>
+      : parte
+  )
+}
+
+function Seccion({ label, icon, color, bg, border, children, mono = false, destacado = false, resaltarNumeros = false }: { label: string; icon: string; color: string; bg: string; border: string; children: React.ReactNode; mono?: boolean; destacado?: boolean; resaltarNumeros?: boolean }) {
   return (
     <div className={`${bg} border ${border} rounded-xl p-3.5`}>
       <p className={`${ETIQUETA_SECCION} ${color}`}>{icon} {label}</p>
-      <p className={`${TEXTO_CUERPO} ${mono ? "font-mono" : ""}`}>{children}</p>
+      <p className={`${destacado ? TEXTO_CUERPO_DESTACADO : TEXTO_CUERPO} ${mono ? "font-mono" : ""}`}>
+        {resaltarNumeros && typeof children === "string" ? resaltarMontos(children) : children}
+      </p>
     </div>
   )
 }
@@ -75,10 +93,10 @@ function PanelDetalle({ c, mostrarHeader = true, anterior, siguiente, onIr }: {
       </div>
 
       <Seccion label="Cómo se calcula" icon="🧮" color="text-violet-400" bg="bg-violet-500/5" border="border-violet-500/15" mono>{c.calculo}</Seccion>
-      <Seccion label="Ejemplo real" icon="📌" color="text-emerald-400" bg="bg-emerald-500/5" border="border-emerald-500/15">{c.ejemplo}</Seccion>
-      <Seccion label="Consejo práctico" icon="💡" color="text-sky-400" bg="bg-sky-500/5" border="border-sky-500/15">{c.consejo}</Seccion>
-      <Seccion label="Error común" icon="⚠️" color="text-red-400" bg="bg-red-500/5" border="border-red-500/15">{c.error}</Seccion>
-      <Seccion label="Impacto en tu negocio" icon="🎯" color="text-violet-400" bg="bg-violet-500/5" border="border-violet-500/15">{c.impacto}</Seccion>
+      <Seccion label="Ejemplo real" icon="📌" color="text-emerald-400" bg="bg-emerald-500/5" border="border-emerald-500/15" destacado resaltarNumeros>{c.ejemplo}</Seccion>
+      <Seccion label="Consejo práctico" icon="💡" color="text-amber-400" bg="bg-amber-500/5" border="border-amber-500/15">{c.consejo}</Seccion>
+      <Seccion label="Error común" icon="⚠️" color="text-red-400" bg="bg-red-500/5" border="border-red-500/15" destacado>{c.error}</Seccion>
+      <Seccion label="Impacto en tu negocio" icon="🎯" color="text-fuchsia-400" bg="bg-fuchsia-500/5" border="border-fuchsia-500/15">{c.impacto}</Seccion>
 
       {MODULO_RELACIONADO[c.titulo] && (
         <a href={MODULO_RELACIONADO[c.titulo].href}
