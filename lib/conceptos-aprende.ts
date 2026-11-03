@@ -223,6 +223,16 @@ export const CONCEPTOS_APRENDE = [
     impacto: "Compromete parte de tus ingresos futuros en pagos de cuotas."
   },
   {
+    emoji: "🧩", titulo: "Capital vs. Interés", categoria: "Deudas y liquidez",
+    def: "Cuando pagas una cuota de una deuda, ese pago en realidad son dos cosas mezcladas: una parte es tu propio dinero que estás devolviendo (capital), y la otra es lo que el banco te cobra por el favor de haberte prestado esa plata (interés). Solo el interés es un gasto real de tu negocio — el capital es simplemente tuyo, volviendo a ti.",
+    calculo: "Interés total del crédito = Total a pagar − Monto original. NELYX reparte ese interés en partes proporcionales entre cada cuota, así cada pago arrastra su parte justa. El número sugerido se puede editar a mano si tu banco te muestra un desglose distinto.",
+    ejemplo: "Pides prestados $100.000 y tu banco te dice que en total vas a devolver $120.000, en 5 cuotas de $20.000. Esos $20.000 de diferencia ($120.000 − $100.000) son el interés de todo el crédito. Al pagar la primera cuota de $20.000, NELYX sugiere: $3.333 de interés y $16.667 de capital.",
+    cuando: "Cada vez que registras un pago en una deuda que tiene 'Total a pagar' cargado (mayor al monto original) — en el módulo Deudas.",
+    consejo: "No necesitas calcular nada a mano: NELYX te sugiere el desglose solo. Cámbialo únicamente si tu banco te muestra un número distinto en su app o estado de cuenta.",
+    error: "Pensar que pagar una cuota completa te hace 'perder' esa plata como gasto del negocio. Tu Disponible (caja) sí baja el pago completo — pero tu Utilidad real solo baja por el interés.",
+    impacto: "Hace que tu Utilidad Neta sea más real: pagar deudas no te hace parecer menos rentable de lo que de verdad eres. El Disponible sigue mostrando toda la plata que sale de la caja, sin cambios."
+  },
+  {
     emoji: "🕐", titulo: "Liquidez Proyectada", categoria: "Deudas y liquidez",
     def: "Cuántos días te alcanza la plata que tienes disponible ahora mismo, si sigues gastando al mismo ritmo que llevas este mes.",
     calculo: "Liquidez (días) = Disponible ÷ (Gastos de este mes ÷ días transcurridos del mes).",

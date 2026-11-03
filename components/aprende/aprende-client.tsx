@@ -14,6 +14,7 @@ const MODULO_RELACIONADO: Record<string, { label: string; href: string }> = {
   "Punto de Equilibrio": { label: "Costos fijos", href: "/dashboard/costos-fijos" },
   "Inventario": { label: "Productos", href: "/dashboard/productos" },
   "Deudas": { label: "Deudas", href: "/dashboard/deudas" },
+  "Capital vs. Interés": { label: "Deudas", href: "/dashboard/deudas" },
   "Retiro": { label: "Movimientos", href: "/dashboard/movimientos" },
   "Ingreso Extra": { label: "Movimientos", href: "/dashboard/movimientos" },
   "Disponible": { label: "Resumen", href: "/dashboard/resumen" },
