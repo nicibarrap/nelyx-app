@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { notificar } from "@/lib/notificaciones"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
-import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
+import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { sincronizarSuscripciones } from "@/lib/suscripciones"
 import * as Sentry from "@sentry/nextjs"
 
@@ -108,7 +108,7 @@ async function ejecutarCron() {
     const mesActual = ahora.getMonth() + 1, anioActual = ahora.getFullYear()
     // A nivel de día, no solo de mes/año — un costo que ya terminó antes de
     // su día de cobro dentro del mismo mes no debe seguir avisando.
-    if (!esAplicableEnMes(cf.fechaInicio, cf.fechaTermino, mesActual, anioActual)) return false
+    if (!esAplicableEnMes(cf.fechaInicio, cf.fechaTermino, mesActual, anioActual, cf.frecuencia as FrecuenciaCosto)) return false
     const diaVence = diaOcurrenciaEnMes(cf.fechaInicio, mesActual, anioActual)
     const fechaVence = new Date(anioActual, mesActual - 1, diaVence)
     const diff = diasEntreChile(ahora, fechaVence)

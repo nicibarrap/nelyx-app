@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { generarCostosDelMes } from "@/app/actions/acciones"
-import { esAplicableEnMes } from "@/lib/costos-fijos"
+import { esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { calcularMetricas, calcularEstadoDeuda, prepararGrafico, calcularVariacionPct, formatCLP } from "@/lib/utils"
 import { hoyEnChile } from "@/lib/timezone"
 import { getColorCategoria } from "@/lib/categorias"
@@ -47,7 +47,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
       db.movimiento.aggregate({ where: { userId: session!.user.id, tipo: { in: ["VENTA","INGRESO_EXTRA","DEVOLUCION"] } }, _sum: { monto: true } }),
       db.movimiento.aggregate({ where: { userId: session!.user.id, tipo: { in: ["GASTO","COSTO_FIJO","RETIRO"] } }, _sum: { monto: true } })
     ]),
-    db.costoFijoRecurrente.findMany({ where: { userId: session!.user.id, estado: 'activo' }, select: { id: true, nombre: true, monto: true, fechaInicio: true, fechaTermino: true } }),
+    db.costoFijoRecurrente.findMany({ where: { userId: session!.user.id, estado: 'activo' }, select: { id: true, nombre: true, monto: true, fechaInicio: true, fechaTermino: true, frecuencia: true } }),
     db.cuentaPorCobrar.aggregate({ where: { userId: session!.user.id, estado: { in: ["pendiente","parcial","vencida"] } }, _sum: { saldoPendiente: true }, _count: true }),
     // Mes anterior — solo los campos necesarios para las comparaciones (liviano, sin traer filas completas)
     db.movimiento.findMany({
@@ -75,7 +75,7 @@ export default async function ResumenPage(props: { searchParams: Promise<{ mes?:
   // día de cobro 20 seguía inflando "Costos fijos" (y por lo tanto la
   // Utilidad neta) en septiembre completo, semanas después de haber
   // terminado en realidad.
-  const costosFijosAplicables = costosFijosRecurrentes.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio))
+  const costosFijosAplicables = costosFijosRecurrentes.filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio, c.frecuencia as FrecuenciaCosto))
   const totalCostosFijos = costosFijosAplicables.reduce((a, c) => a + Number(c.monto), 0)
 
   // Próximo costo fijo a generarse este mes — para que el KPI no solo diga

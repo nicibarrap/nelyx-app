@@ -11,7 +11,7 @@ import { calcularConsumoFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
 import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
 import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
-import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
+import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
 import { ETIQUETAS, calcularDesglosePago } from "@/lib/utils"
@@ -1587,6 +1587,14 @@ export async function crearCostoUnico(formData: FormData) {
   revalidatePath("/dashboard/movimientos")
 }
 
+const FRECUENCIAS_VALIDAS: FrecuenciaCosto[] = ["mensual", "trimestral", "anual"]
+
+function leerFrecuencia(formData: FormData): FrecuenciaCosto {
+  const raw = (formData.get("frecuencia") as string)?.trim()
+  if (raw && (FRECUENCIAS_VALIDAS as string[]).includes(raw)) return raw as FrecuenciaCosto
+  return "mensual"
+}
+
 export async function crearCostoRecurrente(formData: FormData) {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
@@ -1599,6 +1607,7 @@ export async function crearCostoRecurrente(formData: FormData) {
   const fechaInicio = new Date(fechaInicioStr)
   const fechaTermino = fechaTerminoStr ? new Date(fechaTerminoStr) : null
   if (fechaTermino && fechaTermino < fechaInicio) throw new Error("La fecha de término no puede ser antes de la fecha de inicio")
+  const frecuencia = leerFrecuencia(formData)
 
   await db.costoFijoRecurrente.create({
     data: {
@@ -1608,6 +1617,7 @@ export async function crearCostoRecurrente(formData: FormData) {
       descripcion: (formData.get("descripcion") as string)?.trim() || null,
       fechaInicio,
       fechaTermino,
+      frecuencia,
       estado: "activo",
       userId: session.user.id,
     }
@@ -1628,11 +1638,12 @@ export async function editarCostoRecurrente(id: string, formData: FormData) {
   const fechaInicio = new Date(fechaInicioStr)
   const fechaTermino = fechaTerminoStr ? new Date(fechaTerminoStr) : null
   if (fechaTermino && fechaTermino < fechaInicio) throw new Error("La fecha de término no puede ser antes de la fecha de inicio")
+  const frecuencia = leerFrecuencia(formData)
 
   // No toca generaciones ni movimientos ya creados — si cambia el día del
-  // mes (vía fechaInicio) o el monto, eso solo afecta a los meses que
-  // todavía no se generan. Lo ya generado/pagado este mes u otros meses
-  // pasados queda tal cual quedó registrado en su momento.
+  // mes (vía fechaInicio), la frecuencia o el monto, eso solo afecta a los
+  // meses que todavía no se generan. Lo ya generado/pagado este mes u otros
+  // meses pasados queda tal cual quedó registrado en su momento.
   const { count } = await db.costoFijoRecurrente.updateMany({
     where: { id, userId: session.user.id },
     data: {
@@ -1642,6 +1653,7 @@ export async function editarCostoRecurrente(id: string, formData: FormData) {
       descripcion: (formData.get("descripcion") as string)?.trim() || null,
       fechaInicio,
       fechaTermino,
+      frecuencia,
     }
   })
   if (count === 0) throw new Error("Costo fijo no encontrado")
@@ -1693,7 +1705,7 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
 
     // Fuera de rango (antes del inicio, o después del término) — a nivel
     // de día, no solo de mes/año.
-    if (!esAplicableEnMes(costo.fechaInicio, costo.fechaTermino, mes, anio)) continue
+    if (!esAplicableEnMes(costo.fechaInicio, costo.fechaTermino, mes, anio, costo.frecuencia as FrecuenciaCosto)) continue
 
     // El día del mes en que se repite es siempre el mismo que fechaInicio —
     // ajustado si el mes es más corto (ej. inicio el 31, en febrero cae el 28).
