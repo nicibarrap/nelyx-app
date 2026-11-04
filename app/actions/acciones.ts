@@ -1616,6 +1616,39 @@ export async function crearCostoRecurrente(formData: FormData) {
   revalidatePath("/dashboard/resumen")
 }
 
+export async function editarCostoRecurrente(id: string, formData: FormData) {
+  const session = await getSessionEscritura("costos-fijos")
+  const nombre = (formData.get("nombre") as string)?.trim()
+  if (!nombre) throw new Error("Nombre requerido")
+  const monto = parseFloat(formData.get("monto") as string)
+  if (!monto || monto <= 0) throw new Error("Monto inválido")
+  const fechaInicioStr = formData.get("fechaInicio") as string
+  if (!fechaInicioStr) throw new Error("La fecha de inicio es obligatoria")
+  const fechaTerminoStr = formData.get("fechaTermino") as string
+  const fechaInicio = new Date(fechaInicioStr)
+  const fechaTermino = fechaTerminoStr ? new Date(fechaTerminoStr) : null
+  if (fechaTermino && fechaTermino < fechaInicio) throw new Error("La fecha de término no puede ser antes de la fecha de inicio")
+
+  // No toca generaciones ni movimientos ya creados — si cambia el día del
+  // mes (vía fechaInicio) o el monto, eso solo afecta a los meses que
+  // todavía no se generan. Lo ya generado/pagado este mes u otros meses
+  // pasados queda tal cual quedó registrado en su momento.
+  const { count } = await db.costoFijoRecurrente.updateMany({
+    where: { id, userId: session.user.id },
+    data: {
+      nombre,
+      monto,
+      categoria: (formData.get("categoria") as string)?.trim() || null,
+      descripcion: (formData.get("descripcion") as string)?.trim() || null,
+      fechaInicio,
+      fechaTermino,
+    }
+  })
+  if (count === 0) throw new Error("Costo fijo no encontrado")
+  revalidatePath("/dashboard/costos-fijos")
+  revalidatePath("/dashboard/resumen")
+}
+
 export async function actualizarEstadoCosto(id: string, estado: "activo" | "pausado" | "finalizado") {
   const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.updateMany({

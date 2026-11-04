@@ -77,10 +77,18 @@ export default async function CostosFijosPage() {
     }
   })
 
-  // Total mensual: solo costos activos Y aplicables este mes (corrige el bug
-  // donde un costo programado para el futuro inflaba el total inmediatamente)
-  const activosAplicables = costosData.filter(c => c.estado === "activo" && c.estadoDerivado !== "programado")
-  const totalMes = activosAplicables.reduce((a, c) => a + c.monto, 0)
+  // Total mensual: costos activos y aplicables este mes — mismo criterio
+  // (esAplicableEnMes) que usa Resumen para su propia tarjeta "Costos
+  // Fijos", para que ambos números siempre coincidan. Antes este total
+  // excluía además cualquier costo cuyo día todavía no llegara ese mes
+  // (filtrando por estadoDerivado !== "programado", que mezcla dos cosas
+  // distintas: "no aplica este mes" y "aplica pero su día no ha llegado")
+  // — eso lo dejaba en $0 los primeros días del mes aunque el costo sí
+  // aplicara, contradiciendo su propio tooltip ("Suma de los costos
+  // activos que aplican este mes") y mostrando un número distinto al de
+  // Resumen para el mismo mes.
+  const activosAplicables = costos.filter(c => c.estado === "activo" && esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio))
+  const totalMes = activosAplicables.reduce((a, c) => a + Number(c.monto), 0)
   const ingresosActuales = Number(movsMes._sum.monto ?? 0)
   const gastosVariables = Number(gastosVariablesMes._sum.monto ?? 0)
   // Cobertura financiera real: lo que queda de los ingresos después de pagar
@@ -140,6 +148,7 @@ export default async function CostosFijosPage() {
     <CostosFijosClient
       costosData={costosData}
       totalMes={totalMes}
+      activosAplicablesCount={activosAplicables.length}
       ingresosActuales={ingresosActuales}
       gastosVariables={gastosVariables}
       excedenteOperativo={excedenteOperativo}

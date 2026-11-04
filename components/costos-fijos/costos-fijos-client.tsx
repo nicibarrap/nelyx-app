@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { crearCostoRecurrente, crearCostoUnico, actualizarEstadoCosto, eliminarCostoRecurrente, marcarCostoPagado, crearCategoriaPersonalizada } from "@/app/actions/acciones"
+import { crearCostoRecurrente, crearCostoUnico, editarCostoRecurrente, actualizarEstadoCosto, eliminarCostoRecurrente, marcarCostoPagado, crearCategoriaPersonalizada } from "@/app/actions/acciones"
 import { formatCLP, formatFechaCorta } from "@/lib/utils"
 import { getColorCategoria } from "@/lib/categorias"
 import { CampoFecha } from "@/components/shared/campo-fecha"
@@ -30,6 +30,7 @@ type MesProyectado = { mes: number; anio: number; total: number }
 interface Props {
   costosData: Costo[]
   totalMes: number
+  activosAplicablesCount: number
   ingresosActuales: number
   gastosVariables: number
   excedenteOperativo: number
@@ -60,9 +61,14 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
   const [datosBasicos, setDatosBasicos] = useState({ nombre: "", categoria: "", descripcion: "" })
   const [customCats, setCustomCats] = useState<string[]>([])
   const [customCatInput, setCustomCatInput] = useState("")
+  const [busquedaCat, setBusquedaCat] = useState("")
   const [fechaInicio, setFechaInicio] = useState(localToday())
   const [fechaTermino, setFechaTermino] = useState("")
   const todasCategorias = [...CATEGORIAS, ...dbCategorias, ...customCats].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i)
+  // Con muchas categorías propias acumuladas (dbCategorias crece con el
+  // tiempo), la grilla completa se vuelve larga de escanear — filtra por
+  // texto sin perder la categoría ya elegida, aunque no calce la búsqueda.
+  const categoriasVisibles = todasCategorias.filter(c => c.toLowerCase().includes(busquedaCat.trim().toLowerCase()) || c === datosBasicos.categoria)
 
   function agregarCategoria() {
     const cat = customCatInput.trim()
@@ -163,8 +169,12 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
           </div>
           <div>
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1.5">Categoría</label>
-            <div className="grid grid-cols-3 gap-2 mb-2">
-              {todasCategorias.map(c => {
+            {todasCategorias.length > 8 && (
+              <input value={busquedaCat} onChange={e => setBusquedaCat(e.target.value)} placeholder="🔍 Buscar categoría..."
+                className={`${inp} h-8 text-xs mb-2`} />
+            )}
+            <div className="grid grid-cols-3 gap-2 mb-2 max-h-44 overflow-y-auto">
+              {categoriasVisibles.length > 0 ? categoriasVisibles.map(c => {
                 const color = getColorCategoria(c)
                 const activa = datosBasicos.categoria === c
                 return (
@@ -174,7 +184,9 @@ function FormCosto({ onSuccess, dbCategorias = [] }: { onSuccess: () => void; db
                     {c}
                   </button>
                 )
-              })}
+              }) : (
+                <p className="col-span-3 text-[11px] text-[var(--c-text4)] py-1">Sin categorías que calcen con "{busquedaCat}" — créala abajo.</p>
+              )}
             </div>
             <div className="flex gap-2">
               <input value={customCatInput} onChange={e => setCustomCatInput(e.target.value)} placeholder="Nueva categoría..."
@@ -320,10 +332,96 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
   )
 }
 
-export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gastosVariables, excedenteOperativo, resultadoCobertura, mes, anio, conteoEstados, proximosCostos, costosUnicosEsteMes, proyeccionMeses, dbCategorias = [] }: Props) {
+function FormEditarCosto({ costo, dbCategorias, onClose, onSuccess }: { costo: Costo; dbCategorias: string[]; onClose: () => void; onSuccess: () => void }) {
+  const [isPending, start] = useTransition()
+  const [nombre, setNombre] = useState(costo.nombre)
+  const [categoria, setCategoria] = useState(costo.categoria ?? "")
+  const [montoDisplay, setMontoDisplay] = useState(costo.monto.toLocaleString("es-CL"))
+  const [descripcion, setDescripcion] = useState(costo.descripcion ?? "")
+  const [fechaInicio, setFechaInicio] = useState(costo.fechaInicio.slice(0, 10))
+  const [fechaTermino, setFechaTermino] = useState(costo.fechaTermino ? costo.fechaTermino.slice(0, 10) : "")
+  const todasCategorias = [...CATEGORIAS, ...dbCategorias].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i)
+  const datalistId = `cats-editar-${costo.id}`
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData()
+    fd.set("nombre", nombre)
+    fd.set("categoria", categoria)
+    fd.set("descripcion", descripcion)
+    fd.set("monto", montoDisplay.replace(/\./g, ""))
+    fd.set("fechaInicio", fechaInicio)
+    if (fechaTermino) fd.set("fechaTermino", fechaTermino)
+    start(async () => {
+      try {
+        await editarCostoRecurrente(costo.id, fd)
+        toast.success("✅ Costo fijo actualizado")
+        onSuccess()
+      } catch (err: any) { toast.error(err?.message ?? "Error") }
+    })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-3 p-3 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl space-y-3">
+      <p className="text-xs font-semibold text-[var(--c-text2)]">Editar "{costo.nombre}"</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-[var(--c-text3)] block mb-1">Nombre</label>
+          <input required value={nombre} onChange={e => setNombre(e.target.value)} className={`${inp} h-9 text-xs`} />
+        </div>
+        <div>
+          <label className="text-[10px] text-[var(--c-text3)] block mb-1">Categoría</label>
+          <input list={datalistId} value={categoria} onChange={e => setCategoria(e.target.value)} placeholder="Buscar o escribir..." className={`${inp} h-9 text-xs`} />
+          <datalist id={datalistId}>
+            {todasCategorias.map(c => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-[var(--c-text3)] block mb-1">Monto ($)</label>
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-xs">$</span>
+            <input type="text" inputMode="numeric" required value={montoDisplay}
+              onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); setMontoDisplay(v ? Number(v).toLocaleString("es-CL") : "") }}
+              className={`${inp} h-9 pl-6 text-xs`} />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] text-[var(--c-text3)] font-semibold inline-flex items-center gap-1 mb-1">
+            Se repite el día
+            <InfoTooltip tip="El día de esta fecha pasa a ser el nuevo día de repetición hacia adelante. No cambia lo que ya se generó en meses anteriores." />
+          </label>
+          <CampoFecha required value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className={`${inp} h-9 text-xs`} />
+        </div>
+      </div>
+      <div>
+        <label className="text-[10px] text-[var(--c-text3)] block mb-1">Fecha de término (opcional)</label>
+        <CampoFecha value={fechaTermino} min={fechaInicio} onChange={e => setFechaTermino(e.target.value)} className={`${inp} h-9 text-xs`} />
+      </div>
+      <div>
+        <label className="text-[10px] text-[var(--c-text3)] block mb-1">Descripción (opcional)</label>
+        <input value={descripcion} onChange={e => setDescripcion(e.target.value)} className={`${inp} h-9 text-xs`} />
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={onClose} disabled={isPending}
+          className="flex-1 h-9 border border-[var(--c-border)] text-[var(--c-text3)] text-xs font-semibold rounded-lg hover:bg-[var(--c-card)] transition-all disabled:opacity-50">
+          Cancelar
+        </button>
+        <button type="submit" disabled={isPending}
+          className="flex-1 h-9 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all">
+          {isPending ? "Guardando..." : "✓ Guardar cambios"}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export function CostosFijosClient({ costosData, totalMes, activosAplicablesCount, ingresosActuales, gastosVariables, excedenteOperativo, resultadoCobertura, mes, anio, conteoEstados, proximosCostos, costosUnicosEsteMes, proyeccionMeses, dbCategorias = [] }: Props) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [pagandoId, setPagandoId] = useState<string | null>(null)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
   const [eliminando, setEliminando] = useState<{ id: string; nombre: string } | null>(null)
   const [isPending, start] = useTransition()
   const cubierto = resultadoCobertura >= 0
@@ -375,7 +473,7 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
             <InfoTooltip tip="Suma de los costos activos que aplican este mes. Los costos programados para meses futuros no se incluyen aquí." className="flex-shrink-0" />
           </p>
           <p className="text-xl font-bold text-orange-400">{formatCLP(totalMes)}</p>
-          <p className="text-[11px] text-[var(--c-text3)] mt-1">{activos.length - conteoEstados.programado} activos este mes</p>
+          <p className="text-[11px] text-[var(--c-text3)] mt-1">{activosAplicablesCount} activo{activosAplicablesCount === 1 ? "" : "s"} este mes</p>
         </div>
         <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-4 card-hover">
           <p className="text-[10px] text-[var(--c-text3)] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5 min-w-0">
@@ -564,9 +662,11 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
                       <p className="text-sm font-bold text-orange-400">{formatCLP(c.monto)} <span className="text-[10px] text-[var(--c-text4)] font-normal">/ mes</span></p>
                       <div className="flex gap-1.5">
                         {c.estadoDerivado === "generado" && (
-                          <button onClick={() => setPagandoId(pagandoId === c.id ? null : c.id)} disabled={isPending}
+                          <button onClick={() => { setPagandoId(pagandoId === c.id ? null : c.id); setEditandoId(null) }} disabled={isPending}
                             className="text-[10px] px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/20 transition-all">💰 Marcar pagado</button>
                         )}
+                        <button onClick={() => { setEditandoId(editandoId === c.id ? null : c.id); setPagandoId(null) }} disabled={isPending}
+                          className="text-[10px] px-2.5 py-1 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text3)] rounded-lg hover:text-sky-400 transition-all">✏️ Editar</button>
                         {c.estado === "activo"
                           ? <button onClick={() => handleEstado(c.id, "pausado")} disabled={isPending} className="text-[10px] px-2.5 py-1 bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text3)] rounded-lg hover:text-[var(--c-warning)] transition-all">Pausar</button>
                           : c.estado === "pausado"
@@ -578,6 +678,9 @@ export function CostosFijosClient({ costosData, totalMes, ingresosActuales, gast
                     </div>
                     {pagandoId === c.id && (
                       <FormMarcarPagado costo={c} onClose={() => setPagandoId(null)} onSuccess={() => { setPagandoId(null); router.refresh() }} />
+                    )}
+                    {editandoId === c.id && (
+                      <FormEditarCosto costo={c} dbCategorias={dbCategorias} onClose={() => setEditandoId(null)} onSuccess={() => { setEditandoId(null); router.refresh() }} />
                     )}
                   </div>
                 </div>

@@ -88,6 +88,18 @@ no una que garantice que el módulo queda perfecto. Ver la sección final
       anterior (Utilidad y Disponible desalineados) — ver `calcularMetricas`,
       `prepararGrafico`/`prepararGraficoAnual` y `registrarPago`/
       `ingresarMovimiento` en `app/actions/acciones.ts` para el patrón.
+- [ ] Si un mismo total "del mes en curso" se muestra en más de una
+      pantalla (ej. "Costos Fijos"), confirmar que todas usan el mismo
+      criterio para decidir qué cuenta — no solo la misma fórmula de suma,
+      sino el mismo filtro. Un filtro adicional agregado en un solo lugar
+      (ej. "solo cuento lo que ya venció este mes") puede sonar como una
+      mejora ahí, pero si otra pantalla sigue sumando "todo lo que aplica
+      este mes" sin esa restricción, el mismo número queda distinto en cada
+      pantalla sin que el código tenga ningún bug de fórmula — bug real en
+      Costos Fijos: `/dashboard/costos-fijos` excluía del "Total mensual"
+      cualquier costo cuyo día todavía no hubiera llegado ese mes, mientras
+      que `/dashboard/resumen` sumaba todos los costos aplicables al mes sin
+      esa exclusión — mismo mes, mismo dato, dos números distintos.
 
 ## 5. Caché / datos derivados que pueden quedar obsoletos
 
