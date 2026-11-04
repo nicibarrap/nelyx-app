@@ -6,6 +6,10 @@ interface PanelLateralProps {
   abierto: boolean
   onClose: () => void
   children: React.ReactNode
+  /** Clases extra para el contenedor más externo (fixed inset-0) — por
+   * ejemplo "lg:hidden" cuando este panel es solo la variante mobile de
+   * una vista que en desktop ya se muestra inline en el propio layout. */
+  className?: string
 }
 
 // Ficha de detalle que se desliza desde la derecha y queda fija en el
@@ -23,7 +27,7 @@ interface PanelLateralProps {
 // dentro de cualquier ancestro con transform si no se saca del árbol
 // normal. montado evita el mismatch de SSR (document no existe en el
 // servidor).
-export function PanelLateral({ abierto, onClose, children }: PanelLateralProps) {
+export function PanelLateral({ abierto, onClose, children, className = "" }: PanelLateralProps) {
   const [montado, setMontado] = useState(false)
   useEffect(() => { setMontado(true) }, [])
 
@@ -46,7 +50,7 @@ export function PanelLateral({ abierto, onClose, children }: PanelLateralProps) 
     // panel (confirmar eliminar producto, z-[70]; aviso de cambio de
     // costo, z-[80]; advertencia de pago en Deudas, z-[200]) — todos
     // deben quedar por encima del panel mismo, nunca tapados por él.
-    <div className="fixed inset-0 z-[60]">
+    <div className={`fixed inset-0 z-[60] ${className}`}>
       <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={onClose} />
       <div className="absolute inset-y-0 right-0 w-full sm:w-[460px] max-w-full bg-[var(--c-card)] sm:border-l border-[var(--c-border)] shadow-2xl overflow-y-auto animate-panel-in">
         {children}
