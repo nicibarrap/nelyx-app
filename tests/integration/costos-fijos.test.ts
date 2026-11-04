@@ -105,4 +105,30 @@ describe("editarCostoRecurrente", () => {
     expect(generacionSinTocar.anio).toBe(2026)
     expect(generacionSinTocar.pagado).toBe(false)
   })
+
+  it("crea con frecuencia mensual por defecto, y permite cambiarla a trimestral/anual al editar", async () => {
+    await crearUsuario()
+    await crearCostoRecurrente(formData({
+      nombre: "Seguro", monto: "80000", fechaInicio: new Date(2026, 0, 1).toISOString(),
+    }))
+    const costo = await db.costoFijoRecurrente.findFirstOrThrow({ where: { userId: sesionActual!.user.id } })
+    expect(costo.frecuencia).toBe("mensual")
+
+    await editarCostoRecurrente(costo.id, formData({
+      nombre: "Seguro", monto: "80000", frecuencia: "anual",
+      fechaInicio: new Date(2026, 0, 1).toISOString(),
+    }))
+    const actualizado = await db.costoFijoRecurrente.findUniqueOrThrow({ where: { id: costo.id } })
+    expect(actualizado.frecuencia).toBe("anual")
+  })
+
+  it("ignora un valor de frecuencia inválido y usa mensual", async () => {
+    await crearUsuario()
+    await crearCostoRecurrente(formData({
+      nombre: "Patente", monto: "30000", frecuencia: "semanal",
+      fechaInicio: new Date(2026, 0, 1).toISOString(),
+    }))
+    const costo = await db.costoFijoRecurrente.findFirstOrThrow({ where: { userId: sesionActual!.user.id } })
+    expect(costo.frecuencia).toBe("mensual")
+  })
 })

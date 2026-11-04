@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { calcularEstadoDeuda, formatCLP, formatFechaCorta, ESTADO_CONFIG } from "@/lib/utils"
 import { obtenerLotesPorVencer } from "@/app/actions/kardex-acciones"
-import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
+import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { FilaLotePorVencer } from "@/components/productos/fila-lote-por-vencer"
 import Link from "next/link"
 
@@ -75,7 +75,7 @@ export default async function AlertasPage() {
   // y "se genera mañana" (el día de "mañana" cruza a otro mes y coincidía
   // por casualidad con el día de cobro de este mes).
   const costosConVencimiento = costosFijos
-    .filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual) && c.generaciones.length === 0)
+    .filter(c => esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesActual, anioActual, c.frecuencia as FrecuenciaCosto) && c.generaciones.length === 0)
     .map(c => ({ ...c, diaVence: diaOcurrenciaEnMes(c.fechaInicio, mesActual, anioActual), diffVence: diasEntreChile(hoy, new Date(anioActual, mesActual - 1, diaOcurrenciaEnMes(c.fechaInicio, mesActual, anioActual))) }))
   const costosGeneraMañana = costosConVencimiento.filter(c => c.diffVence === 1)
   const costosPendientesAtrasados = costosConVencimiento.filter(c => c.diffVence <= 0)

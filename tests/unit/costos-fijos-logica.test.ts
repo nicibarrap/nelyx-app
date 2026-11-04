@@ -68,4 +68,45 @@ describe("esAplicableEnMes", () => {
     const termino = new Date(2026, 5, 10)
     expect(esAplicableEnMes(inicio, termino, 7, 2026)).toBe(false)
   })
+
+  it("sin frecuencia explícita, se comporta igual que mensual (compatibilidad con llamadores existentes)", () => {
+    const inicio = new Date(2026, 2, 1) // marzo
+    expect(esAplicableEnMes(inicio, null, 4, 2026)).toBe(true)
+    expect(esAplicableEnMes(inicio, null, 5, 2026)).toBe(true)
+  })
+
+  it("trimestral: solo aplica cada 3 meses desde el mes de inicio", () => {
+    const inicio = new Date(2026, 0, 10) // enero
+    expect(esAplicableEnMes(inicio, null, 1, 2026, "trimestral")).toBe(true)  // enero (mes 0)
+    expect(esAplicableEnMes(inicio, null, 2, 2026, "trimestral")).toBe(false) // febrero (mes 1)
+    expect(esAplicableEnMes(inicio, null, 3, 2026, "trimestral")).toBe(false) // marzo (mes 2)
+    expect(esAplicableEnMes(inicio, null, 4, 2026, "trimestral")).toBe(true)  // abril (mes 3)
+    expect(esAplicableEnMes(inicio, null, 7, 2026, "trimestral")).toBe(true)  // julio (mes 6)
+  })
+
+  it("trimestral: no aplica antes del mes de inicio ni cruza el término", () => {
+    const inicio = new Date(2026, 3, 10) // abril
+    const termino = new Date(2026, 9, 15) // termina en octubre
+    expect(esAplicableEnMes(inicio, termino, 1, 2026, "trimestral")).toBe(false) // enero, antes
+    expect(esAplicableEnMes(inicio, termino, 4, 2026, "trimestral")).toBe(true)  // abril, propio mes
+    expect(esAplicableEnMes(inicio, termino, 7, 2026, "trimestral")).toBe(true)  // julio, siguiente ciclo
+    expect(esAplicableEnMes(inicio, termino, 10, 2026, "trimestral")).toBe(true) // octubre, último ciclo antes del término
+  })
+
+  it("anual: solo aplica el mismo mes calendario que el de inicio, cada año", () => {
+    const inicio = new Date(2025, 5, 20) // junio 2025
+    expect(esAplicableEnMes(inicio, null, 6, 2025, "anual")).toBe(true)
+    expect(esAplicableEnMes(inicio, null, 7, 2025, "anual")).toBe(false)
+    expect(esAplicableEnMes(inicio, null, 5, 2026, "anual")).toBe(false)
+    expect(esAplicableEnMes(inicio, null, 6, 2026, "anual")).toBe(true)
+    expect(esAplicableEnMes(inicio, null, 6, 2027, "anual")).toBe(true)
+  })
+
+  it("anual: deja de aplicar en los ciclos posteriores al término", () => {
+    const inicio = new Date(2024, 10, 1) // noviembre 2024
+    const termino = new Date(2026, 10, 1) // termina noviembre 2026
+    expect(esAplicableEnMes(inicio, termino, 11, 2025, "anual")).toBe(true)
+    expect(esAplicableEnMes(inicio, termino, 11, 2026, "anual")).toBe(true)
+    expect(esAplicableEnMes(inicio, termino, 11, 2027, "anual")).toBe(false)
+  })
 })

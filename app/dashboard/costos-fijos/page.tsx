@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { generarCostosDelMes } from "@/app/actions/acciones"
 import { hoyEnChile } from "@/lib/timezone"
-import { diaOcurrenciaEnMes, esAplicableEnMes } from "@/lib/costos-fijos"
+import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { CostosFijosClient } from "@/components/costos-fijos/costos-fijos-client"
 
 export const metadata: Metadata = { title: "Costos Fijos" }
@@ -50,7 +50,7 @@ export default async function CostosFijosPage() {
   function calcularEstado(c: typeof costos[number]): "programado" | "pendiente" | "generado" | "pagado" | "pausado" | "finalizado" {
     if (c.estado === "pausado") return "pausado"
     if (c.estado === "finalizado") return "finalizado"
-    if (!esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio)) return "programado"
+    if (!esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio, c.frecuencia as FrecuenciaCosto)) return "programado"
     const gen = c.generaciones[0]
     if (!gen) {
       const diaDelMes = diaOcurrenciaEnMes(c.fechaInicio, mes, anio)
@@ -68,6 +68,7 @@ export default async function CostosFijosPage() {
       monto: Number(c.monto),
       categoria: c.categoria,
       descripcion: c.descripcion,
+      frecuencia: c.frecuencia as FrecuenciaCosto,
       fechaInicio: c.fechaInicio.toISOString(),
       fechaTermino: c.fechaTermino?.toISOString() ?? null,
       estado: c.estado,
@@ -87,7 +88,7 @@ export default async function CostosFijosPage() {
   // aplicara, contradiciendo su propio tooltip ("Suma de los costos
   // activos que aplican este mes") y mostrando un número distinto al de
   // Resumen para el mismo mes.
-  const activosAplicables = costos.filter(c => c.estado === "activo" && esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio))
+  const activosAplicables = costos.filter(c => c.estado === "activo" && esAplicableEnMes(c.fechaInicio, c.fechaTermino, mes, anio, c.frecuencia as FrecuenciaCosto))
   const totalMes = activosAplicables.reduce((a, c) => a + Number(c.monto), 0)
   const ingresosActuales = Number(movsMes._sum.monto ?? 0)
   const gastosVariables = Number(gastosVariablesMes._sum.monto ?? 0)
@@ -139,7 +140,7 @@ export default async function CostosFijosPage() {
     const mesProy = fechaProy.getMonth() + 1
     const anioProy = fechaProy.getFullYear()
     const total = costos
-      .filter(c => c.estado === "activo" && esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesProy, anioProy))
+      .filter(c => c.estado === "activo" && esAplicableEnMes(c.fechaInicio, c.fechaTermino, mesProy, anioProy, c.frecuencia as FrecuenciaCosto))
       .reduce((a, c) => a + Number(c.monto), 0)
     return { mes: mesProy, anio: anioProy, total }
   })
