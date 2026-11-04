@@ -10,6 +10,7 @@ import { getColorCategoria } from "@/lib/categorias"
 import type { FrecuenciaCosto } from "@/lib/costos-fijos"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { InfoTooltip } from "@/components/shared/kpi-tooltip"
+import { PanelLateral } from "@/components/shared/panel-lateral"
 
 const CATEGORIAS = ["Arriendo","Internet","Agua","Luz","Gas","Software","Teléfono","Transporte","Seguro","Publicidad","Sueldos","Contador","Otros"]
 const FRECUENCIA_LABEL: Record<FrecuenciaCosto, string> = { mensual: "Mensual", trimestral: "Trimestral", anual: "Anual" }
@@ -182,12 +183,11 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/60 flex justify-end" onClick={onClose}>
-      <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()}
-        className="h-full w-full sm:w-[460px] sm:max-w-[92vw] bg-[var(--c-card)] border-l border-[var(--c-border)] flex flex-col animate-fade-up">
+    <PanelLateral abierto onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col min-h-full">
 
         {/* Header */}
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--c-border)] flex-shrink-0">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 bg-[var(--c-card)] border-b border-[var(--c-border)] flex-shrink-0">
           <div>
             <h3 className="text-sm font-bold text-[var(--c-text)]">{mode === "editar" ? "Editar costo fijo" : "Nuevo costo fijo"}</h3>
             <p className="text-[11px] text-[var(--c-text4)] mt-0.5">Todo en una pantalla — sin pasos extra.</p>
@@ -197,7 +197,7 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+        <div className="flex-1 px-5 py-5 space-y-6">
 
           {mode === "crear" && (
             <div className="grid grid-cols-2 gap-3">
@@ -302,14 +302,14 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-[var(--c-border)] flex-shrink-0">
+        <div className="sticky bottom-0 z-10 px-5 py-4 bg-[var(--c-card)] border-t border-[var(--c-border)] flex-shrink-0">
           <button type="submit" disabled={isPending || !nombre || !montoDisplay}
             className="w-full h-11 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-white text-sm font-bold rounded-xl transition-all">
             {isPending ? "Guardando..." : mode === "editar" ? "✓ Guardar cambios" : esRecurrente ? "✓ Guardar costo fijo recurrente" : "✓ Registrar costo único"}
           </button>
         </div>
       </form>
-    </div>
+    </PanelLateral>
   )
 }
 
@@ -362,31 +362,28 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
   )
 }
 
-/** Panel de detalle del costo seleccionado — se monta dos veces (fijo en
- * desktop, dentro de una hoja inferior en mobile) por eso vive como
+/** Panel de detalle del costo seleccionado — se monta dos veces: fijo
+ * (tarjeta propia, sin botón de cerrar) en el layout de desktop, y dentro
+ * de un PanelLateral (mismo componente que usan Productos/Deudas) en
+ * mobile/tablet, pasando `onClose` para que ahí tome la forma "embebida"
+ * (sin su propio fondo/borde — ya los trae el panel — con encabezado
+ * sticky y botón de cerrar, igual que ProductoDetalle). Vive como
  * subcomponente propio con `key={costo.id}` en el llamador, así su estado
  * local ("marcando pago") no se arrastra de un costo al siguiente. */
-function PanelDetalle({ costo, isPending, onAbrirEditar, onEstado, onEliminar, onSuccessAccion }: {
+function PanelDetalle({ costo, isPending, onAbrirEditar, onEstado, onEliminar, onSuccessAccion, onClose }: {
   costo: Costo
   isPending: boolean
   onAbrirEditar: () => void
   onEstado: (id: string, estado: "activo" | "pausado" | "finalizado") => void
   onEliminar: (id: string, nombre: string) => void
   onSuccessAccion: () => void
+  onClose?: () => void
 }) {
   const [pagando, setPagando] = useState(false)
   const cfg = ESTADO_CONFIG[costo.estadoDerivado]
 
-  return (
-    <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
-      <div className="flex items-center gap-3 pb-3.5 mb-3.5 border-b border-[var(--c-border2)]">
-        <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-base flex-shrink-0">🏠</div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-[var(--c-text)] truncate">{costo.nombre}</p>
-          <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.cls}`}>{cfg.emoji} {cfg.label}</span>
-        </div>
-      </div>
-
+  const contenido = (
+    <>
       <p className="text-2xl font-bold text-orange-400">{formatCLP(costo.monto)} <span className="text-[11px] font-normal text-[var(--c-text4)]">/ {FRECUENCIA_LABEL[costo.frecuencia].toLowerCase()}</span></p>
       <p className="text-xs text-[var(--c-text3)] mt-1">
         {costo.categoria ?? "Sin categoría"} · {descripcionFrecuencia(costo)}
@@ -423,6 +420,38 @@ function PanelDetalle({ costo, isPending, onAbrirEditar, onEstado, onEliminar, o
       </div>
 
       {pagando && <FormMarcarPagado costo={costo} onClose={() => setPagando(false)} onSuccess={() => { setPagando(false); onSuccessAccion() }} />}
+    </>
+  )
+
+  if (onClose) {
+    return (
+      <div>
+        <div className="sticky top-0 z-10 bg-[var(--c-card)] flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--c-border)]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-base flex-shrink-0">🏠</div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-[var(--c-text)] truncate">{costo.nombre}</p>
+              <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.cls}`}>{cfg.emoji} {cfg.label}</span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar"
+            className="w-8 h-8 rounded-lg bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text3)] flex-shrink-0">✕</button>
+        </div>
+        <div className="px-5 py-4">{contenido}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
+      <div className="flex items-center gap-3 pb-3.5 mb-3.5 border-b border-[var(--c-border2)]">
+        <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-base flex-shrink-0">🏠</div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-[var(--c-text)] truncate">{costo.nombre}</p>
+          <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.cls}`}>{cfg.emoji} {cfg.label}</span>
+        </div>
+      </div>
+      {contenido}
     </div>
   )
 }
@@ -715,22 +744,18 @@ export function CostosFijosClient({ costosData, totalMes, activosAplicablesCount
         </div>
       )}
 
-      {/* Detalle — hoja inferior en mobile/tablet */}
-      {mobileDetailOpen && selected && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[65] bg-black/60 lg:hidden flex items-end" onClick={() => setMobileDetailOpen(false)}>
-          <div className="bg-[var(--c-bg)] w-full max-h-[88vh] overflow-y-auto rounded-t-3xl p-4" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-end mb-1">
-              <button onClick={() => setMobileDetailOpen(false)} aria-label="Cerrar"
-                className="w-8 h-8 rounded-lg bg-[var(--c-card2)] border border-[var(--c-border)] text-[var(--c-text3)]">✕</button>
-            </div>
-            <PanelDetalle key={selected.id} costo={selected} isPending={isPending}
-              onAbrirEditar={() => { setMobileDetailOpen(false); setDrawer({ mode: "editar", costo: selected }) }}
-              onEstado={handleEstado} onEliminar={(id, nombre) => setEliminando({ id, nombre })}
-              onSuccessAccion={() => router.refresh()} />
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Detalle — panel lateral/pantalla completa en mobile/tablet, mismo
+          componente que usan Productos y Deudas (solo visible bajo lg:,
+          donde el detalle ya no está fijo al lado de la lista). */}
+      <PanelLateral abierto={mobileDetailOpen && !!selected} onClose={() => setMobileDetailOpen(false)} className="lg:hidden">
+        {selected && (
+          <PanelDetalle key={selected.id} costo={selected} isPending={isPending}
+            onAbrirEditar={() => { setMobileDetailOpen(false); setDrawer({ mode: "editar", costo: selected }) }}
+            onEstado={handleEstado} onEliminar={(id, nombre) => setEliminando({ id, nombre })}
+            onSuccessAccion={() => router.refresh()}
+            onClose={() => setMobileDetailOpen(false)} />
+        )}
+      </PanelLateral>
 
       {/* Drawer crear/editar */}
       {drawer && (
