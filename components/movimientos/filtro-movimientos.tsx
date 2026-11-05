@@ -14,6 +14,10 @@ export function FiltroMovimientos() {
   const params = useSearchParams()
   const tipo = params.get("tipo") ?? ""
   const metodoPago = params.get("metodoPago") ?? ""
+  // "recientes" es el default (mismo orden de siempre) — se omite de la URL
+  // para no ensuciarla con el caso normal, solo aparece "?orden=antiguos"
+  // cuando el usuario realmente lo cambia.
+  const orden = params.get("orden") === "antiguos" ? "antiguos" : "recientes"
 
   // Input local para que tipear se sienta instantáneo — el push al router
   // (y por lo tanto la consulta al servidor) se demora 400ms desde la
@@ -60,6 +64,14 @@ export function FiltroMovimientos() {
         className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
         <option value="">Todos los métodos</option>
         {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      {/* Orden por fecha — para llegar directo al día 1 del mes sin tener
+          que paginar hasta el final cuando se quiere ver lo más antiguo. */}
+      <select value={orden} onChange={e => actualizar({ orden: e.target.value === "recientes" ? "" : e.target.value })}
+        title="Ordenar por fecha"
+        className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+        <option value="recientes">↓ Más recientes primero</option>
+        <option value="antiguos">↑ Más antiguos primero</option>
       </select>
       {/* En celular, los chips van en una tira con scroll horizontal en vez
           de envolver en varias filas — con 6 tipos + "Todos" + "Limpiar",

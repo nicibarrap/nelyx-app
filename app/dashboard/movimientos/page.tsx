@@ -14,9 +14,13 @@ export const metadata: Metadata = { title: "Historial — Movimientos" }
 
 const POR_PAGINA = 25
 
-export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string; q?: string; tipo?: string; metodoPago?: string; page?: string }> }) {
+export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string; q?: string; tipo?: string; metodoPago?: string; orden?: string; page?: string }> }) {
   const searchParams = await props.searchParams;
   const session = await auth()
+  // "antiguos" invierte el orden para poder llegar directo al día 1 del
+  // mes (página 1) sin paginar hasta el final — por default sigue siendo
+  // el mismo orden de siempre (más reciente primero).
+  const ordenAsc = searchParams.orden === "antiguos"
   // hoyEnChile(), no new Date() crudo — Vercel corre en UTC, así que de
   // noche en Chile un new Date() ya piensa que es el mes/día siguiente y
   // el historial abría por defecto en el mes que viene, con el mes actual
@@ -42,7 +46,7 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
         movimientoVinculado: { select: { id: true, descripcion: true } },
         movimientoVinculadoDe: { select: { id: true, descripcion: true } },
       },
-      orderBy: [{ fecha: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ fecha: ordenAsc ? "asc" : "desc" }, { createdAt: ordenAsc ? "asc" : "desc" }],
       skip: (pagina - 1) * POR_PAGINA,
       take: POR_PAGINA,
     }),
@@ -85,7 +89,7 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
         <div className="flex-1">
           <FiltroMovimientos />
         </div>
-        <ExportarMovimientosBoton mes={mes} anio={anio} q={searchParams.q} tipo={searchParams.tipo} metodoPago={searchParams.metodoPago} />
+        <ExportarMovimientosBoton mes={mes} anio={anio} q={searchParams.q} tipo={searchParams.tipo} metodoPago={searchParams.metodoPago} orden={searchParams.orden} />
       </div>
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
         <TablaMovimientos movimientos={movimientos} />
