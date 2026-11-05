@@ -17,7 +17,8 @@ type Cliente = {
   id: string; nombre: string; apellido: string | null; empresa: string | null
   telefono: string | null; email: string | null; direccion: string | null; ciudad: string | null
   tipoCliente: string | null; frecuenciaCompraAuto: string | null; metodoPagoAuto: string | null
-  diasPago: number | null; esFrecuente: boolean; esVip: boolean; permiteCredito: boolean
+  diasPago: number | null; esFrecuente: boolean; esVip: boolean
+  esFrecuenteManual: boolean | null; esVipManual: boolean | null; permiteCredito: boolean
   limiteCredito: number | null; cumpleanos: string | null
   activo: boolean; observaciones: string | null; createdAt: string
   totalComprado: number; ultimaActividad: string; diasSinCompra: number
@@ -121,17 +122,32 @@ function FormCliente({ cliente, onClose, onSuccess }: { cliente?: Cliente | null
           </div>
           <div>
             <p className="text-xs font-bold text-[var(--c-text3)] uppercase tracking-wider mb-3">Configuración</p>
-            <div className="grid grid-cols-3 gap-3">
+            {/* Frecuente/VIP ya no se marcan a mano por defecto — se calculan
+                solos según el historial real de compras (ver "Segmento" en
+                la ficha). "Automático" deja que decida ese cálculo; "Sí"/"No"
+                lo fuerza para este cliente puntual, sin importar lo que diga
+                su historial (ej. un cliente nuevo que ya sabes que será VIP). */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
-                { name: "esFrecuente", label: "Cliente frecuente", defaultChecked: cliente?.esFrecuente },
-                { name: "esVip", label: "Cliente VIP ⭐", defaultChecked: cliente?.esVip },
-                { name: "permiteCredito", label: "Permite crédito", defaultChecked: cliente?.permiteCredito },
+                { name: "esFrecuente", label: "Cliente frecuente", valorManual: cliente?.esFrecuenteManual },
+                { name: "esVip", label: "Cliente VIP ⭐", valorManual: cliente?.esVipManual },
               ].map(opt => (
-                <label key={opt.name} className="flex items-center gap-2 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-3 cursor-pointer hover:border-sky-500/30 transition-all">
-                  <input type="checkbox" name={opt.name} defaultChecked={opt.defaultChecked} className="accent-sky-500" />
-                  <span className="text-xs font-medium text-[var(--c-text2)]">{opt.label}</span>
-                </label>
+                <div key={opt.name}>
+                  <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">{opt.label}</label>
+                  <select name={opt.name} defaultValue={opt.valorManual === true ? "si" : opt.valorManual === false ? "no" : "auto"} className={sel}>
+                    <option value="auto">🤖 Automático</option>
+                    <option value="si">Sí, siempre</option>
+                    <option value="no">No, nunca</option>
+                  </select>
+                </div>
               ))}
+              <div>
+                <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Crédito</label>
+                <label className="flex items-center gap-2 bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl h-10 px-3 cursor-pointer hover:border-sky-500/30 transition-all">
+                  <input type="checkbox" name="permiteCredito" defaultChecked={cliente?.permiteCredito} className="accent-sky-500" />
+                  <span className="text-xs font-medium text-[var(--c-text2)]">Permite crédito</span>
+                </label>
+              </div>
             </div>
           </div>
           <div>
@@ -229,8 +245,18 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-[var(--c-text)] truncate max-w-[260px] sm:max-w-none">{cliente.nombre} {cliente.apellido ?? ""}</h2>
-                {cliente.esFrecuente && <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">Frecuente</span>}
-                {cliente.esVip && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-[var(--c-warning)] border border-amber-500/20 font-semibold">⭐ VIP</span>}
+                {cliente.esFrecuente && (
+                  <span title={cliente.esFrecuenteManual !== null ? "Forzado a mano" : "Calculado automáticamente según su historial de compras"}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">
+                    {cliente.esFrecuenteManual === null && "🤖 "}Frecuente
+                  </span>
+                )}
+                {cliente.esVip && (
+                  <span title={cliente.esVipManual !== null ? "Forzado a mano" : "Calculado automáticamente según su historial de compras"}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-[var(--c-warning)] border border-amber-500/20 font-semibold">
+                    ⭐ VIP{cliente.esVipManual === null && " 🤖"}
+                  </span>
+                )}
                 {cliente.deudaPendiente > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold">Con deuda</span>}
                 {(!cliente.activo || cliente.inactivo) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-500/10 text-[var(--c-text4)] border border-[var(--c-border)] font-semibold">{"Inactivo"}</span>}
                 {cliente.segmento !== "regular" && cliente.segmento !== "inactivo" && cliente.segmento !== "nuevo" && (

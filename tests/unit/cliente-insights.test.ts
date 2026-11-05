@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   calcularIntervaloPromedioDias, calcularDebioVolver, calcularSegmento,
-  calcularUmbralValioso, sugerirLimiteCredito,
+  calcularUmbralValioso, sugerirLimiteCredito, resolverEsFrecuente, resolverEsVip,
 } from "@/lib/cliente-insights"
 
 describe("calcularIntervaloPromedioDias", () => {
@@ -66,6 +66,22 @@ describe("calcularUmbralValioso", () => {
     const montos = Array.from({ length: 20 }, (_, i) => (i + 1) * 1000) // 1000..20000
     // top 15% de 20 = 3 clientes → el umbral es el 3er más alto (18000)
     expect(calcularUmbralValioso(montos)).toBe(18000)
+  })
+})
+
+describe("resolverEsFrecuente / resolverEsVip", () => {
+  it("sin override manual (null), decide el segmento automático", () => {
+    expect(resolverEsFrecuente(null, "frecuente")).toBe(true)
+    expect(resolverEsFrecuente(null, "vip")).toBe(false) // "vip" y "frecuente" son excluyentes en el segmento
+    expect(resolverEsVip(null, "vip")).toBe(true)
+    expect(resolverEsVip(null, "frecuente")).toBe(false)
+  })
+
+  it("el override manual manda siempre, sin importar el segmento", () => {
+    expect(resolverEsFrecuente(true, "regular")).toBe(true)
+    expect(resolverEsFrecuente(false, "frecuente")).toBe(false)
+    expect(resolverEsVip(true, "inactivo")).toBe(true)
+    expect(resolverEsVip(false, "vip")).toBe(false)
   })
 })
 

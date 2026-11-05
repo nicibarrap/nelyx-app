@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { ClientesClient } from "@/components/clientes/clientes-client"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
 import { hoyEnChile } from "@/lib/timezone"
-import { calcularIntervaloPromedioDias, calcularDebioVolver, calcularSegmento, calcularUmbralValioso, calcularMetodoPagoHabitual, calcularFrecuenciaLabel } from "@/lib/cliente-insights"
+import { calcularIntervaloPromedioDias, calcularDebioVolver, calcularSegmento, calcularUmbralValioso, calcularMetodoPagoHabitual, calcularFrecuenciaLabel, resolverEsFrecuente, resolverEsVip } from "@/lib/cliente-insights"
 
 export const metadata: Metadata = { title: "Clientes" }
 
@@ -96,8 +96,8 @@ export default async function ClientesPage() {
       frecuenciaCompraAuto,
       metodoPagoAuto,
       diasPago: c.diasPago,
-      esFrecuente: c.esFrecuente,
-      esVip: c.esVip,
+      esFrecuenteManual: c.esFrecuente,
+      esVipManual: c.esVip,
       permiteCredito: c.permiteCredito,
       limiteCredito: c.limiteCredito ? Number(c.limiteCredito) : null,
       cumpleanos: c.cumpleanos ? c.cumpleanos.toISOString() : null,
@@ -133,7 +133,12 @@ export default async function ClientesPage() {
   const clientesConSegmento = clientesData.map(c => {
     const debioVolver = calcularDebioVolver(c)
     const segmento = calcularSegmento({ ...c, esValiosoPorMonto: c.totalComprado >= umbralValioso })
-    return { ...c, debioVolver, segmento }
+    // esFrecuente/esVip "finales": si el dueño nunca forzó un valor a mano
+    // para este cliente (esFrecuenteManual/esVipManual === null), los decide
+    // el segmento automático — si lo forzó, ese manda siempre.
+    const esFrecuente = resolverEsFrecuente(c.esFrecuenteManual, segmento)
+    const esVip = resolverEsVip(c.esVipManual, segmento)
+    return { ...c, debioVolver, segmento, esFrecuente, esVip }
   })
 
   // Métricas globales

@@ -38,7 +38,7 @@ type ItemVenta = {
   ventaPorPesoRapida?: boolean // viene del panel de gramos+precio — precio ya es el total, no editable como cantidad×precio-unitario
 }
 
-interface ClienteOption { id: string; nombre: string; apellido: string | null; telefono: string | null; empresa: string | null; esVip: boolean; permiteCredito: boolean }
+interface ClienteOption { id: string; nombre: string; apellido: string | null; telefono: string | null; empresa: string | null; esVip: boolean | null; permiteCredito: boolean }
 
 // "Débito" y "Crédito" eran dos botones separados, pero esa elección nunca
 // le llegaba a la máquina (Mercado Pago/TUU solo reciben un monto — el tipo
