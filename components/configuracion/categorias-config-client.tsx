@@ -6,7 +6,20 @@ import { getColorCategoria } from "@/lib/categorias"
 
 type Cat = { id: string; nombre: string; tipo: string }
 
+// Orden fijo (no alfabético ni por aparición) — mismo orden en que el
+// dueño piensa el negocio: primero lo que vende, después en qué gasta.
+// Antes el orden de las secciones salía de Object.entries sobre el primer
+// ítem que apareciera alfabéticamente dentro de cada tipo — con suerte
+// coincidía con este orden, pero una categoría de Gasto que empezara con
+// una letra más temprana que todas las de Producto hacía que "Gastos"
+// saltara antes que "Productos" sin ningún motivo real.
+const ORDEN_TIPOS = ["PRODUCTO", "GASTO", "COSTO_FIJO"]
 const LABEL_TIPO: Record<string, string> = { PRODUCTO: "Productos", GASTO: "Gastos", COSTO_FIJO: "Costos fijos" }
+const TIPOS_AGREGABLES: { value: string; label: string; placeholder: string }[] = [
+  { value: "PRODUCTO", label: "Producto", placeholder: "Nueva categoría de producto..." },
+  { value: "GASTO", label: "Gasto", placeholder: "Nueva categoría de gasto..." },
+  { value: "COSTO_FIJO", label: "Costo fijo", placeholder: "Nueva categoría de costo fijo..." },
+]
 
 export function CategoriasConfigClient({ categorias }: { categorias: Cat[] }) {
   const [items, setItems] = useState(categorias)
@@ -15,11 +28,13 @@ export function CategoriasConfigClient({ categorias }: { categorias: Cat[] }) {
   const [editando, setEditando] = useState<string | null>(null)
   const [nombreEdicion, setNombreEdicion] = useState("")
   const [nuevaCategoria, setNuevaCategoria] = useState("")
+  const [tipoNuevo, setTipoNuevo] = useState(TIPOS_AGREGABLES[0].value)
   const [creando, setCreando] = useState(false)
 
-  const grupos = Object.entries(
-    items.reduce((acc, c) => { (acc[c.tipo] ??= []).push(c); return acc }, {} as Record<string, Cat[]>)
-  )
+  const porTipo = items.reduce((acc, c) => { (acc[c.tipo] ??= []).push(c); return acc }, {} as Record<string, Cat[]>)
+  const tiposPresentes = [...ORDEN_TIPOS, ...Object.keys(porTipo).filter(t => !ORDEN_TIPOS.includes(t))]
+  const grupos = tiposPresentes.filter(t => porTipo[t]?.length).map(t => [t, porTipo[t]] as const)
+  const placeholderActivo = TIPOS_AGREGABLES.find(t => t.value === tipoNuevo)?.placeholder ?? "Nueva categoría..."
 
   function handleEliminar(cat: Cat) {
     setEliminando(cat.id)
@@ -61,10 +76,10 @@ export function CategoriasConfigClient({ categorias }: { categorias: Cat[] }) {
     setCreando(true)
     startTransition(async () => {
       try {
-        await crearCategoriaPersonalizada("PRODUCTO", nombre)
-        setItems(prev => prev.some(c => c.tipo === "PRODUCTO" && c.nombre.toLowerCase() === nombre.toLowerCase())
+        await crearCategoriaPersonalizada(tipoNuevo, nombre)
+        setItems(prev => prev.some(c => c.tipo === tipoNuevo && c.nombre.toLowerCase() === nombre.toLowerCase())
           ? prev
-          : [...prev, { id: `tmp-${Date.now()}`, nombre, tipo: "PRODUCTO" }])
+          : [...prev, { id: `tmp-${Date.now()}`, nombre, tipo: tipoNuevo }])
         setNuevaCategoria("")
         toast.success(`Categoría "${nombre}" creada`)
       } catch (err: any) {
@@ -78,13 +93,17 @@ export function CategoriasConfigClient({ categorias }: { categorias: Cat[] }) {
     <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
       <h2 className="text-sm font-bold text-[var(--c-text)] mb-1">Categorías personalizadas</h2>
       <p className="text-xs text-[var(--c-text3)] mb-4">
-        Las categorías que se van creando desde Productos, Movimientos o Costos Fijos — más las que agregues acá. Renombrar o eliminar una de acá no afecta a nada que ya la tenga asignada — solo cambia cómo aparece como opción rápida al crear algo nuevo.
+        Agrega, renombra o elimina categorías de Productos, Gastos o Costos Fijos acá — o créalas al vuelo desde esos mismos módulos, aparecen igual de los dos lados. Renombrar o eliminar una de acá no afecta a nada que ya la tenga asignada — solo cambia cómo aparece como opción rápida al crear algo nuevo.
       </p>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <select value={tipoNuevo} onChange={e => setTipoNuevo(e.target.value)}
+          className="sm:w-40 flex-shrink-0 h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-xs text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+          {TIPOS_AGREGABLES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
         <input value={nuevaCategoria} onChange={e => setNuevaCategoria(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleCrear() } }}
-          placeholder="Nueva categoría de producto..."
+          placeholder={placeholderActivo}
           className="flex-1 min-w-0 h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-xs text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
         <button onClick={handleCrear} disabled={creando || !nuevaCategoria.trim()}
           className="flex-shrink-0 h-10 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white text-xs font-bold transition-all">

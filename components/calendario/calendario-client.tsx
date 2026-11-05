@@ -566,7 +566,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
           </div>
         </div>
         {proyectos.length===0&&(
-          <p className="text-[10px] text-[var(--c-text4)]">Crea categorías desde Configuración → Tareas para organizar tus tareas por proyecto.</p>
+          <p className="text-[10px] text-[var(--c-text4)]">Crea categorías desde Configuración → Categorías para organizar tus tareas por proyecto.</p>
         )}
         {/* La repetición solo se define al crear — editar una ocurrencia ya
             existente la desengancha de su serie (ver nota arriba). */}

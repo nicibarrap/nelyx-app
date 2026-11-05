@@ -36,8 +36,11 @@ export default async function ConfiguracionPage() {
     { id: "cobranza", icon: "📋", titulo: "Cobranza", content: <PlantillasCobranzaClient plantillas={plantillas} /> },
     { id: "pagos", icon: "💳", titulo: "Pagos", content: <ConexionMaquinaPagoClient conexiones={conexionesPago} /> },
     { id: "automatizaciones", icon: "🎂", titulo: "Automatizaciones de clientes", content: <AutomatizacionesClienteClient valores={automatizaciones} /> },
-    { id: "tareas", icon: "🗂️", titulo: "Tareas", content: <ProyectosTareaClient proyectos={proyectosTarea} /> },
-    { id: "categorias", icon: "🏷️", titulo: "Categorías", content: <CategoriasConfigClient categorias={categorias} /> },
+    // Categorías de Productos/Gastos/Costos Fijos y Proyectos de Tareas
+    // (las "categorías" del Calendario) viven juntas acá — antes Tareas
+    // tenía su propia pestaña sin nada más adentro, separada sin motivo
+    // real del resto de las categorías del negocio.
+    { id: "categorias", icon: "🏷️", titulo: "Categorías", content: <div className="space-y-5"><CategoriasConfigClient categorias={categorias} /><ProyectosTareaClient proyectos={proyectosTarea} /></div> },
     { id: "diagnostico", icon: "🔧", titulo: "Diagnóstico técnico", content: <DiagnosticoPushClient /> },
   ]
 
