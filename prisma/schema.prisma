@@ -289,8 +289,12 @@ model Cliente {
   metodoPago        String?            @default("Efectivo")
   limiteCredito     Decimal?           @db.Decimal(12, 2)
   diasPago          Int?               @default(0)
-  esFrecuente       Boolean            @default(false)
-  esVip             Boolean            @default(false)
+  // null = automático, según el segmento calculado desde su historial real
+  // de compras (ver lib/cliente-insights.ts) — true/false = el dueño lo
+  // forzó a mano para este cliente puntual, y ese valor manda siempre por
+  // sobre lo que diga el historial.
+  esFrecuente       Boolean?
+  esVip             Boolean?
   permiteCredito    Boolean            @default(false)
   activo            Boolean            @default(true)
   observaciones     String?

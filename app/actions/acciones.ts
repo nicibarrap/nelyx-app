@@ -1806,6 +1806,16 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
 
 
 // ── CLIENTES ──────────────────────────────────────────────
+/** El select de Frecuente/VIP manda "auto"/"si"/"no" — null deja que decida
+ * el segmento automático (ver lib/cliente-insights.ts), true/false lo fuerza
+ * a mano para ese cliente puntual. */
+function leerManualTriEstado(formData: FormData, name: string): boolean | null {
+  const v = formData.get(name)
+  if (v === "si") return true
+  if (v === "no") return false
+  return null
+}
+
 export async function crearCliente(formData: FormData) {
   const session = await getSessionEscritura("clientes")
   const nombre = (formData.get("nombre") as string)?.trim()
@@ -1824,8 +1834,8 @@ export async function crearCliente(formData: FormData) {
       frecuenciaCompra: (formData.get("frecuenciaCompra") as string) || null,
       metodoPago:       (formData.get("metodoPago") as string) || "Efectivo",
       diasPago:         parseInt(formData.get("diasPago") as string) || 0,
-      esFrecuente:      formData.get("esFrecuente") === "on",
-      esVip:            formData.get("esVip") === "on",
+      esFrecuente:      leerManualTriEstado(formData, "esFrecuente"),
+      esVip:            leerManualTriEstado(formData, "esVip"),
       permiteCredito:   formData.get("permiteCredito") === "on",
       limiteCredito:    formData.get("limiteCredito") ? parseFloat(formData.get("limiteCredito") as string) : null,
       cumpleanos:       formData.get("cumpleanos") ? new Date(formData.get("cumpleanos") as string) : null,
@@ -1859,8 +1869,8 @@ export async function actualizarCliente(id: string, formData: FormData) {
       // formData.get(...) siempre volvía null/vacío y cada edición los
       // reseteaba en silencio — metodoPago quedaba pegado en "Efectivo" para
       // siempre, y frecuenciaCompra/diasPago en null/0.
-      esFrecuente:      formData.get("esFrecuente") === "on",
-      esVip:            formData.get("esVip") === "on",
+      esFrecuente:      leerManualTriEstado(formData, "esFrecuente"),
+      esVip:            leerManualTriEstado(formData, "esVip"),
       permiteCredito:   formData.get("permiteCredito") === "on",
       limiteCredito:    formData.get("limiteCredito") ? parseFloat(formData.get("limiteCredito") as string) : null,
       cumpleanos:       formData.get("cumpleanos") ? new Date(formData.get("cumpleanos") as string) : null,

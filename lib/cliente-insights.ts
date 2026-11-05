@@ -92,6 +92,16 @@ export function calcularMetodoPagoHabitual(metodos: (string | null)[]): string |
   return [...conteo.entries()].sort((a, b) => b[1] - a[1])[0][0]
 }
 
+/** Frecuente/VIP final a mostrar y filtrar: si el dueño lo forzó a mano
+ * (true o false) para este cliente, eso manda siempre — si nunca lo tocó
+ * (null), decide el segmento automático calculado desde su historial real. */
+export function resolverEsFrecuente(overrideManual: boolean | null, segmento: SegmentoCliente): boolean {
+  return overrideManual ?? segmento === "frecuente"
+}
+export function resolverEsVip(overrideManual: boolean | null, segmento: SegmentoCliente): boolean {
+  return overrideManual ?? segmento === "vip"
+}
+
 /** Frecuencia de compra en una etiqueta legible (mismas categorías que
  * antes se elegían a mano: Diaria/Semanal/Quincenal/Mensual/Eventual),
  * calculada a partir del intervalo promedio real entre compras. */

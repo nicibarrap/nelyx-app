@@ -211,6 +211,12 @@ async function ejecutarCron() {
     where: { recordatoriosCumpleanosAutoActivo: true },
     select: { id: true },
   })
+  // Además del aviso del día mismo, uno la víspera — para dar margen a
+  // comprar un detalle o preparar el saludo, en vez de enterarse ese mismo
+  // día sin tiempo de nada. claveUnica distinta para que no choque con el
+  // dedupe del aviso del día mismo (ambos existen el mismo año).
+  const mañana = new Date(ahora)
+  mañana.setDate(ahora.getDate() + 1)
   let clientesCumpleanos: Awaited<ReturnType<typeof db.cliente.findMany>> = []
   if (usuariosCumpleanosAuto.length > 0) {
     clientesCumpleanos = await db.cliente.findMany({
@@ -222,14 +228,17 @@ async function ejecutarCron() {
       // "medianoche UTC de ese día", y ahora (hoyEnChile) ya representa el
       // calendario correcto de Chile — comparar mes/día directo funciona
       // porque el servidor corre en UTC en producción.
-      if (cl.cumpleanos.getMonth() !== ahora.getMonth() || cl.cumpleanos.getDate() !== ahora.getDate()) return false
+      const esHoy = cl.cumpleanos.getMonth() === ahora.getMonth() && cl.cumpleanos.getDate() === ahora.getDate()
+      const esManana = cl.cumpleanos.getMonth() === mañana.getMonth() && cl.cumpleanos.getDate() === mañana.getDate()
+      if (!esHoy && !esManana) return false
 
       const nombreCliente = `${cl.nombre} ${cl.apellido ?? ""}`.trim()
       return await notificar({
         userId: cl.userId, categoria: "clientes", prioridad: "media",
-        titulo: `🎂 Hoy es el cumpleaños de ${nombreCliente}`,
+        titulo: esHoy ? `🎂 Hoy es el cumpleaños de ${nombreCliente}` : `🎂 Mañana es el cumpleaños de ${nombreCliente}`,
         mensaje: "Aprovecha de saludarlo — un gesto así fortalece la relación.",
-        accionUrl: "/dashboard/clientes", claveUnica: `cumple-auto:${cl.id}:${ahora.getFullYear()}`,
+        accionUrl: "/dashboard/clientes",
+        claveUnica: esHoy ? `cumple-auto:${cl.id}:${ahora.getFullYear()}` : `cumple-auto-previo:${cl.id}:${mañana.getFullYear()}`,
       })
     })
   }
