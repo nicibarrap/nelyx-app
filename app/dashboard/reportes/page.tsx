@@ -45,10 +45,23 @@ export default async function ReportesPage() {
     // TODOS los movimientos de los últimos 12 meses (podían ser decenas de
     // miles en un negocio con harto volumen) solo para sumarlos en JS. Acá
     // la consulta nunca devuelve más de 7×24=168 filas.
+    // "createdAt" se guarda en una columna `timestamp without time zone`
+    // con el valor UTC "pelado" (así es como Prisma siempre lo escribe,
+    // tenga o no la columna zona horaria) — un EXTRACT(HOUR) directo sobre
+    // esa columna da la hora UTC, no la hora de Chile. Con Chile en
+    // UTC-3/UTC-4, eso desplazaba TODAS las celdas del mapa de calor 3-4
+    // horas (una venta de las 23:00 en Chile aparecía en el bloque de la
+    // madrugada). El resto de la app nunca lee la hora cruda así — la
+    // columna "Hora" de Movimientos usa
+    // `new Date(createdAt).toLocaleTimeString(..., {timeZone: TZ_CHILE})`
+    // (ver tabla-movimientos.tsx) — acá se hace el mismo ajuste en SQL:
+    // "AT TIME ZONE 'UTC'" interpreta el valor guardado como UTC real
+    // (timestamptz), y el segundo "AT TIME ZONE 'America/Santiago'" lo
+    // convierte a la hora de pared en Chile.
     db.$queryRaw<{ dow: number; hora: number; monto: number; cantidad: number }[]>`
       SELECT
         EXTRACT(DOW FROM fecha)::int AS dow,
-        EXTRACT(HOUR FROM "createdAt")::int AS hora,
+        EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santiago'))::int AS hora,
         SUM(monto)::float8 AS monto,
         COUNT(*)::int AS cantidad
       FROM "Movimiento"
