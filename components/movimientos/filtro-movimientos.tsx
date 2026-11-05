@@ -47,32 +47,37 @@ export function FiltroMovimientos() {
   const hayFiltrosActivos = !!(q || tipo || metodoPago)
 
   return (
-    // flex-col hasta lg (no sm): en tablet vertical hay ancho de sobra para
-    // que cada fila (buscador, método, chips) se vea ordenada en columna,
-    // pero no el suficiente para que las 8 opciones de tipo quepan al lado
-    // del buscador sin envolver en una torre angosta — eso es justo lo que
-    // pasaba con el corte en sm. Desde lg (tablet horizontal y PC) sí hay
-    // espacio real para la fila completa.
-    <div className="flex flex-col lg:flex-row gap-3">
-      <div className="relative flex-1 min-w-[200px]">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">🔍</span>
-        <input value={q} onChange={e => handleQChange(e.target.value)}
-          placeholder="Buscar por producto, descripción o cliente..."
-          className="w-full bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl pl-9 pr-4 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
+    // Los chips van siempre en su propia fila a lo ancho completo, nunca
+    // compitiendo por espacio con el buscador y los selects — con los 3
+    // juntos en la misma fila (bug real: así quedó al agregar el select de
+    // "orden"), el navegador achica el contenedor de chips y el último
+    // tipo (Retiro) quedaba huérfano, envuelto solo en su propia línea.
+    <div className="flex flex-col gap-3">
+      {/* flex-col hasta lg (no sm): en tablet vertical hay ancho de sobra
+          para que buscador/método/orden se vean ordenados en columna, pero
+          no el suficiente para los 3 en una fila sin apretarse. Desde lg
+          (tablet horizontal y PC) sí hay espacio real para la fila completa. */}
+      <div className="flex flex-col lg:flex-row gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">🔍</span>
+          <input value={q} onChange={e => handleQChange(e.target.value)}
+            placeholder="Buscar por producto, descripción o cliente..."
+            className="w-full bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl pl-9 pr-4 h-10 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
+        </div>
+        <select value={metodoPago} onChange={e => actualizar({ metodoPago: e.target.value })}
+          className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+          <option value="">Todos los métodos</option>
+          {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {/* Orden por fecha — para llegar directo al día 1 del mes sin tener
+            que paginar hasta el final cuando se quiere ver lo más antiguo. */}
+        <select value={orden} onChange={e => actualizar({ orden: e.target.value === "recientes" ? "" : e.target.value })}
+          title="Ordenar por fecha"
+          className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+          <option value="recientes">↓ Más recientes primero</option>
+          <option value="antiguos">↑ Más antiguos primero</option>
+        </select>
       </div>
-      <select value={metodoPago} onChange={e => actualizar({ metodoPago: e.target.value })}
-        className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
-        <option value="">Todos los métodos</option>
-        {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
-      </select>
-      {/* Orden por fecha — para llegar directo al día 1 del mes sin tener
-          que paginar hasta el final cuando se quiere ver lo más antiguo. */}
-      <select value={orden} onChange={e => actualizar({ orden: e.target.value === "recientes" ? "" : e.target.value })}
-        title="Ordenar por fecha"
-        className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
-        <option value="recientes">↓ Más recientes primero</option>
-        <option value="antiguos">↑ Más antiguos primero</option>
-      </select>
       {/* En celular, los chips van en una tira con scroll horizontal en vez
           de envolver en varias filas — con 6 tipos + "Todos" + "Limpiar",
           envolver ocupa demasiado alto y empuja la tabla hacia abajo. Desde
