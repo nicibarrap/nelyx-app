@@ -306,13 +306,19 @@ export async function eliminarMovimiento(id: string) {
  * entero si el usuario filtró algo, porque entonces el archivo no
  * coincide con lo que estaba mirando. Sin paginar: a diferencia del
  * listado en pantalla, el export trae todas las filas que calzan. */
-export async function exportarMovimientosCSV(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string }): Promise<string> {
+export async function exportarMovimientosCSV(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; orden?: string }): Promise<string> {
   const session = await getSession()
-  const where = construirWhereMovimientos({ userId: session.user.id, ...filtros })
+  const { orden, ...filtrosWhere } = filtros
+  const where = construirWhereMovimientos({ userId: session.user.id, ...filtrosWhere })
+  // Mismo orden que se esté viendo en pantalla (ver movimientos/page.tsx) —
+  // si alguien invirtió el orden para ubicar el día 1 del mes, el CSV que
+  // descarga debería reflejar lo mismo que está mirando, no volver siempre
+  // a "más reciente primero" por su cuenta.
+  const ordenAsc = orden === "antiguos"
   const movimientos = await db.movimiento.findMany({
     where,
     include: { producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } } },
-    orderBy: [{ fecha: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ fecha: ordenAsc ? "asc" : "desc" }, { createdAt: ordenAsc ? "asc" : "desc" }],
   })
 
   const encabezados = ["Fecha", "Hora", "Tipo", "Detalle", "Categoría", "Producto", "Cliente", "Método de pago", "Monto", "Costo", "Utilidad", "Margen", "Registrado por"]

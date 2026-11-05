@@ -85,8 +85,11 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
   }, [])
   const heatmap = modo === "monto" ? heatmapMonto : heatmapCantidad
   const max = Math.max(1, ...heatmap.flat())
-  // Agrupa en bloques de 3 horas para que la grilla sea legible en celular
-  const BLOQUES = [[6,7,8],[9,10,11],[12,13,14],[15,16,17],[18,19,20],[21,22,23]]
+  // Agrupa en bloques de 3 horas para que la grilla sea legible en celular.
+  // Cubre las 24 horas del día (antes partía recién a las 6h, dejando sin
+  // mostrar cualquier venta de madrugada — un negocio con horario nocturno,
+  // ej. una botillería, nunca veía esas horas en el mapa).
+  const BLOQUES = [[0,1,2],[3,4,5],[6,7,8],[9,10,11],[12,13,14],[15,16,17],[18,19,20],[21,22,23]]
   const labelBloque = (b: number[]) => `${b[0]}-${b[b.length-1]+1}h`
 
   function alphaCelda(valor: number) {
