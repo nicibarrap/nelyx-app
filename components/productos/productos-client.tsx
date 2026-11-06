@@ -40,8 +40,6 @@ const MOTIVOS_AJUSTE: { value: TipoMovimientoStock; label: string }[] = [
   { value: "otro", label: "Otro" },
 ]
 
-const CATEGORIAS_DEFAULT = ["Bebidas","Carnes","Verduras","Abarrotes","Limpieza","Accesorios","Panadería","Frutas","Lácteos","Otros"]
-
 type Producto = {
   id: string; nombre: string; precio: number | null; costo: number | null
   descripcion: string | null; categoria: string | null; sku: string | null
@@ -145,8 +143,11 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
   const [isPending, start] = useTransition()
   const [customCatInput, setCustomCatInput] = useState("")
   const [customCats, setCustomCats] = useState<string[]>([])
-  const allCats = [...CATEGORIAS_DEFAULT, ...dbCategorias, ...customCats]
-  const todasCategorias = allCats.filter((c, i) => allCats.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i).sort((a,b) => CATEGORIAS_DEFAULT.includes(a) ? -1 : CATEGORIAS_DEFAULT.includes(b) ? 1 : a.localeCompare(b))
+  // Sin categorías predeterminadas — cada negocio define las suyas (desde
+  // acá o desde Configuración → Categorías), nunca un set genérico fijo
+  // que no calce con su rubro.
+  const allCats = [...dbCategorias, ...customCats]
+  const todasCategorias = allCats.filter((c, i) => allCats.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i).sort((a,b) => a.localeCompare(b))
   const [margenPreview, setMargenPreview] = useState({ precio: producto?.precio ?? 0, costo: producto?.costo ?? 0 })
   const margen = getMargen(margenPreview.precio, margenPreview.costo)
 

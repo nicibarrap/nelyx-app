@@ -12,8 +12,6 @@ import { CampoFecha } from "@/components/shared/campo-fecha"
 import { getColorCategoria } from "@/lib/categorias"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
 
-const CATEGORIAS_DEFAULT = ["Bebidas","Carnes","Verduras","Abarrotes","Limpieza","Accesorios","Panadería","Frutas","Lácteos","Otros"]
-
 const PASOS = ["Inicio", "Tipo", "Información", "Compra", "Venta", "Mínimo", "Resumen"]
 
 type TipoProducto = "unidad" | "peso"
@@ -91,7 +89,10 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
   // Paso 6
   const [stockMinimo, setStockMinimo] = useState<number | "">("")
 
-  const todasCategorias = [...CATEGORIAS_DEFAULT, ...dbCategorias, ...customCats].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i)
+  // Sin categorías predeterminadas — cada negocio define las suyas (desde
+  // acá o desde Configuración → Categorías), nunca un set genérico fijo
+  // (antes 10 categorías de almacén/feria) que no calce con su rubro.
+  const todasCategorias = [...dbCategorias, ...customCats].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i)
 
   const cfg = tipoProducto ? TIPO_CFG[tipoProducto] : null
   // Nota: el nombre quedó de cuando existía también "volumen" como opción —

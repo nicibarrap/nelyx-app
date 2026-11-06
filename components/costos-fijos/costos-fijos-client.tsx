@@ -12,7 +12,6 @@ import { CampoFecha } from "@/components/shared/campo-fecha"
 import { InfoTooltip } from "@/components/shared/kpi-tooltip"
 import { PanelLateral } from "@/components/shared/panel-lateral"
 
-const CATEGORIAS = ["Arriendo","Internet","Agua","Luz","Gas","Software","Teléfono","Transporte","Seguro","Publicidad","Sueldos","Contador","Otros"]
 const FRECUENCIA_LABEL: Record<FrecuenciaCosto, string> = { mensual: "Mensual", trimestral: "Trimestral", anual: "Anual" }
 
 const inp = "w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
@@ -68,10 +67,10 @@ function descripcionFrecuencia(c: Pick<Costo, "frecuencia" | "fechaInicio">): st
 function ComboboxCategoria({ valor, onChange, dbCategorias }: { valor: string; onChange: (v: string) => void; dbCategorias: string[] }) {
   const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState(valor)
-  const todasCategorias = useMemo(
-    () => [...CATEGORIAS, ...dbCategorias].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i),
-    [dbCategorias]
-  )
+  // Sin categorías predeterminadas — cada negocio define las suyas (desde
+  // acá o desde Configuración → Categorías), nunca un set genérico fijo
+  // que no calce con su rubro.
+  const todasCategorias = useMemo(() => dbCategorias, [dbCategorias])
   const filtradas = todasCategorias.filter(c => c.toLowerCase().includes(busqueda.trim().toLowerCase()))
   const esNueva = busqueda.trim() !== "" && !todasCategorias.some(c => c.toLowerCase() === busqueda.trim().toLowerCase())
 
