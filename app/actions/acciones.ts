@@ -817,6 +817,7 @@ export async function crearCategoriaPersonalizada(tipo: string, nombre: string) 
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/movimientos/nuevo")
   revalidatePath("/dashboard/costos-fijos")
+  revalidatePath("/dashboard/configuracion")
   return nombreLimpio
 }
 
@@ -845,11 +846,15 @@ async function asegurarCategoriaPersonalizada(userId: string, nombre: string) {
 }
 
 /** Todas las categorías personalizadas del usuario, agrupadas por tipo —
- * para mostrarlas juntas en Configuración con opción de eliminar. */
+ * para mostrarlas juntas en Configuración con opción de eliminar. Excluye
+ * "UNIDAD_MEDIDA": comparte la misma tabla (sugerencias reutilizables de
+ * texto libre) pero son unidades de medida personalizadas de Productos
+ * (ej. "paquete", "caja"), no categorías — mezclarlas acá confundiría más
+ * de lo que ayuda. */
 export async function obtenerTodasCategoriasPersonalizadas() {
   const session = await getSession()
   const cats = await db.categoriaPersonalizada.findMany({
-    where: { userId: session.user.id },
+    where: { userId: session.user.id, tipo: { not: "UNIDAD_MEDIDA" } },
     orderBy: { nombre: "asc" },
   })
   return cats.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo }))
