@@ -24,11 +24,26 @@ async function getSession() {
   return session
 }
 
-/** Igual que getSession(), pero además rechaza a un empleado al que ese
- * módulo se le dejó en "solo lectura" — usarla en toda acción que CREE,
- * EDITE o ELIMINE algo (nunca en una que solo lea). */
+/** Igual que getSession(), pero además rechaza a un empleado sin acceso a
+ * ese módulo, o al que se le dejó en "solo lectura" — usarla en toda
+ * acción que CREE, EDITE o ELIMINE algo (nunca en una que solo lea).
+ *
+ * El chequeo de tieneAcceso() es el que de verdad importa acá: la UI ya
+ * oculta los módulos no habilitados, y el middleware bloquea navegar a su
+ * página (ver middleware.ts), pero una Server Action es un endpoint propio
+ * — nada impide invocarla directo (sin pasar por esa página) con el mismo
+ * fetch que usa React para cualquier Server Action. El middleware deja
+ * pasar esas llamadas a propósito (ver su comentario sobre
+ * "next-action"), así que esta función es la única barrera real para
+ * ellas. Antes solo chequeaba esSoloLectura(), que únicamente cubre un
+ * módulo marcado explícitamente "solo lectura" — un empleado al que
+ * directamente NO se le había habilitado el módulo (ni siquiera en modo
+ * lectura) pasaba de largo igual. */
 async function getSessionEscritura(moduloKey: ModuloKey) {
   const session = await getSession()
+  if (!tieneAcceso(session.user.modulosPermitidos, moduloKey)) {
+    throw new Error("No tienes acceso a este módulo")
+  }
   if (esSoloLectura(session.user.modulosPermitidos, moduloKey)) {
     throw new Error("Tu acceso a este módulo es solo de lectura")
   }
@@ -306,7 +321,7 @@ export async function eliminarMovimiento(id: string) {
  * entero si el usuario filtró algo, porque entonces el archivo no
  * coincide con lo que estaba mirando. Sin paginar: a diferencia del
  * listado en pantalla, el export trae todas las filas que calzan. */
-export async function exportarMovimientosCSV(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; orden?: string }): Promise<string> {
+export async function exportarMovimientosCSV(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; realizadoPor?: string; orden?: string }): Promise<string> {
   const session = await getSession()
   const { orden, ...filtrosWhere } = filtros
   const where = construirWhereMovimientos({ userId: session.user.id, ...filtrosWhere })

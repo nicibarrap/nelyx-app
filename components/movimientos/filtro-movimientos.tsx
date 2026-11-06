@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ETIQUETAS } from "@/lib/utils"
+import { FILTRO_DUENO } from "@/lib/movimientos-filtro-sentinel"
 
 const TIPOS = ["VENTA", "GASTO", "COSTO_FIJO", "INGRESO_EXTRA", "DEVOLUCION", "RETIRO"]
 const METODOS_PAGO = ["Efectivo", "Tarjeta", "Transferencia", "Débito", "Crédito", "Pendiente"]
@@ -9,11 +10,12 @@ const METODOS_PAGO = ["Efectivo", "Tarjeta", "Transferencia", "Débito", "Crédi
 const chip = (activo: boolean) =>
   `text-xs px-3 py-2 rounded-xl border font-medium transition-all whitespace-nowrap ${activo ? "bg-sky-500/10 text-sky-400 border-sky-500/20" : "bg-[var(--c-card)] text-[var(--c-text2)] border-[var(--c-border)] hover:border-sky-500/20 hover:text-[var(--c-text)]"}`
 
-export function FiltroMovimientos() {
+export function FiltroMovimientos({ usuarios = [] }: { usuarios?: string[] }) {
   const router = useRouter()
   const params = useSearchParams()
   const tipo = params.get("tipo") ?? ""
   const metodoPago = params.get("metodoPago") ?? ""
+  const realizadoPor = params.get("realizadoPor") ?? ""
   // "recientes" es el default (mismo orden de siempre) — se omite de la URL
   // para no ensuciarla con el caso normal, solo aparece "?orden=antiguos"
   // cuando el usuario realmente lo cambia.
@@ -44,7 +46,7 @@ export function FiltroMovimientos() {
 
   useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current) }, [])
 
-  const hayFiltrosActivos = !!(q || tipo || metodoPago)
+  const hayFiltrosActivos = !!(q || tipo || metodoPago || realizadoPor)
 
   return (
     // Los chips van siempre en su propia fila a lo ancho completo, nunca
@@ -69,6 +71,17 @@ export function FiltroMovimientos() {
           <option value="">Todos los métodos</option>
           {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
+        {/* Solo aparece si alguna vez un usuario adicional (empleado) quedó
+            registrado en algún movimiento — en un negocio sin empleados,
+            este select ni se muestra. */}
+        {usuarios.length > 0 && (
+          <select value={realizadoPor} onChange={e => actualizar({ realizadoPor: e.target.value })}
+            className="w-full lg:w-auto bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl px-3 h-10 text-sm text-[var(--c-text2)] outline-none focus:border-sky-500 transition-colors">
+            <option value="">Todos los usuarios</option>
+            <option value={FILTRO_DUENO}>👑 Tú (dueño)</option>
+            {usuarios.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        )}
         {/* Orden por fecha — para llegar directo al día 1 del mes sin tener
             que paginar hasta el final cuando se quiere ver lo más antiguo. */}
         <select value={orden} onChange={e => actualizar({ orden: e.target.value === "recientes" ? "" : e.target.value })}
@@ -91,7 +104,7 @@ export function FiltroMovimientos() {
           </button>
         ))}
         {hayFiltrosActivos && (
-          <button onClick={() => { setQ(""); actualizar({ q: "", tipo: "", metodoPago: "" }) }}
+          <button onClick={() => { setQ(""); actualizar({ q: "", tipo: "", metodoPago: "", realizadoPor: "" }) }}
             className="flex-shrink-0 text-xs px-3 py-2 rounded-xl border border-[var(--c-border)] text-[var(--c-text3)] hover:text-red-400 hover:border-red-500/20 transition-all">
             ✕ Limpiar
           </button>

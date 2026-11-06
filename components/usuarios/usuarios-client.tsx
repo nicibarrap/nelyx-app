@@ -169,6 +169,14 @@ function ActividadEmpleados({ onCerrar }: { onCerrar: () => void }) {
             <div className="divide-y divide-[var(--c-border2)]">
               {visibles.map(item => {
                 const et = ETIQUETAS[item.tipo] ?? { label: item.tipo, emoji: "•", color: "" }
+                // Mismo criterio de signo/color que el Historial de
+                // Movimientos (tabla-movimientos.tsx) — acá antes se
+                // mostraba el monto siempre igual, sin distinguir un gasto
+                // de una venta, así que un vistazo rápido a "qué hizo
+                // fulano" no alcanzaba a notar si fue plata que entró o
+                // que salió sin leer el tipo con atención.
+                const esIngreso = item.tipo === "VENTA" || item.tipo === "INGRESO_EXTRA"
+                const esDevolucion = item.tipo === "DEVOLUCION"
                 return (
                   <div key={item.id} className="py-2.5 flex items-start gap-2.5">
                     <span className="text-base flex-shrink-0">{et.emoji}</span>
@@ -179,7 +187,9 @@ function ActividadEmpleados({ onCerrar }: { onCerrar: () => void }) {
                       </p>
                       <p className="text-[10px] text-[var(--c-text4)]">{new Date(item.createdAt).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                     </div>
-                    <span className="text-xs font-semibold text-[var(--c-text2)] flex-shrink-0">{formatCLP(item.monto)}</span>
+                    <span className={`text-xs font-semibold flex-shrink-0 ${esIngreso ? "text-emerald-400" : esDevolucion ? "text-[var(--c-warning)]" : "text-red-400"}`}>
+                      {esIngreso ? "+" : "−"}{formatCLP(Math.abs(item.monto))}
+                    </span>
                   </div>
                 )
               })}

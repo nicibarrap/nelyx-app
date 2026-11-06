@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { PLANTILLAS_DEFAULT, type NivelCobranza } from "@/lib/cobranza"
-import { esSoloLectura } from "@/lib/permisos"
+import { esSoloLectura, tieneAcceso } from "@/lib/permisos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 async function getSession() {
@@ -13,13 +13,18 @@ async function getSession() {
   return session
 }
 
-/** Igual que getSession(), pero rechaza a un empleado al que "cuentas-cobrar"
- * se le dejó en "solo lectura" — mismo patrón que getSessionEscritura en
- * app/actions/acciones.ts. Las plantillas y el registro de contacto son
- * herramientas de cobranza, así que se gatillan con ese mismo módulo aunque
- * las plantillas también se editen desde Configuración. */
+/** Igual que getSession(), pero rechaza a un empleado sin acceso a
+ * "cuentas-cobrar", o al que se le dejó en "solo lectura" — mismo patrón
+ * que getSessionEscritura en app/actions/acciones.ts (ver su comentario
+ * sobre por qué tieneAcceso() es el chequeo que de verdad importa acá).
+ * Las plantillas y el registro de contacto son herramientas de cobranza,
+ * así que se gatillan con ese mismo módulo aunque las plantillas también
+ * se editen desde Configuración. */
 async function getSessionEscritura() {
   const session = await getSession()
+  if (!tieneAcceso(session.user.modulosPermitidos, "cuentas-cobrar")) {
+    throw new Error("No tienes acceso a este módulo")
+  }
   if (esSoloLectura(session.user.modulosPermitidos, "cuentas-cobrar")) {
     throw new Error("Tu acceso a este módulo es solo de lectura")
   }

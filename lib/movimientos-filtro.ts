@@ -1,4 +1,5 @@
 import { Prisma, TipoMovimiento } from "@prisma/client"
+import { FILTRO_DUENO } from "@/lib/movimientos-filtro-sentinel"
 
 export interface FiltrosMovimientos {
   userId: string
@@ -7,6 +8,7 @@ export interface FiltrosMovimientos {
   q?: string
   tipo?: string
   metodoPago?: string
+  realizadoPor?: string
 }
 
 const TIPOS_VALIDOS = new Set(Object.values(TipoMovimiento))
@@ -26,6 +28,8 @@ export function construirWhereMovimientos(f: FiltrosMovimientos): Prisma.Movimie
   }
   if (f.tipo && TIPOS_VALIDOS.has(f.tipo as TipoMovimiento)) where.tipo = f.tipo as TipoMovimiento
   if (f.metodoPago) where.metodoPago = f.metodoPago
+  if (f.realizadoPor === FILTRO_DUENO) where.realizadoPorNombre = null
+  else if (f.realizadoPor) where.realizadoPorNombre = f.realizadoPor
 
   const q = f.q?.trim()
   if (q) {

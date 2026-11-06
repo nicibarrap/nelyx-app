@@ -6,7 +6,7 @@ import { listarTerminalesMercadoPago, crearOrdenMercadoPago, consultarOrdenMerca
 import { validarApiKeyTuu, crearSolicitudPagoTuu, consultarSolicitudPagoTuu } from "@/lib/pagos/tuu"
 import { listarLectoresSumup, crearCobroSumup, type LectorSumup } from "@/lib/pagos/sumup"
 import { vincularTerminalBciPagos, cobrarBciPagos } from "@/lib/pagos/bcipagos"
-import { esSoloLectura, type ModuloKey } from "@/lib/permisos"
+import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
 import { cifrarToken, descifrarToken } from "@/lib/crypto-pagos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 // El tipo NO se re-exporta desde acá a propósito — un archivo "use server"
@@ -24,11 +24,15 @@ async function getSession() {
   return session
 }
 
-/** Igual que getSession(), pero rechaza a un empleado al que ese módulo se
- * le dejó en "solo lectura" — mismo patrón que getSessionEscritura en
- * app/actions/acciones.ts. */
+/** Igual que getSession(), pero rechaza a un empleado sin acceso a ese
+ * módulo, o al que se le dejó en "solo lectura" — mismo patrón que
+ * getSessionEscritura en app/actions/acciones.ts (ver su comentario sobre
+ * por qué tieneAcceso() es el chequeo que de verdad importa acá). */
 async function getSessionEscritura(moduloKey: ModuloKey) {
   const session = await getSession()
+  if (!tieneAcceso(session.user.modulosPermitidos, moduloKey)) {
+    throw new Error("No tienes acceso a este módulo")
+  }
   if (esSoloLectura(session.user.modulosPermitidos, moduloKey)) {
     throw new Error("Tu acceso a este módulo es solo de lectura")
   }
