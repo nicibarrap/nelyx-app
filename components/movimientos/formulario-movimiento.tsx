@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { ingresarMovimiento, crearCategoriaPersonalizada } from "@/app/actions/acciones"
-import { getCategoriasBase } from "@/lib/categorias"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
 const TIPOS = [
@@ -42,9 +41,10 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
 
   const tipoActual = TIPOS.find((t) => t.value === tipo)
   const necesitaCategoria = tipo === "GASTO"
-  const categoriasBase = tipo ? getCategoriasBase(tipo) : []
-  const categoriasCustom = tipo === "GASTO" ? catsPersonalizadas.GASTO : tipo === "COSTO_FIJO" ? catsPersonalizadas.COSTO_FIJO : []
-  const todasCategorias = [...categoriasBase, ...categoriasCustom.filter(c => !categoriasBase.includes(c))]
+  // Sin categorías predeterminadas — cada negocio define las suyas (desde
+  // acá o desde Configuración → Categorías), nunca un set genérico fijo
+  // que no calce con su rubro.
+  const todasCategorias = tipo === "GASTO" ? catsPersonalizadas.GASTO : tipo === "COSTO_FIJO" ? catsPersonalizadas.COSTO_FIJO : []
 
   // El selector de tipo nunca se deshabilita mientras un envío anterior
   // está en curso (a propósito: así se puede seguir cargando movimientos

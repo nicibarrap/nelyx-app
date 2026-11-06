@@ -1,38 +1,11 @@
-export const CATEGORIAS_GASTO = [
-  "Mercadería",
-  "Transporte",
-  "Delivery",
-  "Marketing / Publicidad",
-  "Herramientas",
-  "Mantención",
-  "Insumos",
-  "Combustible",
-  "Comisiones",
-  "Servicios externos",
-  "Packaging",
-  "Otros",
-]
-
-export const CATEGORIAS_COSTO_FIJO = [
-  "Arriendo",
-  "Luz",
-  "Agua",
-  "Internet",
-  "Sueldos",
-  "Software / Suscripciones",
-  "Patentes / Permisos",
-  "Contador",
-  "Seguridad",
-  "Bodega",
-  "Otros",
-]
-
-export function getCategoriasBase(tipo: string): string[] {
-  if (tipo === "GASTO") return CATEGORIAS_GASTO
-  if (tipo === "COSTO_FIJO") return CATEGORIAS_COSTO_FIJO
-  return []
-}
-
+// Sin listas de categorías predeterminadas acá — cada negocio define las
+// suyas (en Productos/Gastos/Costos Fijos o en Configuración → Categorías),
+// nunca un set genérico fijo que no calce con su rubro (antes había dos
+// listas de "costo fijo" distintas e inconsistentes entre sí, una acá y
+// otra en costos-fijos-client.tsx, ninguna conectada a lo que el dueño
+// realmente tenía configurado). COLORES_CATEGORIA abajo sigue dándoles un
+// color fijo y agradable a estos nombres SI el dueño los usa — no los
+// fuerza como opciones.
 export const COLORES_CATEGORIA: Record<string, string> = {
   "Mercadería":              "#38bdf8",
   "Transporte":              "#818cf8",
