@@ -347,9 +347,11 @@ export default async function ReportesPage() {
   // el % de margenPor100 con Math.abs(), así que un margen realmente
   // negativo (una vez descontado el costo real de lo vendido) podía
   // mostrarse como un % positivo.
-  partes.push(margenPor100 >= 0
-    ? `La utilidad se mantiene positiva — por cada $100 que vendes, te quedan $${margenPor100} después de costos y gastos.`
-    : `La utilidad fue negativa este período — por cada $100 que vendes, pierdes $${Math.abs(margenPor100)} una vez descontado el costo de los productos vendidos y los gastos.`)
+  partes.push(totalVentas === 0
+    ? "Todavía no registras ventas este período — en cuanto registres movimientos, verás aquí tu margen real."
+    : margenPor100 >= 0
+      ? `La utilidad se mantiene positiva — por cada $100 que vendes, te quedan $${margenPor100} después de costos y gastos.`
+      : `La utilidad fue negativa este período — por cada $100 que vendes, pierdes $${Math.abs(margenPor100)} una vez descontado el costo de los productos vendidos y los gastos.`)
   if (productoMasRentable) partes.push(`El producto con mayor margen fue ${productoMasRentable}.`)
   if (clienteTop) partes.push(`El cliente más valioso fue ${clienteTop.nombre}, con ${formatearMonto(clienteTop.monto)} en compras.`)
   // No se repite oportunidades[0] acá: ese mismo texto ya es el primer ítem
