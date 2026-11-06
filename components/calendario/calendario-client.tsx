@@ -58,7 +58,7 @@ type CalEvent = {
   monto?:number|null; estado?:string|null; hora?:string|null
   prioridad?:string|null; descripcion?:string|null; isManual?:boolean
   proyectoId?:string|null; proyectoColor?:string|null; proyectoNombre?:string|null
-  serieId?:string|null
+  serieId?:string|null; serieFrecuencia?:string|null; serieDiasSemana?:number[]; serieFechaFin?:string|null
 }
 type Filtro = "todas"|"costos"|"tareas"|"recordatorios"|"eventos"
 type Vista = "mes"|"semana"
@@ -68,7 +68,7 @@ type CalData = {
   costosFijos: {id:string;nombre:string;monto:number;categoria:string|null;fechaInicio:string;fechaTermino:string|null;generaciones:{id:string;mes:number;anio:number;pagado:boolean}[]}[]
   deudas: {id:string;acreedor:string;monto:number;valorCuota:number|null;fechaVence:string|null;fechaPrimerPago:string|null}[]
   cuentasPorCobrar: {id:string;numero:number;clienteNombre:string;monto:number;saldoPendiente:number;fechaVence:string|null;estado:string}[]
-  eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string;horaLimite:string|null;proyectoId:string|null;serieId:string|null}[]
+  eventosCalendario: {id:string;titulo:string;descripcion:string|null;fecha:string;tipo:string;estado:string;prioridad:string|null;horaLimite:string|null;proyectoId:string|null;serieId:string|null;serieFrecuencia:string|null;serieDiasSemana:number[];serieFechaFin:string|null}[]
   proyectosTarea: {id:string;nombre:string;color:string}[]
 }
 
@@ -192,7 +192,7 @@ function buildEvents(data:CalData,anio:number,mes:number):CalEvent[]{
     const ref=new Date(e.fecha)
     if(ref.getUTCFullYear()!==anio||ref.getUTCMonth()+1!==mes)continue
     const proyecto=e.proyectoId?data.proyectosTarea.find(p=>p.id===e.proyectoId):null
-    evs.push({id:e.id,titulo:e.titulo,tipo:e.tipo,fecha:isoToKey(e.fecha),estado:e.estado,hora:e.horaLimite,prioridad:e.prioridad,descripcion:e.descripcion,isManual:true,proyectoId:e.proyectoId,proyectoColor:proyecto?.color??null,proyectoNombre:proyecto?.nombre??null,serieId:e.serieId})
+    evs.push({id:e.id,titulo:e.titulo,tipo:e.tipo,fecha:isoToKey(e.fecha),estado:e.estado,hora:e.horaLimite,prioridad:e.prioridad,descripcion:e.descripcion,isManual:true,proyectoId:e.proyectoId,proyectoColor:proyecto?.color??null,proyectoNombre:proyecto?.nombre??null,serieId:e.serieId,serieFrecuencia:e.serieFrecuencia,serieDiasSemana:e.serieDiasSemana,serieFechaFin:e.serieFechaFin})
   }
   return evs
 }
@@ -468,11 +468,11 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
   const[fecha,setFecha]=useState(editingEv?.fecha??defaultDate)
   const[hora,setHora]=useState(editingEv?.hora??"")
   const[tipo,setTipo]=useState(editingEv?.tipo??"tarea")
-  const[prioridad,setPrioridad]=useState(editingEv?.prioridad??"media")
+  const[prioridad,setPrioridad]=useState(editingEv?.prioridad??"")
   const[proyectoId,setProyectoId]=useState(editingEv?.proyectoId??"")
-  const[frecuencia,setFrecuencia]=useState("ninguna")
-  const[diasSemana,setDiasSemana]=useState<number[]>([])
-  const[fechaFinSerie,setFechaFinSerie]=useState("")
+  const[frecuencia,setFrecuencia]=useState(editingEv?.serieFrecuencia??"ninguna")
+  const[diasSemana,setDiasSemana]=useState<number[]>(editingEv?.serieDiasSemana??[])
+  const[fechaFinSerie,setFechaFinSerie]=useState(editingEv?.serieFechaFin?editingEv.serieFechaFin.slice(0,10):"")
   const isEdit=!!editingEv?.isManual
   const eraRecurrente=!!editingEv?.serieId
 
@@ -482,7 +482,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
 
   function handleSubmit(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault()
-    if(!isEdit&&frecuencia==="semanal"&&diasSemana.length===0){toast.error("Elige al menos un día de la semana");return}
+    if(frecuencia==="semanal"&&diasSemana.length===0){toast.error("Elige al menos un día de la semana");return}
     start(async()=>{
       try{
         const fd=new FormData()
@@ -491,13 +491,11 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         fd.set("tipo",tipo);fd.set("horaLimite",hora)
         fd.set("estado",editingEv?.estado??"pendiente");fd.set("prioridad",prioridad)
         fd.set("proyectoId",proyectoId)
+        fd.set("frecuencia",frecuencia)
+        diasSemana.forEach(d=>fd.append("diasSemana",String(d)))
+        if(fechaFinSerie)fd.set("fechaFinSerie",fechaFinSerie)
         if(isEdit&&editingEv?.id){await actualizarEventoCalendario(editingEv.id,fd);toast.success("✅ Evento actualizado")}
-        else{
-          fd.set("frecuencia",frecuencia)
-          diasSemana.forEach(d=>fd.append("diasSemana",String(d)))
-          if(fechaFinSerie)fd.set("fechaFinSerie",fechaFinSerie)
-          await crearEventoCalendario(fd);toast.success(frecuencia==="ninguna"?"✅ Evento creado":"✅ Tarea recurrente creada")
-        }
+        else{await crearEventoCalendario(fd);toast.success(frecuencia==="ninguna"?"✅ Evento creado":"✅ Tarea recurrente creada")}
         onClose()
       }catch(err:any){toast.error(err?.message??"Error")}
     })
@@ -515,7 +513,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
       </div>
       <div className="flex-1 min-h-0 px-5 py-4 space-y-3 overflow-y-auto overscroll-contain">
         {eraRecurrente&&(
-          <p className="text-[10px] text-[var(--c-warning)] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Guardar cambios solo actualizará esta ocurrencia — las demás no se ven afectadas.</p>
+          <p className="text-[10px] text-[var(--c-warning)] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">🔁 Esta tarea es parte de una serie recurrente. Cambiar nombre, fecha u otros datos solo afecta esta ocurrencia — cambiar la repetición de más abajo sí afecta a las próximas.</p>
         )}
         <div>
           <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Tipo</label>
@@ -551,6 +549,7 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
           <div>
             <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Prioridad</label>
             <select value={prioridad} onChange={e=>setPrioridad(e.target.value)} className={sel2}>
+              <option value="">Sin prioridad</option>
               <option value="baja">Baja</option>
               <option value="media">Media</option>
               <option value="alta">Alta</option>
@@ -568,9 +567,13 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         {proyectos.length===0&&(
           <p className="text-[10px] text-[var(--c-text4)]">Crea categorías desde Configuración → Categorías para organizar tus tareas por proyecto.</p>
         )}
-        {/* La repetición solo se define al crear — editar una ocurrencia ya
-            existente la desengancha de su serie (ver nota arriba). */}
-        {!isEdit&&tipo==="tarea"&&(
+        {/* Editable también al editar una tarea existente (antes solo se
+            podía definir al crear) — elegir "Sin repetición" acá es la forma
+            de quitarla: la serie deja de generar ocurrencias futuras desde
+            esta fecha en adelante, igual que el botón de repetición de
+            Asana al volver a tocarlo. Ver el detalle de qué pasa con cada
+            combinación en actualizarEventoCalendario. */}
+        {tipo==="tarea"&&(
           <div className="space-y-2 pt-1 border-t border-[var(--c-border2)]">
             <div>
               <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">🔁 Repetición</label>

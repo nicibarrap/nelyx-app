@@ -34,6 +34,7 @@ export default async function CalendarioPage() {
     }),
     db.eventoCalendario.findMany({
       where: { userId, fecha: { gte: inicioAnio, lt: finAnio } },
+      include: { serie: { select: { frecuencia: true, diasSemana: true, fechaFin: true } } },
       orderBy: [{ fecha: "asc" }],
     }),
     obtenerProyectosTarea(),
@@ -65,6 +66,9 @@ export default async function CalendarioPage() {
       fecha: e.fecha.toISOString(), tipo: e.tipo, estado: e.estado,
       prioridad: e.prioridad, horaLimite: (e as any).horaLimite ?? null,
       proyectoId: (e as any).proyectoId ?? null, serieId: (e as any).serieId ?? null,
+      serieFrecuencia: e.serie?.frecuencia ?? null,
+      serieDiasSemana: e.serie?.diasSemana ?? [],
+      serieFechaFin: e.serie?.fechaFin?.toISOString() ?? null,
     })),
     proyectosTarea: proyectosTarea.map(p => ({ id: p.id, nombre: p.nombre, color: p.color })),
   }

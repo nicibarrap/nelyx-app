@@ -2186,7 +2186,7 @@ export async function crearEventoCalendario(formData: FormData) {
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const fecha = formData.get("fecha") as string
   const tipo = (formData.get("tipo") as string) || "evento"
-  const prioridad = (formData.get("prioridad") as string) || "media"
+  const prioridad = (formData.get("prioridad") as string | null)?.trim() || null
   const estado = (formData.get("estado") as string) || "pendiente"
   const horaLimite = (formData.get("horaLimite") as string | null) || null
   const proyectoId = (formData.get("proyectoId") as string | null)?.trim() || null
@@ -2236,24 +2236,68 @@ export async function actualizarEventoCalendario(id: string, formData: FormData)
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const fecha = formData.get("fecha") as string
   const tipo = (formData.get("tipo") as string) || "evento"
-  const prioridad = (formData.get("prioridad") as string) || "media"
+  const prioridad = (formData.get("prioridad") as string | null)?.trim() || null
   const estado = (formData.get("estado") as string) || "pendiente"
   const horaLimite = (formData.get("horaLimite") as string | null) || null
   const proyectoId = (formData.get("proyectoId") as string | null)?.trim() || null
+  const frecuencia = (formData.get("frecuencia") as string | null) || "ninguna"
+  const diasSemana = formData.getAll("diasSemana").map(v => Number(v)).filter(n => Number.isInteger(n) && n >= 0 && n <= 6)
+  const fechaFinSerie = (formData.get("fechaFinSerie") as string | null)?.trim() || null
 
   if (!titulo || !fecha) throw new Error("Título y fecha son requeridos")
+
+  const evento = await db.eventoCalendario.findFirst({ where: { id, userId: session.user.id }, include: { serie: true } })
+  if (!evento) throw new Error("Evento no encontrado")
 
   const proyectoValido = proyectoId
     ? await db.proyectoTarea.findFirst({ where: { id: proyectoId, userId: session.user.id }, select: { id: true } })
     : null
 
-  // Editar una ocurrencia de una serie recurrente solo cambia esa fila: se
-  // "desengancha" de la serie (serieId: null) para no ser pisada si luego se
-  // regenera el horizonte, ni arrastrar consigo al resto de las ocurrencias.
-  await db.eventoCalendario.updateMany({
-    where: { id, userId: session.user.id },
-    data: { titulo, descripcion, fecha: new Date(fecha), tipo, prioridad, estado, horaLimite, proyectoId: proyectoValido?.id ?? null, serieId: null }
-  })
+  const fechaNueva = new Date(fecha)
+  const dataBase = { titulo, descripcion, fecha: fechaNueva, tipo, prioridad, estado, horaLimite, proyectoId: proyectoValido?.id ?? null }
+
+  // La repetición ahora también se puede ver y cambiar al editar (antes solo
+  // se definía al crear) — comparando contra la serie actual para saber si
+  // de verdad cambió, en vez de confiar en lo que mande el cliente.
+  const serieActual = evento.serie
+  const mismasReglas = (s: typeof serieActual) =>
+    !!s && s.frecuencia === frecuencia && frecuencia !== "ninguna" &&
+    JSON.stringify([...s.diasSemana].sort()) === JSON.stringify([...diasSemana].sort()) &&
+    (s.fechaFin ? s.fechaFin.toISOString().slice(0, 10) : null) === fechaFinSerie
+
+  if (!serieActual && frecuencia === "ninguna") {
+    // Sin serie antes, sin repetición ahora — comportamiento de siempre:
+    // solo se actualizan los campos de esta fila.
+    await db.eventoCalendario.updateMany({ where: { id }, data: { ...dataBase, serieId: null } })
+  } else if (serieActual && mismasReglas(serieActual)) {
+    // La regla de repetición no cambió — se mantiene el comportamiento de
+    // siempre: editar otros campos (nombre, fecha puntual, etc.) desengancha
+    // SOLO esta ocurrencia, sin tocar la serie ni al resto de sus tareas.
+    await db.eventoCalendario.updateMany({ where: { id }, data: { ...dataBase, serieId: null } })
+  } else if (serieActual && frecuencia === "ninguna") {
+    // Quitar la repetición (el botón "🔁 Repetición" vuelto a tocar, estilo
+    // Asana): la serie deja de extenderse desde esta fecha en adelante, y se
+    // borran las ocurrencias futuras aún pendientes que ya se habían
+    // materializado bajo la regla vieja — las pasadas/completadas no se tocan.
+    await db.serieRecurrente.update({ where: { id: serieActual.id }, data: { fechaFin: fechaNueva } })
+    await db.eventoCalendario.deleteMany({ where: { serieId: serieActual.id, userId: session.user.id, estado: "pendiente", fecha: { gt: fechaNueva } } })
+    await db.eventoCalendario.updateMany({ where: { id }, data: { ...dataBase, serieId: null } })
+  } else {
+    // Repetición nueva o cambiada: si esta tarea ya tenía serie, se actualiza
+    // esa misma serie (y se limpian las ocurrencias futuras calculadas bajo
+    // la regla vieja); si nunca tuvo, se crea una serie recién ahora, anclada
+    // en esta fecha — las próximas ocurrencias se generan solas la siguiente
+    // vez que se abre el Calendario (mismo mecanismo que al crear).
+    const fechaFin = fechaFinSerie ? new Date(fechaFinSerie) : null
+    if (serieActual) {
+      await db.serieRecurrente.update({ where: { id: serieActual.id }, data: { frecuencia, diasSemana, fechaFin } })
+      await db.eventoCalendario.deleteMany({ where: { serieId: serieActual.id, userId: session.user.id, estado: "pendiente", fecha: { gt: fechaNueva } } })
+      await db.eventoCalendario.updateMany({ where: { id }, data: { ...dataBase, serieId: serieActual.id } })
+    } else {
+      const serieNueva = await db.serieRecurrente.create({ data: { frecuencia, diasSemana, fechaFin, userId: session.user.id } })
+      await db.eventoCalendario.updateMany({ where: { id }, data: { ...dataBase, serieId: serieNueva.id } })
+    }
+  }
   // La fecha/hora cambió: se cancelan los recordatorios ya generados, el cron los reprograma con la nueva fecha
   await cancelarNotificacionesPorPrefijo(`evt:${id}:`)
   await cancelarNotificacionesPorPrefijo(`tarea:${id}:`)
