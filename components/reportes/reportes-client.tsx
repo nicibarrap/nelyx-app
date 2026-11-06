@@ -169,12 +169,21 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
         La hora es cuando registraste la venta en Nelyx; si sueles anotar varias ventas juntas al final del día, el horario real puede variar.
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full border-separate" style={{ borderSpacing: 3 }}>
+        {/* table-fixed: las 8 columnas de hora se dividen el ancho restante en
+            partes iguales, sin importar el contenido de las celdas. Sin esto,
+            el ancho de cada columna lo decidía el texto más largo que cayera
+            en ella — montos como "$1.5M" (modo "Por monto") son mucho más
+            anchos que cantidades como "11" (modo "Por N° de ventas"), así que
+            cada pestaña repartía el espacio distinto y el encabezado de hora
+            ("12-15h", etc.) se cortaba en una o dos líneas de forma distinta
+            según la pestaña activa — en vez de solo depender del ancho real
+            disponible, igual en ambas. */}
+        <table className="w-full border-separate table-fixed" style={{ borderSpacing: 3 }}>
           <thead>
             <tr>
               <th className="w-10" />
               {BLOQUES.map((b, i) => (
-                <th key={i} className="text-[9px] text-[var(--c-text4)] font-normal pb-1">{labelBloque(b)}</th>
+                <th key={i} className="text-[9px] text-[var(--c-text4)] font-normal pb-1 break-words">{labelBloque(b)}</th>
               ))}
             </tr>
           </thead>
