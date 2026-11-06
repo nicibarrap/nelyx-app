@@ -910,6 +910,14 @@ export async function crearProducto(formData: FormData) {
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
 
+  // Mismo patrón que crearProyectoTarea: nombre único por negocio
+  // (insensible a mayúsculas), solo contra productos activos — así se
+  // puede volver a usar el nombre de uno que ya se descontinuó, pero no se
+  // puede crear sin querer un duplicado exacto del que sigue vigente (como
+  // pasó con "Mani": se creó dos veces sin ningún aviso).
+  const duplicado = await db.producto.findFirst({ where: { userId: session.user.id, activo: true, nombre: { equals: nombre, mode: "insensitive" } } })
+  if (duplicado) throw new Error(`Ya tienes un producto llamado "${duplicado.nombre}" — si quieres sumar stock o cambiarle algo, edítalo en vez de crear uno nuevo.`)
+
   const precio = formData.get("precio") ? parseFloat(formData.get("precio") as string) : null
   const costo = formData.get("costo") ? parseFloat(formData.get("costo") as string) : null
 
@@ -1030,8 +1038,18 @@ export async function importarProductosMasivo(productos: {
   const errores: string[] = []
   let exitosos = 0
 
+  // Mismo criterio de nombre duplicado que crearProducto, pero resuelto en
+  // un solo query antes del loop (no uno por fila — con hasta 2000 filas
+  // sería demasiado) y actualizado a medida que se importa, para agarrar
+  // también dos filas con el mismo nombre dentro del propio archivo.
+  const existentes = await db.producto.findMany({ where: { userId: session.user.id, activo: true }, select: { nombre: true } })
+  const nombresUsados = new Set(existentes.map(p => p.nombre.trim().toLowerCase()))
+
   for (const p of productos) {
     try {
+      const nombreNormalizado = p.nombre.trim().toLowerCase()
+      if (nombresUsados.has(nombreNormalizado)) throw new Error("Ya existe un producto activo con este nombre")
+
       const unidadMedida = p.formaVenta === "peso" ? "kg" : "unidad"
       const stockInterno = aInterno(p.stock, unidadMedida)
       const producto = await db.producto.create({
@@ -1059,6 +1077,7 @@ export async function importarProductosMasivo(productos: {
           fechaVencimiento: p.fechaVencimiento ? new Date(p.fechaVencimiento) : null,
         })
       }
+      nombresUsados.add(nombreNormalizado)
       exitosos++
     } catch (err: any) {
       const motivo = err?.code === "P2002" ? "SKU o código de barras duplicado" : (err?.message ?? "error desconocido")
@@ -1085,6 +1104,11 @@ export async function actualizarProducto(id: string, formData: FormData) {
 
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
+
+  // Mismo chequeo que al crear — evita que editar el nombre de un producto
+  // lo deje con el mismo nombre que otro que ya tienes activo.
+  const duplicado = await db.producto.findFirst({ where: { userId: session.user.id, activo: true, id: { not: id }, nombre: { equals: nombre, mode: "insensitive" } } })
+  if (duplicado) throw new Error(`Ya tienes un producto llamado "${duplicado.nombre}" — no puedes dejar dos con el mismo nombre.`)
 
   const precio = formData.get("precio") ? parseFloat(formData.get("precio") as string) : null
   const costo = formData.get("costo") ? parseFloat(formData.get("costo") as string) : null
