@@ -131,19 +131,28 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
 
   // Texto compacto para que quepa DENTRO del recuadro sin desbordarse —
   // el monto exacto completo sigue disponible al pasar el mouse (title).
-  function formatoMillones(valor: number) {
-    return `$${(valor / 1_000_000).toFixed(valor % 1_000_000 === 0 ? 0 : 1)}M`
+  function formatoMillones(valor: number, conSimbolo = true) {
+    const texto = `${(valor / 1_000_000).toFixed(valor % 1_000_000 === 0 ? 0 : 1)}M`
+    return conSimbolo ? `$${texto}` : texto
   }
-  // Para celular: abreviado siempre ($134k) — poco espacio horizontal.
-  // Para PC/pantallas grandes: el monto completo ($134.320) — sí hay
-  // espacio, y es más preciso de un vistazo. Los millones se abrevian
-  // en cualquier pantalla, ya que un número completo ahí sería enorme.
+  // Para celular: abreviado y SIN el símbolo "$" — con table-fixed (ver
+  // comentario de la tabla más abajo) las 8 columnas de hora miden lo
+  // mismo pase lo que pase, así que en un teléfono angosto quedan de
+  // apenas ~35-40px cada una. "$737k" o "$1.0M" ya no entraban ahí y se
+  // salían del recuadro redondeado hacia la celda de al lado — se ve roto.
+  // Sin el "$" (el contexto ya lo deja claro: la pestaña dice "Por monto"
+  // y el texto de arriba dice "más dinero vendiste") y en una letra más
+  // chica, el texto más largo que puede salir ("737k", 4 caracteres) cabe
+  // cómodo en cualquier ancho real de columna. Para PC/pantallas grandes
+  // se sigue mostrando el monto completo con "$" — ahí sí hay espacio de
+  // sobra. Los millones se abrevian en cualquier pantalla, ya que un
+  // número completo ahí sería enorme.
   function formatoCompactoMovil(valor: number) {
     if (valor <= 0) return ""
     if (modo === "cantidad") return String(valor)
-    if (valor >= 1_000_000) return formatoMillones(valor)
-    if (valor >= 1_000) return `$${Math.round(valor / 1000)}k`
-    return `$${valor}`
+    if (valor >= 1_000_000) return formatoMillones(valor, false)
+    if (valor >= 1_000) return `${Math.round(valor / 1000)}k`
+    return String(valor)
   }
   function formatoCompletoEscritorio(valor: number) {
     if (valor <= 0) return ""
@@ -195,11 +204,11 @@ function MapaCalor({ heatmapMonto, heatmapCantidad, semanasDeDatos }: { heatmapM
                   const valor = b.reduce((a, h) => a + heatmap[dia][h], 0)
                   const legible = textoLegible(valor)
                   return (
-                    <td key={i} className="rounded-lg h-10 text-center align-middle" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)}>
+                    <td key={i} className="rounded-lg h-10 text-center align-middle px-0.5" style={{ backgroundColor: colorCelda(valor) }} title={formatoCelda(valor)}>
                       {valor > 0 && (
-                        <span className={`text-[10px] font-semibold whitespace-nowrap ${legible ? "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" : "text-[var(--c-text)]"}`}>
-                          <span className="sm:hidden">{formatoCompactoMovil(valor)}</span>
-                          <span className="hidden sm:inline">{formatoCompletoEscritorio(valor)}</span>
+                        <span className={`font-semibold whitespace-nowrap ${legible ? "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" : "text-[var(--c-text)]"}`}>
+                          <span className="sm:hidden text-[9px]">{formatoCompactoMovil(valor)}</span>
+                          <span className="hidden sm:inline text-[10px]">{formatoCompletoEscritorio(valor)}</span>
                         </span>
                       )}
                     </td>
