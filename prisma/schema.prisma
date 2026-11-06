@@ -401,7 +401,10 @@ model EventoCalendario {
   tipo        String           @default("evento")
   color       String           @default("azul")
   estado      String           @default("pendiente")
-  prioridad   String           @default("media")
+  // null = sin prioridad asignada — el campo no maneja ningún otro
+  // comportamiento (orden, filtro, aviso); solo se muestra como etiqueta
+  // en la ficha del evento, así que forzar un valor por defecto no aporta.
+  prioridad   String?
   horaLimite  String?
   proyectoId  String?
   proyecto    ProyectoTarea?   @relation(fields: [proyectoId], references: [id], onDelete: SetNull)
