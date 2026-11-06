@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Historial — Movimientos" }
 
 const POR_PAGINA = 25
 
-export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string; q?: string; tipo?: string; metodoPago?: string; orden?: string; page?: string }> }) {
+export default async function MovimientosPage(props: { searchParams: Promise<{ mes?: string; anio?: string; q?: string; tipo?: string; metodoPago?: string; realizadoPor?: string; orden?: string; page?: string }> }) {
   const searchParams = await props.searchParams;
   const session = await auth()
   // "antiguos" invierte el orden para poder llegar directo al día 1 del
@@ -33,9 +33,10 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
   const where = construirWhereMovimientos({
     userId: session!.user.id, mes, anio,
     q: searchParams.q, tipo: searchParams.tipo, metodoPago: searchParams.metodoPago,
+    realizadoPor: searchParams.realizadoPor,
   })
 
-  const [movimientosDb, totalRegistros] = await Promise.all([
+  const [movimientosDb, totalRegistros, nombresUsuariosRaw] = await Promise.all([
     db.movimiento.findMany({
       where,
       include: {
@@ -51,7 +52,19 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
       take: POR_PAGINA,
     }),
     db.movimiento.count({ where }),
+    // Para el filtro "Usuario" — de todo el historial (no solo el mes
+    // actual), para que la lista de nombres no vaya apareciendo/
+    // desapareciendo al cambiar de período. Solo negocios con empleados
+    // activos alguna vez tienen filas acá — en el caso normal (sin
+    // empleados) esto es un array vacío y el filtro ni se muestra.
+    db.movimiento.findMany({
+      where: { userId: session!.user.id, realizadoPorNombre: { not: null } },
+      select: { realizadoPorNombre: true },
+      distinct: ["realizadoPorNombre"],
+      orderBy: { realizadoPorNombre: "asc" },
+    }),
   ])
+  const nombresUsuarios = nombresUsuariosRaw.map(m => m.realizadoPorNombre!).filter(Boolean)
   const totalPaginas = Math.max(1, Math.ceil(totalRegistros / POR_PAGINA))
   // Decimal de Prisma no es un objeto plano — pasarlo directo a un Client
   // Component (TablaMovimientos) rompe la regla de serialización de RSC.
@@ -96,9 +109,9 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
           a la misma altura que el buscador (mismo h-10). */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-3">
         <div className="flex-1">
-          <FiltroMovimientos />
+          <FiltroMovimientos usuarios={nombresUsuarios} />
         </div>
-        <ExportarMovimientosBoton mes={mes} anio={anio} q={searchParams.q} tipo={searchParams.tipo} metodoPago={searchParams.metodoPago} orden={searchParams.orden} />
+        <ExportarMovimientosBoton mes={mes} anio={anio} q={searchParams.q} tipo={searchParams.tipo} metodoPago={searchParams.metodoPago} realizadoPor={searchParams.realizadoPor} orden={searchParams.orden} />
       </div>
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5">
         <TablaMovimientos movimientos={movimientos} />

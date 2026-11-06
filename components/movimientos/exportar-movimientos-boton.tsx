@@ -3,15 +3,15 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { exportarMovimientosCSV } from "@/app/actions/acciones"
 
-interface Props { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; orden?: string }
+interface Props { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; realizadoPor?: string; orden?: string }
 
-export function ExportarMovimientosBoton({ mes, anio, q, tipo, metodoPago, orden }: Props) {
+export function ExportarMovimientosBoton({ mes, anio, q, tipo, metodoPago, realizadoPor, orden }: Props) {
   const [descargando, setDescargando] = useState(false)
 
   async function handleExportar() {
     setDescargando(true)
     try {
-      const csv = await exportarMovimientosCSV({ mes, anio, q, tipo, metodoPago, orden })
+      const csv = await exportarMovimientosCSV({ mes, anio, q, tipo, metodoPago, realizadoPor, orden })
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
