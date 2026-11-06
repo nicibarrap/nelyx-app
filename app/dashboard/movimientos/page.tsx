@@ -85,7 +85,16 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
           </Link>
         </div>
       </div>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      {/* items-start, no items-center: FiltroMovimientos es un bloque de 2
+          filas (buscador/selects + chips, siempre apiladas — ver su propio
+          comentario). Con items-center el botón Exportar (una sola fila,
+          h-10) quedaba centrado verticalmente contra el bloque completo, es
+          decir flotando a media altura entre ambas filas en vez de parejo
+          con el buscador — se notaba sobre todo en monitores anchos, donde
+          desde lg la fila de buscador/selects pasa a ser una sola línea y el
+          desfase queda más a la vista. items-start lo deja alineado arriba,
+          a la misma altura que el buscador (mismo h-10). */}
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
         <div className="flex-1">
           <FiltroMovimientos />
         </div>
