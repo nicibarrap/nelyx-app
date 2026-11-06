@@ -8,6 +8,7 @@ import { formatCLP } from "@/lib/utils"
 import { conTimeout, mensajeErrorAccion } from "@/lib/errores-red"
 import { CentroCobranza } from "@/components/cuentas-cobrar/centro-cobranza"
 import { CampoFecha } from "@/components/shared/campo-fecha"
+import { PanelLateral } from "@/components/shared/panel-lateral"
 
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` }
 const METODOS_PAGO = ["Efectivo","Transferencia","Débito","Crédito","Cheque","Otro"]
@@ -298,19 +299,22 @@ function DetalleCuenta({ cuenta, score, onClose, onPago, nombreNegocio, usuarioE
   const pct = cuenta.montoOriginal > 0 ? Math.round((cuenta.totalPagado / cuenta.montoOriginal) * 100) : 0
 
   return (
-    <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden h-full flex flex-col">
-      <div className="px-5 py-4 border-b border-[var(--c-border)] flex items-center justify-between">
-        <div>
+    <div>
+      {/* sticky, no un header fijo en un wrapper con su propio scroll — acá
+          el que scrollea es el panel completo (PanelLateral ya trae su
+          propio overflow-y-auto), mismo patrón que la ficha de Deudas. */}
+      <div className="sticky top-0 z-10 bg-[var(--c-card)] px-5 py-4 border-b border-[var(--c-border)] flex items-center justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-[var(--c-text)]">Venta #{cuenta.numero}</h3>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span>
+            <h3 className="text-sm font-bold text-[var(--c-text)] truncate">Venta #{cuenta.numero}</h3>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold flex-shrink-0 ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span>
           </div>
-          <p className="text-xs text-[var(--c-text3)] mt-0.5">{cuenta.cliente.nombre} {cuenta.cliente.apellido ?? ""} · {cuenta.cliente.telefono ?? ""}</p>
+          <p className="text-xs text-[var(--c-text3)] mt-0.5 truncate">{cuenta.cliente.nombre} {cuenta.cliente.apellido ?? ""} · {cuenta.cliente.telefono ?? ""}</p>
         </div>
-        <button onClick={onClose} className="text-[var(--c-text3)] w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-lg">×</button>
+        <button onClick={onClose} className="text-[var(--c-text3)] w-7 h-7 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-lg flex-shrink-0">×</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="p-5 space-y-4">
         {/* Info */}
         <div className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-4 space-y-2">
           {[
@@ -462,156 +466,161 @@ export function CuentasCobrarClient({ cuentasData, clientes, scoreClientes, metr
         ))}
       </div>
 
-      {/* Layout principal */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Lista */}
-        <div className="lg:col-span-2 bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden flex flex-col">
-          <div className="px-4 pt-4 pb-3 border-b border-[var(--c-border)]">
-            <div className="flex gap-1 flex-wrap mb-3 overflow-x-auto">
-              {TABS.map(t => (
-                <button key={t.key} onClick={() => setFiltro(t.key)}
-                  className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border whitespace-nowrap transition-all outline-none focus:outline-none ${filtro === t.key ? "bg-sky-500/10 text-sky-400 border-sky-500/20" : "border-transparent text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">🔍</span>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por cliente o número..."
-                className="w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl pl-8 pr-3 text-xs text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
-            </div>
+      {/* Lista — a lo ancho completo. El detalle ya no se incrusta abajo
+          (como quedaba antes en celular/tablet, antes de llegar al
+          breakpoint lg) ni al lado (como quedaba en desktop) — ahora se
+          abre en un panel lateral que se desliza desde la derecha, mismo
+          patrón que Productos y Deudas (ver PanelLateral más abajo): fijo
+          en su lugar sin importar el scroll de la lista, y a pantalla
+          completa en celular en vez de "al lado" (que ahí no tiene
+          sentido). */}
+      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden flex flex-col">
+        <div className="px-4 pt-4 pb-3 border-b border-[var(--c-border)]">
+          <div className="flex gap-1 flex-wrap mb-3 overflow-x-auto">
+            {TABS.map(t => (
+              <button key={t.key} onClick={() => setFiltro(t.key)}
+                className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border whitespace-nowrap transition-all outline-none focus:outline-none ${filtro === t.key ? "bg-sky-500/10 text-sky-400 border-sky-500/20" : "border-transparent text-[var(--c-text3)] hover:text-[var(--c-text)]"}`}>
+                {t.label}
+              </button>
+            ))}
           </div>
-
-          {/* Tabla — la versión de 7 columnas no cabe en un teléfono ni
-              siquiera con scroll horizontal (Monto quedaba completamente
-              fuera de la pantalla, sin ninguna señal de que se podía
-              deslizar); por debajo de sm se usan tarjetas apiladas en su
-              lugar, con los mismos datos priorizados para una pantalla
-              angosta. */}
-          <div className="flex-1">
-            {filtradas.length === 0 ? (
-              <div className="text-center py-16"><p className="text-4xl mb-3">📋</p><p className="text-sm text-[var(--c-text3)]">Sin cuentas en esta categoría</p></div>
-            ) : (
-              <>
-                <div className="sm:hidden divide-y divide-[var(--c-border2)]">
-                  {filtradas.map(c => {
-                    const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.pendiente
-                    const score = scoreMap[c.cliente.id] ?? "excelente"
-                    const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
-                    return (
-                      <button key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
-                        className={`w-full text-left px-4 py-3 transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center text-[10px] font-bold text-sky-400 flex-shrink-0">{getInitials(c.cliente.nombre, c.cliente.apellido)}</div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[var(--c-text)] text-xs truncate">{c.cliente.nombre} {c.cliente.apellido ?? ""} <span className={sCfg.color}>{sCfg.dot}</span></p>
-                              <p className="text-[10px] text-[var(--c-text3)]">Venta #{c.numero}</p>
-                            </div>
-                          </div>
-                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span>
-                        </div>
-                        <div className="flex items-center justify-between mt-2 text-xs">
-                          <span className="text-[var(--c-text3)]">
-                            {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : ""}>Vence {formatFecha(c.fechaVence)}</span> : "Sin vencimiento"}
-                            {" · "}
-                            <span className={c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : ""}>
-                              {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓ Al día" : c.diasAtraso > 0 ? `${c.diasAtraso}d atraso` : c.diasHastaVence !== null ? `${c.diasHastaVence}d restantes` : "—"}
-                            </span>
-                          </span>
-                          <span className={`font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</span>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="hidden sm:block overflow-x-auto">
-                  <table className="w-full text-xs min-w-[600px]">
-                    <thead>
-                      <tr className="border-b border-[var(--c-border)] bg-[var(--c-card2)]">
-                        {["Cliente","Documento","Vencimiento","Monto","Saldo","Estado","Días"].map(h => (
-                          <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtradas.map(c => {
-                        const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.pendiente
-                        const score = scoreMap[c.cliente.id] ?? "excelente"
-                        const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
-                        return (
-                          <tr key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
-                            className={`border-b border-[var(--c-border2)] cursor-pointer transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center text-[10px] font-bold text-sky-400 flex-shrink-0">{getInitials(c.cliente.nombre, c.cliente.apellido)}</div>
-                                <div>
-                                  <p className="font-semibold text-[var(--c-text)]">{c.cliente.nombre} {c.cliente.apellido ?? ""}</p>
-                                  <span className={`text-[9px] ${sCfg.color}`}>{sCfg.dot}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-[var(--c-text3)]">Venta #{c.numero}</td>
-                            <td className="px-4 py-3">
-                              {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : "text-[var(--c-text2)]"}>{formatFecha(c.fechaVence)}</span> : <span className="text-[var(--c-text4)]">—</span>}
-                            </td>
-                            <td className="px-4 py-3 text-[var(--c-text)]">{formatCLP(c.montoOriginal)}</td>
-                            <td className={`px-4 py-3 font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</td>
-                            <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span></td>
-                            <td className={`px-4 py-3 font-semibold ${c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : "text-[var(--c-text3)]"}`}>
-                            {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓" : c.diasAtraso > 0 ? `+${c.diasAtraso}` : c.diasHastaVence !== null ? `${c.diasHastaVence}d` : "—"}
-                          </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text3)] text-sm">🔍</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por cliente o número..."
+              className="w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl pl-8 pr-3 text-xs text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors" />
           </div>
+        </div>
 
-          {/* Ranking clientes */}
-          {cuentasData.filter(c => c.estado !== "pagada").length > 0 && (
-            <div className="border-t border-[var(--c-border)] px-5 py-4">
-              <p className="text-xs font-semibold text-[var(--c-text)] mb-3">Clientes con mayor deuda pendiente</p>
-              <div className="space-y-2">
-                {Object.entries(
-                  cuentasData.filter(c => c.estado !== "pagada").reduce((acc: Record<string, { nombre: string; total: number; score: string }>, c) => {
-                    const key = c.cliente.id
-                    if (!acc[key]) acc[key] = { nombre: `${c.cliente.nombre} ${c.cliente.apellido ?? ""}`.trim(), total: 0, score: scoreMap[key] ?? "excelente" }
-                    acc[key].total += c.saldoPendiente
-                    return acc
-                  }, {})
-                ).sort((a, b) => b[1].total - a[1].total).slice(0, 4).map(([id, { nombre, total, score }], i) => {
+        {/* Tabla — la versión de 7 columnas no cabe en un teléfono ni
+            siquiera con scroll horizontal (Monto quedaba completamente
+            fuera de la pantalla, sin ninguna señal de que se podía
+            deslizar); por debajo de sm se usan tarjetas apiladas en su
+            lugar, con los mismos datos priorizados para una pantalla
+            angosta. */}
+        <div className="flex-1">
+          {filtradas.length === 0 ? (
+            <div className="text-center py-16"><p className="text-4xl mb-3">📋</p><p className="text-sm text-[var(--c-text3)]">Sin cuentas en esta categoría</p></div>
+          ) : (
+            <>
+              <div className="sm:hidden divide-y divide-[var(--c-border2)]">
+                {filtradas.map(c => {
+                  const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.pendiente
+                  const score = scoreMap[c.cliente.id] ?? "excelente"
                   const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
                   return (
-                    <div key={id} className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-[var(--c-text4)] w-4">#{i+1}</span>
-                      <p className="flex-1 text-xs text-[var(--c-text)]">{nombre} <span className={`text-[10px] ${sCfg.color}`}>{sCfg.dot}</span></p>
-                      <span className="text-xs font-bold text-red-400">{formatCLP(total)}</span>
-                    </div>
+                    <button key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
+                      className={`w-full text-left px-4 py-3 transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center text-[10px] font-bold text-sky-400 flex-shrink-0">{getInitials(c.cliente.nombre, c.cliente.apellido)}</div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[var(--c-text)] text-xs truncate">{c.cliente.nombre} {c.cliente.apellido ?? ""} <span className={sCfg.color}>{sCfg.dot}</span></p>
+                            <p className="text-[10px] text-[var(--c-text3)]">Venta #{c.numero}</p>
+                          </div>
+                        </div>
+                        <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 text-xs">
+                        <span className="text-[var(--c-text3)]">
+                          {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : ""}>Vence {formatFecha(c.fechaVence)}</span> : "Sin vencimiento"}
+                          {" · "}
+                          <span className={c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : ""}>
+                            {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓ Al día" : c.diasAtraso > 0 ? `${c.diasAtraso}d atraso` : c.diasHastaVence !== null ? `${c.diasHastaVence}d restantes` : "—"}
+                          </span>
+                        </span>
+                        <span className={`font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</span>
+                      </div>
+                    </button>
                   )
                 })}
               </div>
-            </div>
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-xs min-w-[600px]">
+                  <thead>
+                    <tr className="border-b border-[var(--c-border)] bg-[var(--c-card2)]">
+                      {["Cliente","Documento","Vencimiento","Monto","Saldo","Estado","Días"].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--c-text3)] uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtradas.map(c => {
+                      const cfg = ESTADO_CFG[c.estado] ?? ESTADO_CFG.pendiente
+                      const score = scoreMap[c.cliente.id] ?? "excelente"
+                      const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
+                      return (
+                        <tr key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
+                          className={`border-b border-[var(--c-border2)] cursor-pointer transition-all ${selectedId === c.id ? "bg-sky-500/5" : "hover:bg-[var(--c-hover)]"}`}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center text-[10px] font-bold text-sky-400 flex-shrink-0">{getInitials(c.cliente.nombre, c.cliente.apellido)}</div>
+                              <div>
+                                <p className="font-semibold text-[var(--c-text)]">{c.cliente.nombre} {c.cliente.apellido ?? ""}</p>
+                                <span className={`text-[9px] ${sCfg.color}`}>{sCfg.dot}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-[var(--c-text3)]">Venta #{c.numero}</td>
+                          <td className="px-4 py-3">
+                            {c.fechaVence ? <span className={c.estado === "vencida" ? "text-red-400 font-semibold" : "text-[var(--c-text2)]"}>{formatFecha(c.fechaVence)}</span> : <span className="text-[var(--c-text4)]">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--c-text)]">{formatCLP(c.montoOriginal)}</td>
+                          <td className={`px-4 py-3 font-bold ${c.saldoPendiente > 0 ? "text-red-400" : "text-emerald-400"}`}>{formatCLP(c.saldoPendiente)}</td>
+                          <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color} ${cfg.bg} ${cfg.border}`}>{cfg.label}</span></td>
+                          <td className={`px-4 py-3 font-semibold ${c.estado === "pagada" || c.saldoPendiente === 0 ? "text-emerald-400" : c.diasAtraso > 0 ? "text-red-400" : "text-[var(--c-text3)]"}`}>
+                          {c.estado === "pagada" || c.saldoPendiente === 0 ? "✓" : c.diasAtraso > 0 ? `+${c.diasAtraso}` : c.diasHastaVence !== null ? `${c.diasHastaVence}d` : "—"}
+                        </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 
-        {/* Panel detalle — queda fijo en su lugar (sticky) y con su propio
-            scroll interno, para que revisar el historial de un cliente no
-            obligue a desplazar toda la página ni deje espacio vacío
-            debajo del nombre mientras se scrollea. */}
-        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-          {selected ? (
-            <DetalleCuenta cuenta={selected} score={scoreMap[selected.cliente.id] ?? "excelente"} onClose={() => setSelectedId(null)} onPago={() => setShowPago(true)} nombreNegocio={nombreNegocio} usuarioEnvia={usuarioEnvia} plantillas={plantillas} />
-          ) : (
-            <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl h-full flex items-center justify-center p-10 text-center min-h-[400px]">
-              <div><p className="text-4xl mb-3">👈</p><p className="text-sm font-semibold text-[var(--c-text)]">Selecciona una cuenta</p><p className="text-xs text-[var(--c-text3)] mt-1">Haz clic en cualquier fila para ver el detalle</p></div>
+        {/* Ranking clientes */}
+        {cuentasData.filter(c => c.estado !== "pagada").length > 0 && (
+          <div className="border-t border-[var(--c-border)] px-5 py-4">
+            <p className="text-xs font-semibold text-[var(--c-text)] mb-3">Clientes con mayor deuda pendiente</p>
+            <div className="space-y-2">
+              {Object.entries(
+                cuentasData.filter(c => c.estado !== "pagada").reduce((acc: Record<string, { nombre: string; total: number; score: string }>, c) => {
+                  const key = c.cliente.id
+                  if (!acc[key]) acc[key] = { nombre: `${c.cliente.nombre} ${c.cliente.apellido ?? ""}`.trim(), total: 0, score: scoreMap[key] ?? "excelente" }
+                  acc[key].total += c.saldoPendiente
+                  return acc
+                }, {})
+              ).sort((a, b) => b[1].total - a[1].total).slice(0, 4).map(([id, { nombre, total, score }], i) => {
+                const sCfg = SCORE_CFG[score as keyof typeof SCORE_CFG]
+                return (
+                  <div key={id} className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-[var(--c-text4)] w-4">#{i+1}</span>
+                    <p className="flex-1 text-xs text-[var(--c-text)]">{nombre} <span className={`text-[10px] ${sCfg.color}`}>{sCfg.dot}</span></p>
+                    <span className="text-xs font-bold text-red-400">{formatCLP(total)}</span>
+                  </div>
+                )
+              })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Ficha de la cuenta — panel lateral, no incrustada en el flujo de
+          la página (mismo patrón que Productos y Deudas). Se cierra al
+          abrir "Registrar pago" (FormPago, más arriba) — ese formulario es
+          un modal centrado propio con z-50, por debajo del z-[60] del
+          panel, así que si el panel siguiera abierto detrás lo taparía
+          por completo. Al confirmar o cancelar el pago vuelve a abrirse
+          solo (selected sigue apuntando a la misma cuenta — showPago ya
+          no bloquea el "abierto" — y se recalcula con los datos nuevos
+          tras el router.refresh()). */}
+      <PanelLateral abierto={!!selected && !showPago} onClose={() => setSelectedId(null)}>
+        {selected && (
+          <DetalleCuenta cuenta={selected} score={scoreMap[selected.cliente.id] ?? "excelente"} onClose={() => setSelectedId(null)} onPago={() => setShowPago(true)} nombreNegocio={nombreNegocio} usuarioEnvia={usuarioEnvia} plantillas={plantillas} />
+        )}
+      </PanelLateral>
     </div>
   )
 }
