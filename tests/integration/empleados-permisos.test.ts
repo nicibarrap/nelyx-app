@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
 import { ingresarMovimiento, crearProducto } from "@/app/actions/acciones"
+import { crearEmpleado, actualizarEmpleado } from "@/app/actions/empleados-acciones"
 
 // Mismos stubs que calendario-repeticion.test.ts / costos-fijos.test.ts —
 // acá sesionActual simula exactamente lo que arma lib/auth.ts para una
@@ -10,6 +11,14 @@ import { ingresarMovimiento, crearProducto } from "@/app/actions/acciones"
 let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null } } | null = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
+// getSessionDueno (empleados-acciones.ts) pasa por verificarCuentaActivaOExpulsar,
+// que llama a next/navigation's redirect() si la cuenta estuviera inactiva —
+// nunca ocurre en estos tests (el dueño siempre queda activo), pero el
+// módulo se importa igual, y next/navigation no existe fuera del runtime
+// real de Next. Mismo mock que suscripciones-admin.test.ts.
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((url: string) => { throw new Error(`NEXT_REDIRECT:${url}`) }),
+}))
 
 async function crearDueno() {
   const user = await db.user.create({
@@ -89,5 +98,67 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
     // El dueño nunca queda marcado como "realizado por" — ver comentario
     // del campo en el schema (solo se llena cuando fue un empleado).
     expect(movimiento.realizadoPorNombre).toBeNull()
+  })
+})
+
+// Regresión del hallazgo de esta auditoría: Movimiento.realizadoPorNombre
+// (y "Actividad de usuarios") identifican a cada empleado por su NOMBRE,
+// no por su id — dos empleados activos con el mismo nombre volvían ese
+// historial ambiguo, justo lo que este módulo existe para evitar.
+describe("crearEmpleado / actualizarEmpleado — no permiten dos empleados activos con el mismo nombre", () => {
+  it("crearEmpleado rechaza un nombre que ya usa otro empleado activo (sin importar mayúsculas)", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    await crearEmpleado("Juan", "1111", ["venta"])
+    await expect(crearEmpleado("juan", "2222", ["venta"])).rejects.toThrow(/ya tienes un usuario activo llamado/i)
+
+    const empleados = await db.user.findMany({ where: { cuentaPrincipalId: dueno.id } })
+    expect(empleados).toHaveLength(1)
+  })
+
+  it("crearEmpleado permite nombres distintos sin problema", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    await crearEmpleado("Juan", "1111", ["venta"])
+    await crearEmpleado("Ana", "2222", ["venta"])
+
+    const empleados = await db.user.findMany({ where: { cuentaPrincipalId: dueno.id } })
+    expect(empleados).toHaveLength(2)
+  })
+
+  it("crearEmpleado permite reusar el nombre de un empleado ya desactivado", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    await crearEmpleado("Juan", "1111", ["venta"])
+    const anterior = await db.user.findFirstOrThrow({ where: { cuentaPrincipalId: dueno.id, nombre: "Juan" } })
+    await db.user.update({ where: { id: anterior.id }, data: { activo: false } })
+
+    await expect(crearEmpleado("Juan", "2222", ["venta"])).resolves.toBeUndefined()
+    const empleados = await db.user.findMany({ where: { cuentaPrincipalId: dueno.id, activo: true } })
+    expect(empleados).toHaveLength(1)
+  })
+
+  it("actualizarEmpleado rechaza renombrar a un nombre que ya usa otro empleado activo", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    await crearEmpleado("Juan", "1111", ["venta"])
+    await crearEmpleado("Ana", "2222", ["venta"])
+    const ana = await db.user.findFirstOrThrow({ where: { cuentaPrincipalId: dueno.id, nombre: "Ana" } })
+
+    await expect(actualizarEmpleado(ana.id, { nombre: "juan" })).rejects.toThrow(/ya tienes un usuario activo llamado/i)
+  })
+
+  it("actualizarEmpleado permite guardar sin cambiar el nombre (no choca contra sí mismo)", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    await crearEmpleado("Juan", "1111", ["venta"])
+    const juan = await db.user.findFirstOrThrow({ where: { cuentaPrincipalId: dueno.id, nombre: "Juan" } })
+
+    await expect(actualizarEmpleado(juan.id, { nombre: "Juan", modulosPermitidos: ["venta", "productos"] })).resolves.toBeUndefined()
   })
 })

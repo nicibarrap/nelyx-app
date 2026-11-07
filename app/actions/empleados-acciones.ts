@@ -59,6 +59,17 @@ export async function crearEmpleado(nombre: string, pin: string, modulosPermitid
   if (!nombreLimpio) throw new Error("El nombre es obligatorio")
   if (!/^\d{4}$/.test(pin)) throw new Error("El PIN debe ser de exactamente 4 números")
 
+  // El historial de movimientos y "Actividad de usuarios" identifican a
+  // cada empleado por su NOMBRE (Movimiento.realizadoPorNombre), no por su
+  // id — dos empleados activos con el mismo nombre volverían ese registro
+  // ambiguo (¿cuál de los dos "Juan" hizo la venta?), justo la garantía
+  // que este módulo existe para dar.
+  const yaExiste = await db.user.findFirst({
+    where: { cuentaPrincipalId: session.user.id, activo: true, nombre: { equals: nombreLimpio, mode: "insensitive" } },
+    select: { id: true },
+  })
+  if (yaExiste) throw new Error(`Ya tienes un usuario activo llamado "${nombreLimpio}". Usa un nombre distinto (por ejemplo, agrega el apellido) para poder identificar a cada uno en el historial.`)
+
   const pinHash = await bcrypt.hash(pin, 10)
   // Email sintético — nunca se muestra ni se usa para enviar nada, solo
   // existe porque la tabla lo exige como único. El empleado nunca inicia
@@ -85,6 +96,14 @@ export async function actualizarEmpleado(empleadoId: string, cambios: { nombre?:
   if (cambios.nombre !== undefined) {
     const nombreLimpio = cambios.nombre.trim()
     if (!nombreLimpio) throw new Error("El nombre es obligatorio")
+    // Mismo chequeo que crearEmpleado — evita que un renombre choque con
+    // otro empleado activo y vuelva a dejar dos personas indistinguibles
+    // en el historial.
+    const yaExiste = await db.user.findFirst({
+      where: { cuentaPrincipalId: session.user.id, activo: true, nombre: { equals: nombreLimpio, mode: "insensitive" }, id: { not: empleadoId } },
+      select: { id: true },
+    })
+    if (yaExiste) throw new Error(`Ya tienes un usuario activo llamado "${nombreLimpio}". Usa un nombre distinto para poder identificar a cada uno en el historial.`)
     data.nombre = nombreLimpio
   }
   if (cambios.modulosPermitidos !== undefined) data.modulosPermitidos = cambios.modulosPermitidos
