@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
-import { ingresarMovimiento, crearProducto } from "@/app/actions/acciones"
+import { ingresarMovimiento, crearProducto, eliminarMovimiento } from "@/app/actions/acciones"
 import { crearEmpleado, actualizarEmpleado } from "@/app/actions/empleados-acciones"
 
 // Mismos stubs que calendario-repeticion.test.ts / costos-fijos.test.ts —
@@ -160,5 +160,64 @@ describe("crearEmpleado / actualizarEmpleado — no permiten dos empleados activ
     const juan = await db.user.findFirstOrThrow({ where: { cuentaPrincipalId: dueno.id, nombre: "Juan" } })
 
     await expect(actualizarEmpleado(juan.id, { nombre: "Juan", modulosPermitidos: ["venta", "productos"] })).resolves.toBeUndefined()
+  })
+})
+
+// Regresión de esta misma auditoría: eliminar un movimiento no es lo mismo
+// que registrar uno nuevo — un empleado con acceso COMPLETO de escritura a
+// "movimientos" no debía poder borrar nada hasta que el dueño le habilite,
+// aparte, "movimientos:eliminar". Además, cada eliminación debe dejar un
+// rastro en RegistroEliminacion (ver eliminarMovimiento en acciones.ts).
+describe("eliminarMovimiento — permiso aparte para eliminar + bitácora", () => {
+  async function crearMovimientoDeGasto(userId: string) {
+    return db.movimiento.create({
+      data: { tipo: "GASTO", monto: 7500, fecha: new Date("2026-11-05"), categoria: "Insumos", descripcion: "Bolsas", userId },
+    })
+  }
+
+  it("un empleado con acceso completo a movimientos, pero SIN \"movimientos:eliminar\", no puede eliminar", async () => {
+    const dueno = await crearDueno()
+    const mov = await crearMovimientoDeGasto(dueno.id)
+    comoEmpleado(dueno.id, "Ana", ["movimientos"])
+
+    await expect(eliminarMovimiento(mov.id)).rejects.toThrow(/no tienes permiso para eliminar movimientos/i)
+    await expect(db.movimiento.findUnique({ where: { id: mov.id } })).resolves.not.toBeNull()
+    await expect(db.registroEliminacion.findMany({ where: { userId: dueno.id } })).resolves.toHaveLength(0)
+  })
+
+  it("un empleado con \"movimientos:eliminar\" sí puede eliminar, y queda registrado quién fue", async () => {
+    const dueno = await crearDueno()
+    const mov = await crearMovimientoDeGasto(dueno.id)
+    comoEmpleado(dueno.id, "Ana", ["movimientos", "movimientos:eliminar"])
+
+    await eliminarMovimiento(mov.id)
+
+    await expect(db.movimiento.findUnique({ where: { id: mov.id } })).resolves.toBeNull()
+    const registro = await db.registroEliminacion.findFirstOrThrow({ where: { userId: dueno.id } })
+    expect(registro.eliminadoPorNombre).toBe("Ana")
+    expect(registro.resumen).toContain("7.500")
+    expect(registro.resumen).toContain("Bolsas")
+  })
+
+  it("el dueño siempre puede eliminar, y la bitácora no le atribuye el borrado a ningún empleado", async () => {
+    const dueno = await crearDueno()
+    const mov = await crearMovimientoDeGasto(dueno.id)
+    comoDueno(dueno)
+
+    await eliminarMovimiento(mov.id)
+
+    const registro = await db.registroEliminacion.findFirstOrThrow({ where: { userId: dueno.id } })
+    expect(registro.eliminadoPorNombre).toBeNull()
+  })
+
+  it("un empleado de solo lectura en movimientos sigue rechazado, aunque tuviera la marca de eliminar", async () => {
+    const dueno = await crearDueno()
+    const mov = await crearMovimientoDeGasto(dueno.id)
+    // Caso defensivo: no debería poder darse desde la UI (SelectorModulos
+    // limpia "eliminar" al pasar a solo lectura), pero si de todos modos
+    // llegara así, esSoloLectura debe seguir ganando.
+    comoEmpleado(dueno.id, "Ana", ["movimientos:ro", "movimientos:eliminar"])
+
+    await expect(eliminarMovimiento(mov.id)).rejects.toThrow(/solo de lectura/i)
   })
 })

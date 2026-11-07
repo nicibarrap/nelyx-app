@@ -6,6 +6,14 @@ import { toast } from "sonner"
 import { ingresarMovimiento, crearCategoriaPersonalizada } from "@/app/actions/acciones"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 
+// Mismo set que ya usa Cuentas por Cobrar (METODOS_PAGO en
+// cuentas-cobrar-client.tsx) — un solo vocabulario de métodos de pago en
+// toda la app. "Efectivo" es el único que cuenta para el cierre de caja
+// (ver lib/caja.ts), así que por default se asume que un gasto/retiro/
+// ingreso manual se paga en efectivo — es el caso más común para algo que
+// se registra a mano.
+const METODOS_PAGO = ["Efectivo", "Transferencia", "Débito", "Crédito", "Cheque", "Otro"]
+
 const TIPOS = [
   { value: "GASTO",         label: "🛒 Gasto",         desc: "Pagaste algo",        a: "bg-red-500/20 border-red-500/50 chip-text-red",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-red-900" },
   { value: "INGRESO_EXTRA", label: "➕ Ingreso Extra", desc: "Fuera de ventas",     a: "bg-sky-500/20 border-sky-500/50 chip-text-sky",         i: "border-[var(--c-border)] text-[var(--c-text2)] hover:border-sky-900" },
@@ -233,6 +241,12 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
                 <div>
                   <label className="text-xs text-[var(--c-text2)] block mb-1.5">Fecha *</label>
                   <CampoFecha name="fecha" defaultValue={localToday()} required className={`${inp} h-11`} />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--c-text2)] block mb-1.5">Método de pago</label>
+                  <select name="metodoPago" defaultValue="Efectivo" className={`${inp} h-11`}>
+                    {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs text-[var(--c-text2)] block mb-1.5">Descripción (opcional)</label>

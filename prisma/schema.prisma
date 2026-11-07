@@ -55,6 +55,8 @@ model User {
   cobrosSumup                       CobroSumup[]
   passwordResetTokens               PasswordResetToken[]
   conversacionesSoporte             ConversacionSoporte[]
+  registrosEliminacion              RegistroEliminacion[]
+  cierresCaja                       CierreCaja[]
   // Ambos apagados por defecto — recordatorios automáticos a CLIENTES (no
   // al dueño) solo deben salir si el dueño explícitamente los activa.
   recordatoriosCobranzaAutoActivo   Boolean                  @default(false)
@@ -761,6 +763,52 @@ model ConexionPago {
 // "pendiente" antes de pedirle a SumUp que cobre, y el webhook la actualiza
 // cuando llega la respuesta — consultarCobroMaquina solo lee esta fila,
 // nunca le pregunta a SumUp directamente.
+// Bitácora de eliminaciones — qué se borró, cuándo y quién lo hizo. Mismo
+// patrón que SuscripcionNelyxEvento: un snapshot de texto plano, sin
+// relación al registro original (que para esto mismo ya no existe), para
+// que sobreviva intacto sin importar qué pase después con los datos.
+// Hoy solo se usa para Movimiento (ver eliminarMovimiento en acciones.ts)
+// — el campo "tipo" deja la puerta abierta a cubrir otras entidades después
+// sin otra migración.
+model RegistroEliminacion {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tipo               String
+  resumen            String   @db.Text
+  // null = lo eliminó el dueño — mismo criterio que Movimiento.realizadoPorNombre.
+  eliminadoPorNombre String?
+  createdAt          DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Arqueo de caja: abrir un turno declarando el efectivo inicial, cerrarlo
+// contando el efectivo real, y comparar contra lo que las ventas/gastos en
+// efectivo de ese período (Movimiento.metodoPago === "Efectivo") dicen que
+// debería haber. Todo lo pagado con tarjeta, transferencia o crédito
+// pendiente no pasa por la caja física y no participa de este cálculo (ver
+// lib/caja.ts). Solo puede haber una caja ABIERTA (fechaCierre null) por
+// cuenta a la vez — se controla desde caja-acciones.ts, no acá.
+model CierreCaja {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  montoApertura    Decimal   @db.Decimal(12, 2)
+  abiertoPorNombre String? // null = el dueño
+  fechaApertura    DateTime  @default(now())
+  // Quedan null mientras la caja sigue abierta — recién se llenan al cerrarla.
+  montoEsperado    Decimal?  @db.Decimal(12, 2)
+  montoContado     Decimal?  @db.Decimal(12, 2)
+  // contado - esperado: positivo = sobró plata, negativo = faltó.
+  diferencia       Decimal?  @db.Decimal(12, 2)
+  observacion      String?   @db.Text
+  cerradoPorNombre String?
+  fechaCierre      DateTime?
+
+  @@index([userId, fechaApertura])
+}
+
 model CobroSumup {
   id                  String   @id @default(cuid())
   userId              String

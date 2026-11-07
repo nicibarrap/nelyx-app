@@ -53,6 +53,20 @@ export async function obtenerActividadEmpleados(dias: number = 30) {
   return movimientos.map(m => ({ ...m, monto: Number(m.monto), fecha: m.fecha.toISOString(), createdAt: m.createdAt.toISOString() }))
 }
 
+/** Qué se ha eliminado y quién lo hizo — ver RegistroEliminacion en el
+ * schema. Mismo espíritu que obtenerActividadEmpleados: solo el dueño
+ * puede verlo (getSessionDueno ya lo garantiza). */
+export async function obtenerRegistroEliminaciones(dias: number = 90) {
+  const session = await getSessionDueno()
+  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000)
+  const registros = await db.registroEliminacion.findMany({
+    where: { userId: session.user.id, createdAt: { gte: desde } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  })
+  return registros.map(r => ({ ...r, createdAt: r.createdAt.toISOString() }))
+}
+
 export async function crearEmpleado(nombre: string, pin: string, modulosPermitidos: string[]) {
   const session = await getSessionDueno()
   const nombreLimpio = nombre.trim()

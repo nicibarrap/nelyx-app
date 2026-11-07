@@ -23,6 +23,7 @@ const NAV_PRINCIPAL = [
   { href: "/dashboard/resumen",     icon: "◈", label: "Resumen",     activo: true, moduloKey: "resumen" },
   { href: "/dashboard/venta",       icon: "🛒", label: "Venta",       activo: true, moduloKey: "venta" },
   { href: "/dashboard/movimientos/nuevo", matchHref: "/dashboard/movimientos", icon: "⇄", label: "Movimientos", activo: true, moduloKey: "movimientos" },
+  { href: "/dashboard/caja",        icon: "▤", label: "Caja",        activo: true, moduloKey: "caja" },
   { href: "/dashboard/productos",   icon: "▣", label: "Productos",   activo: true, moduloKey: "productos" },
   { href: "/dashboard/deudas",      icon: "◎", label: "Deudas",      activo: true, moduloKey: "deudas" },
   { href: "/dashboard/alertas",     icon: "🔔", label: "Alertas",     activo: true, moduloKey: "alertas" },
