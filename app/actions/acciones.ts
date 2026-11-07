@@ -9,12 +9,12 @@ import { aInterno, formatearStock, deInterno, type FormaVenta } from "@/lib/unid
 import { registrarMovimientoStock, DIRECCION_MOTIVO_AJUSTE, TIPO_MOVIMIENTO_LABEL, MOTIVOS_PERDIDA_RECONOCIDA, type TipoMovimientoStock } from "@/lib/stock"
 import { calcularConsumoFIFO } from "@/lib/lotes"
 import { calcularUtilidadVenta } from "@/lib/financial-engine"
-import { esSoloLectura, tieneAcceso, type ModuloKey } from "@/lib/permisos"
+import { esSoloLectura, tieneAcceso, puedeEliminar, type ModuloKey } from "@/lib/permisos"
 import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
-import { ETIQUETAS, calcularDesglosePago } from "@/lib/utils"
+import { ETIQUETAS, calcularDesglosePago, formatCLP } from "@/lib/utils"
 import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
 
 async function getSession() {
@@ -138,6 +138,11 @@ async function ingresarMovimientoInterno(formData: FormData) {
   const proveedorId = (formData.get("proveedorId") as string) || null
   const categoria = (formData.get("categoria") as string)?.trim() || null
   const cantidad = parseInt(formData.get("cantidad") as string) || 1
+  // Por qué importa este campo acá (antes no se guardaba en absoluto): es
+  // la única señal que distingue un Gasto/Retiro/Ingreso Extra pagado en
+  // efectivo (afecta el cierre de caja, ver lib/caja.ts) de uno pagado por
+  // transferencia o tarjeta (no afecta la plata física de la caja).
+  const metodoPago = (formData.get("metodoPago") as string) || "Efectivo"
 
   if (!tipo || isNaN(monto) || monto <= 0) throw new Error("Datos inválidos")
 
@@ -218,6 +223,7 @@ async function ingresarMovimientoInterno(formData: FormData) {
         costoUnitario: costoUnitarioSnap,
         utilidad: utilidadSnap,
         margen: margenSnap,
+        metodoPago,
         // Un retiro es plata tuya saliendo del negocio, no un costo
         // operativo — baja el Disponible (sí es caja real) pero no debería
         // bajar la Utilidad (ver comentario del campo en el schema).
@@ -277,8 +283,28 @@ async function ingresarMovimientoInterno(formData: FormData) {
 
 export async function eliminarMovimiento(id: string) {
   const session = await getSessionEscritura("movimientos")
+  // Además del acceso normal de escritura a "movimientos" (ya exigido por
+  // getSessionEscritura arriba), eliminar requiere el permiso aparte
+  // "movimientos:eliminar" — el dueño decide caso por caso si confía esto a
+  // un empleado, independiente de si puede registrar movimientos nuevos.
+  if (session.user.esEmpleado && !puedeEliminar(session.user.modulosPermitidos, "movimientos")) {
+    throw new Error("No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios.")
+  }
   const mov = await db.movimiento.findFirst({ where: { id, userId: session.user.id } })
   if (!mov) throw new Error("No encontrado")
+
+  // Bitácora: queda un snapshot de texto de lo que había antes de borrarlo
+  // — ver RegistroEliminacion en el schema. No es una relación al
+  // Movimiento (que para esto mismo está a punto de dejar de existir), así
+  // que se arma el resumen ACÁ, con los datos todavía en mano.
+  const etiquetaTipo = ETIQUETAS[mov.tipo]?.label ?? mov.tipo
+  const resumen = `${etiquetaTipo} de ${formatCLP(Number(mov.monto))}${mov.categoria ? ` — ${mov.categoria}` : ""}${mov.descripcion ? ` — ${mov.descripcion}` : ""} (registrado el ${mov.fecha.toLocaleDateString("es-CL")})`
+  await db.registroEliminacion.create({
+    data: {
+      userId: session.user.id, tipo: "MOVIMIENTO", resumen,
+      eliminadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+    },
+  })
 
   // Revertir el stock si este movimiento tenía un descuento de inventario asociado
   const movsStock = await db.movimientoStock.findMany({ where: { movimientoId: id, userId: session.user.id } })
@@ -1443,6 +1469,10 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   const montoPago = parseFloat(formData.get("monto") as string)
   const fecha = new Date(formData.get("fecha") as string)
   const descripcion = (formData.get("descripcion") as string) || null
+  // Igual que en ingresarMovimiento: sin esto, un pago de deuda en efectivo
+  // quedaba indistinguible de uno por transferencia, y el cierre de caja
+  // (lib/caja.ts) nunca podía contarlo como plata que salió de la caja física.
+  const metodoPago = (formData.get("metodoPago") as string) || "Efectivo"
   if (isNaN(montoPago) || montoPago <= 0) throw new Error("Monto inválido")
 
   // Desglose capital/interés — el formulario manda su propia estimación
@@ -1498,6 +1528,7 @@ export async function registrarPago(deudaId: string, formData: FormData) {
           fecha,
           descripcion: `Pago deuda: ${deuda.acreedor}${descripcion ? ` - ${descripcion}` : ""}`,
           categoria: "Otros",
+          metodoPago,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
         }
@@ -2170,6 +2201,11 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
           fecha,
           descripcion: `Cobro Venta #${cuenta.numero} - ${descripcionInput || "Cobro recibido"}`,
           categoria: "Cobros",
+          // Ya se capturaba arriba (va al propio PagoCuenta) pero nunca se
+          // copiaba al Movimiento — el cobro quedaba sin método de pago en
+          // el historial, y por lo tanto invisible para el cierre de caja
+          // (lib/caja.ts) aunque se hubiera cobrado en efectivo.
+          metodoPago,
           clienteId: cuenta.clienteId,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,

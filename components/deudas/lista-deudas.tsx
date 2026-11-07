@@ -42,6 +42,12 @@ interface Props {
 
 const inp = "w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
 
+// Mismo set que ya usa Cuentas por Cobrar (METODOS_PAGO en
+// cuentas-cobrar-client.tsx) — un solo vocabulario de métodos de pago en
+// toda la app. Importa para el cierre de caja (ver lib/caja.ts): solo un
+// pago en "Efectivo" cuenta como plata que salió de la caja física.
+const METODOS_PAGO = ["Efectivo", "Transferencia", "Débito", "Crédito", "Cheque", "Otro"]
+
 
 function calcularProximoPago(deuda: any): Date | null {
   if (deuda.fechaPrimerPago) {
@@ -441,6 +447,12 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
                     <div>
                       <label className="text-[10px] text-[var(--c-text3)] block mb-1">Fecha *</label>
                       <CampoFecha name="fecha" required defaultValue={localToday()} className={inp} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[var(--c-text3)] block mb-1">Método de pago</label>
+                      <select name="metodoPago" defaultValue="Efectivo" className={inp}>
+                        {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
                     </div>
                     <div className="col-span-2">
                       <label className="text-[10px] text-[var(--c-text3)] block mb-1">Descripción (opcional)</label>

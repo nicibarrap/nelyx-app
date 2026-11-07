@@ -8,6 +8,7 @@ export const MODULOS_NELYX = [
   { key: "resumen", label: "Resumen", ruta: "/dashboard/resumen" },
   { key: "venta", label: "Venta", ruta: "/dashboard/venta" },
   { key: "movimientos", label: "Movimientos", ruta: "/dashboard/movimientos" },
+  { key: "caja", label: "Caja", ruta: "/dashboard/caja" },
   { key: "productos", label: "Productos", ruta: "/dashboard/productos" },
   { key: "deudas", label: "Deudas", ruta: "/dashboard/deudas" },
   { key: "alertas", label: "Alertas", ruta: "/dashboard/alertas" },
@@ -30,6 +31,15 @@ export type ModuloKey = typeof MODULOS_NELYX[number]["key"]
 // modificar nada en él).
 const SUFIJO_SOLO_LECTURA = ":ro"
 
+// Un empleado con acceso de escritura a un módulo puede crear y editar ahí
+// sin esto — pero ELIMINAR (o revertir) algo ya registrado es un permiso
+// aparte que el dueño otorga explícitamente, con el mismo mecanismo de
+// sufijo que ":ro" (sin migración nueva). Por diseño, solo tiene efecto
+// práctico hoy en "movimientos" (ver eliminarMovimiento en acciones.ts) —
+// nada impide extenderlo a otro módulo después agregando el mismo chequeo
+// ahí.
+const SUFIJO_PUEDE_ELIMINAR = ":eliminar"
+
 /** null/undefined = acceso total (dueño, o un empleado al que se le
  * habilitó todo). Si es un array, solo esas claves están permitidas —
  * incluso si viene vacío, un empleado sin nada marcado no ve nada. Una
@@ -49,6 +59,20 @@ export function esSoloLectura(modulosPermitidos: string[] | null | undefined, mo
 
 export function claveSoloLectura(moduloKey: string): string {
   return moduloKey + SUFIJO_SOLO_LECTURA
+}
+
+/** ¿Puede eliminar (o revertir) algo ya registrado en este módulo? El
+ * dueño (modulosPermitidos null) siempre puede — para un empleado, hace
+ * falta la marca "modulo:eliminar" explícita, además del acceso normal de
+ * escritura (esto no la reemplaza, la complementa: seguir bloqueado por
+ * esSoloLectura o por no tener el módulo en absoluto). */
+export function puedeEliminar(modulosPermitidos: string[] | null | undefined, moduloKey: string): boolean {
+  if (modulosPermitidos == null) return true
+  return modulosPermitidos.includes(moduloKey + SUFIJO_PUEDE_ELIMINAR)
+}
+
+export function claveEliminar(moduloKey: string): string {
+  return moduloKey + SUFIJO_PUEDE_ELIMINAR
 }
 
 /** Dado un pathname como "/dashboard/productos/reponer", determina a qué

@@ -3,12 +3,13 @@ import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
-import { crearEmpleado, actualizarEmpleado, toggleActivoEmpleado, obtenerActividadEmpleados } from "@/app/actions/empleados-acciones"
-import { MODULOS_NELYX, claveSoloLectura } from "@/lib/permisos"
+import { crearEmpleado, actualizarEmpleado, toggleActivoEmpleado, obtenerActividadEmpleados, obtenerRegistroEliminaciones } from "@/app/actions/empleados-acciones"
+import { MODULOS_NELYX, claveSoloLectura, claveEliminar } from "@/lib/permisos"
 import { ETIQUETAS, formatCLP } from "@/lib/utils"
 
 type Empleado = { id: string; nombre: string; activo: boolean; modulosPermitidos: string[]; createdAt: string }
 type ActividadItem = { id: string; tipo: string; monto: number; fecha: string; descripcion: string | null; categoria: string | null; realizadoPorNombre: string | null; createdAt: string }
+type EliminacionItem = { id: string; tipo: string; resumen: string; eliminadoPorNombre: string | null; createdAt: string }
 
 const inp = "w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500 transition-colors"
 
@@ -21,7 +22,11 @@ function SelectorModulos({ seleccionados, onChange }: { seleccionados: string[];
   }
   function toggle(key: string) {
     onChange(estaSeleccionado(key)
-      ? seleccionados.filter(k => k !== key && k !== claveSoloLectura(key))
+      // También se limpia la marca "puede eliminar" al sacar el módulo —
+      // sin esto, quedaba huérfana en el array y volvía a activarse sola
+      // (sin que el dueño la vuelva a confirmar) si el módulo se reactivaba
+      // más adelante.
+      ? seleccionados.filter(k => k !== key && k !== claveSoloLectura(key) && k !== claveEliminar(key))
       : [...seleccionados, key])
   }
   function toggleSoloLectura(key: string, e: React.MouseEvent) {
@@ -29,8 +34,25 @@ function SelectorModulos({ seleccionados, onChange }: { seleccionados: string[];
     if (esSoloLectura(key)) {
       onChange(seleccionados.map(k => k === claveSoloLectura(key) ? key : k))
     } else {
-      onChange(seleccionados.map(k => k === key ? claveSoloLectura(key) : k))
+      // Mismo motivo que en toggle(): "puede eliminar" no tiene sentido
+      // para un módulo que pasa a ser solo lectura, así que se limpia acá
+      // también en vez de quedar huérfana.
+      onChange(seleccionados.filter(k => k !== claveEliminar(key)).map(k => k === key ? claveSoloLectura(key) : k))
     }
+  }
+  // "Puede eliminar" es un permiso aparte del acceso normal de
+  // lectura/escritura — hoy solo tiene efecto en Movimientos (ver
+  // eliminarMovimiento en acciones.ts). Por default un usuario NUEVO nunca
+  // lo trae marcado, aunque se le dé el módulo completo: borrar algo ya
+  // registrado es una decisión que el dueño toma aparte, caso por caso.
+  function puedeEliminar(key: string) {
+    return seleccionados.includes(claveEliminar(key))
+  }
+  function toggleEliminar(key: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    onChange(puedeEliminar(key)
+      ? seleccionados.filter(k => k !== claveEliminar(key))
+      : [...seleccionados, claveEliminar(key)])
   }
   return (
     <div>
@@ -46,10 +68,21 @@ function SelectorModulos({ seleccionados, onChange }: { seleccionados: string[];
         {MODULOS_NELYX.map(m => {
           const sel = estaSeleccionado(m.key)
           const ro = esSoloLectura(m.key)
+          // Por ahora solo Movimientos tiene este permiso aparte — ver
+          // comentario de puedeEliminar() más arriba.
+          const mostrarEliminar = m.key === "movimientos" && sel && !ro
+          const elim = puedeEliminar(m.key)
           return (
             <button key={m.key} type="button" onClick={() => toggle(m.key)}
               className={`text-xs px-2.5 py-2 rounded-lg border font-medium text-left transition-all flex items-center gap-1 ${sel ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-[var(--c-card2)] text-[var(--c-text3)] border-[var(--c-border)]"}`}>
               <span className="flex-1">{sel ? "✓ " : ""}{m.label}</span>
+              {mostrarEliminar && (
+                <span role="button" tabIndex={0} onClick={e => toggleEliminar(m.key, e)}
+                  title={elim ? "Puede eliminar movimientos — toca para quitarle este permiso" : "No puede eliminar movimientos — toca para permitírselo"}
+                  className={`text-[11px] px-1 rounded ${elim ? "opacity-100" : "opacity-30 hover:opacity-70"}`}>
+                  🗑️
+                </span>
+              )}
               {sel && (
                 <span role="button" tabIndex={0} onClick={e => toggleSoloLectura(m.key, e)}
                   title={ro ? "Solo lectura — toca para permitir editar" : "Puede editar — toca para dejar solo lectura"}
@@ -202,12 +235,56 @@ function ActividadEmpleados({ onCerrar }: { onCerrar: () => void }) {
   )
 }
 
+function RegistroEliminaciones({ onCerrar }: { onCerrar: () => void }) {
+  const [items, setItems] = useState<EliminacionItem[] | null>(null)
+  const [montado, setMontado] = useState(false)
+  useEffect(() => { setMontado(true) }, [])
+  useEffect(() => {
+    obtenerRegistroEliminaciones().then(setItems).catch(() => { toast.error("No se pudo cargar el registro"); setItems([]) })
+  }, [])
+
+  if (!montado) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-5 max-w-lg w-full max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-bold text-[var(--c-text)]">🗑️ Eliminados</p>
+          <button onClick={onCerrar} className="text-[var(--c-text4)] hover:text-[var(--c-text2)] text-lg">✕</button>
+        </div>
+        <p className="text-[11px] text-[var(--c-text4)] mb-3">Movimientos eliminados y quién lo hizo — últimos 90 días. Lo que dice cada línea es un resumen de cómo era el movimiento antes de borrarse, no se puede deshacer desde aquí.</p>
+
+        <div className="flex-1 overflow-y-auto -mx-1 px-1">
+          {items === null ? (
+            <p className="text-xs text-[var(--c-text4)] text-center py-8">Cargando...</p>
+          ) : items.length === 0 ? (
+            <p className="text-xs text-[var(--c-text4)] text-center py-8">Nada eliminado todavía.</p>
+          ) : (
+            <div className="divide-y divide-[var(--c-border2)]">
+              {items.map(item => (
+                <div key={item.id} className="py-2.5">
+                  <p className="text-xs text-[var(--c-text)]">
+                    <span className="font-semibold">{item.eliminadoPorNombre ?? "Tú (dueño)"}</span> eliminó: {item.resumen}
+                  </p>
+                  <p className="text-[10px] text-[var(--c-text4)]">{new Date(item.createdAt).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Empleado[] }) {
   const router = useRouter()
   const [empleados, setEmpleados] = useState(empleadosIniciales)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando, setEditando] = useState<Empleado | null>(null)
   const [mostrarActividad, setMostrarActividad] = useState(false)
+  const [mostrarEliminados, setMostrarEliminados] = useState(false)
   const [isPending, start] = useTransition()
 
   function recargar() {
@@ -240,6 +317,10 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
             📋 Ver actividad
           </button>
         )}
+        <button onClick={() => setMostrarEliminados(true)}
+          className="h-10 px-5 border border-[var(--c-border)] text-[var(--c-text2)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">
+          🗑️ Ver eliminados
+        </button>
       </div>
 
       {empleados.length === 0 ? (
@@ -260,12 +341,20 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
                   {!emp.activo && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">Desactivado</span>}
                 </p>
                 <p className="text-[11px] text-[var(--c-text4)]">
-                  {emp.modulosPermitidos.length === 0 ? "Sin módulos habilitados" : emp.modulosPermitidos.map(k => {
-                    const ro = k.endsWith(":ro")
-                    const base = ro ? k.slice(0, -3) : k
-                    const label = MODULOS_NELYX.find(m => m.key === base)?.label ?? base
-                    return ro ? `${label} (solo ver)` : label
-                  }).join(", ")}
+                  {emp.modulosPermitidos.length === 0 ? "Sin módulos habilitados" : emp.modulosPermitidos
+                    // "...:eliminar" no es un módulo propio — es la marca de
+                    // SelectorModulos para "puede eliminar" (ver
+                    // claveEliminar en lib/permisos.ts), así que no se lista
+                    // acá como si fuera uno: se agrega como anotación sobre
+                    // el módulo base, abajo.
+                    .filter(k => !k.endsWith(":eliminar"))
+                    .map(k => {
+                      const ro = k.endsWith(":ro")
+                      const base = ro ? k.slice(0, -3) : k
+                      const label = MODULOS_NELYX.find(m => m.key === base)?.label ?? base
+                      const elimina = emp.modulosPermitidos.includes(claveEliminar(base))
+                      return `${label}${ro ? " (solo ver)" : ""}${elimina ? " (puede eliminar)" : ""}`
+                    }).join(", ")}
                 </p>
               </div>
               <button onClick={() => setEditando(emp)} className="text-xs px-3 py-1.5 border border-[var(--c-border)] text-[var(--c-text3)] rounded-lg hover:bg-[var(--c-hover)] transition-all flex-shrink-0">Editar</button>
@@ -281,6 +370,7 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
       {mostrarForm && <FormEmpleado onCerrar={() => setMostrarForm(false)} onGuardado={recargar} />}
       {editando && <FormEmpleado empleado={editando} onCerrar={() => setEditando(null)} onGuardado={recargar} />}
       {mostrarActividad && <ActividadEmpleados onCerrar={() => setMostrarActividad(false)} />}
+      {mostrarEliminados && <RegistroEliminaciones onCerrar={() => setMostrarEliminados(false)} />}
     </div>
   )
 }
