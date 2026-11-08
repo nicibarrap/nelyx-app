@@ -70,7 +70,7 @@ export default async function MovimientosPage(props: { searchParams: Promise<{ m
   // Component (TablaMovimientos) rompe la regla de serialización de RSC.
   const movimientos = movimientosDb.map(m => ({
     ...m, monto: Number(m.monto), costoUnitario: m.costoUnitario != null ? Number(m.costoUnitario) : null,
-    utilidad: m.utilidad != null ? Number(m.utilidad) : null,
+    utilidad: m.utilidad != null ? Number(m.utilidad) : null, montoNoOperativo: Number(m.montoNoOperativo),
   }))
 
   return (

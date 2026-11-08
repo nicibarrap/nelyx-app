@@ -14,7 +14,7 @@ import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
-import { ETIQUETAS, calcularDesglosePago, formatCLP } from "@/lib/utils"
+import { ETIQUETAS, calcularDesglosePago, formatCLP, capitalizarSiEsMayuscula } from "@/lib/utils"
 import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
 
 async function getSession() {
@@ -351,47 +351,54 @@ export async function eliminarMovimiento(id: string): Promise<{ error: string } 
  * entero si el usuario filtró algo, porque entonces el archivo no
  * coincide con lo que estaba mirando. Sin paginar: a diferencia del
  * listado en pantalla, el export trae todas las filas que calzan. */
-export async function exportarMovimientosCSV(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; realizadoPor?: string; orden?: string }): Promise<string> {
+export interface FilaExportMovimiento {
+  fecha: string
+  hora: string
+  tipo: string
+  metodoPago: string
+  detalle: string
+  monto: number
+}
+
+/** Filas listas para armar el Excel en el cliente (ver
+ * exportar-movimientos-boton.tsx) — a propósito NO incluye costo, utilidad
+ * ni margen: este archivo está pensado para compartir afuera (contador,
+ * socio, banco), no como planilla de control interno. */
+export async function exportarMovimientosExcel(filtros: { mes: number; anio: number; q?: string; tipo?: string; metodoPago?: string; realizadoPor?: string; orden?: string }): Promise<FilaExportMovimiento[]> {
   const session = await getSession()
   const { orden, ...filtrosWhere } = filtros
   const where = construirWhereMovimientos({ userId: session.user.id, ...filtrosWhere })
   // Mismo orden que se esté viendo en pantalla (ver movimientos/page.tsx) —
-  // si alguien invirtió el orden para ubicar el día 1 del mes, el CSV que
+  // si alguien invirtió el orden para ubicar el día 1 del mes, el Excel que
   // descarga debería reflejar lo mismo que está mirando, no volver siempre
   // a "más reciente primero" por su cuenta.
   const ordenAsc = orden === "antiguos"
   const movimientos = await db.movimiento.findMany({
     where,
-    include: { producto: { select: { nombre: true } }, cliente: { select: { nombre: true, apellido: true } } },
+    include: { producto: { select: { nombre: true } } },
     orderBy: [{ fecha: ordenAsc ? "asc" : "desc" }, { createdAt: ordenAsc ? "asc" : "desc" }],
   })
 
-  const encabezados = ["Fecha", "Hora", "Tipo", "Detalle", "Categoría", "Producto", "Cliente", "Método de pago", "Monto", "Costo", "Utilidad", "Margen", "Registrado por"]
-  const filas = movimientos.map(m => [
-    m.fecha.toLocaleDateString("es-CL", { timeZone: "UTC" }),
-    m.createdAt ? new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE }) : "",
-    ETIQUETAS[m.tipo]?.label ?? m.tipo,
-    m.descripcion ?? "",
-    m.categoria ?? "",
-    m.producto?.nombre ?? "",
-    m.cliente ? `${m.cliente.nombre} ${m.cliente.apellido ?? ""}`.trim() : "",
-    m.metodoPago ?? "",
-    Number(m.monto),
-    m.costoUnitario != null ? Number(m.costoUnitario) : "",
-    m.utilidad != null ? Number(m.utilidad) : "",
-    m.margen != null ? Number(m.margen) : "",
-    m.realizadoPorNombre ?? "",
-  ])
+  return movimientos.map(m => {
+    // Mismo orden de prioridad que usa la tabla en pantalla para su
+    // "Detalle" principal (ver detallePrincipal en tabla-movimientos.tsx) —
+    // así el Excel no muestra vacío en ventas con producto, que es la
+    // mayoría: ahí descripcion queda null a propósito (el nombre ya se ve
+    // en el chip del producto) y solo el producto cuenta la historia.
+    const nombreProducto = m.producto?.nombre ? capitalizarSiEsMayuscula(m.producto.nombre) : null
+    const descripcion = m.descripcion ? capitalizarSiEsMayuscula(m.descripcion) : null
+    const categoria = m.categoria ? capitalizarSiEsMayuscula(m.categoria) : null
+    const detalle = nombreProducto ?? descripcion ?? categoria ?? ETIQUETAS[m.tipo]?.label ?? m.tipo
 
-  const csvEscape = (v: unknown) => {
-    const s = String(v ?? "")
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  const lineas = [encabezados, ...filas].map(fila => fila.map(csvEscape).join(","))
-  // BOM UTF-8 al inicio: sin esto, Excel en Windows muestra tildes/ñ
-  // corruptas al abrir el CSV directamente (en vez de importarlo a mano
-  // especificando la codificación).
-  return "﻿" + lineas.join("\r\n")
+    return {
+      fecha: m.fecha.toLocaleDateString("es-CL", { timeZone: "UTC" }),
+      hora: m.createdAt ? new Date(m.createdAt).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: TZ_CHILE }) : "",
+      tipo: ETIQUETAS[m.tipo]?.label ?? m.tipo,
+      metodoPago: m.metodoPago ?? "",
+      detalle,
+      monto: Number(m.monto),
+    }
+  })
 }
 
 // ── CAMBIO DE PRODUCTO ──────────────────────────────────────
