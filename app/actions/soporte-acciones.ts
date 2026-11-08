@@ -9,6 +9,7 @@ import { enviarEmail } from "@/lib/email"
 import { detectarUrgencia, MENSAJE_AUTO_RESPUESTA, MENSAJE_RECORDATORIO } from "@/lib/soporte-logica"
 import { generarRespuestaIA } from "@/lib/soporte-ia"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
+import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 
 async function getSession() {
   const session = await auth()
@@ -27,16 +28,20 @@ function nombreAutor(session: Awaited<ReturnType<typeof getSession>>) {
   return session.user.name || (session.user.esEmpleado ? "Empleado" : "Dueño de cuenta")
 }
 
-/** Crea un hilo de conversación nuevo, aparte de cualquier otro que ya
- * exista (abierto o resuelto) — "Enviános un mensaje" en Inicio siempre
- * arranca una conversación aparte; para seguir una ya existente, el
- * cliente la abre desde la pestaña Mensajes. Dueño y empleados de una
- * misma cuenta comparten los mismos hilos con Soporte Nelyx. */
-export async function crearNuevaConversacion() {
-  const session = await getSession()
-  if (session.user.role === "ADMIN" && !session.user.esEmpleado) throw new Error("No disponible para cuentas de soporte")
-  const conv = await db.conversacionSoporte.create({ data: { userId: session.user.id } })
-  return { id: conv.id }
+// Cuenta de Nelyx Soporte usándose a sí misma (no un dueño/empleado real) —
+// nunca debe poder abrir el widget de cliente.
+function esCuentaDeSoporte(session: Awaited<ReturnType<typeof getSession>>) {
+  return session.user.role === "ADMIN" && !session.user.esEmpleado
+}
+
+/** ¿Puede este usuario siquiera VER el chat de Soporte? El dueño siempre
+ * (modulosPermitidos null) — un empleado solo si se le habilitó el módulo
+ * "soporte" explícitamente. Antes no había ningún chequeo acá: cualquier
+ * empleado, sin importar sus demás permisos, podía leer TODO el historial
+ * de conversaciones de la cuenta con Soporte Nelyx. */
+function tieneAccesoSoporteCliente(session: Awaited<ReturnType<typeof getSession>>) {
+  if (esCuentaDeSoporte(session)) return false
+  return tieneAcceso(session.user.modulosPermitidos, "soporte")
 }
 
 /** Solo cuenta, sin marcar como leído — para el badge del botón flotante
@@ -45,7 +50,7 @@ export async function crearNuevaConversacion() {
  * en un hilo ya resuelto también debe notificarse. */
 export async function contarNoLeidosCliente() {
   const session = await getSession()
-  if (session.user.role === "ADMIN" && !session.user.esEmpleado) return 0
+  if (!tieneAccesoSoporteCliente(session)) return 0
   return db.mensajeSoporte.count({
     where: { de: { in: ["soporte", "sistema"] }, leidoCliente: false, conversacion: { userId: session.user.id } },
   })
@@ -66,7 +71,7 @@ export async function contarNoLeidosAdmin() {
  * al estilo de un listado de hilos con título + fecha. */
 export async function obtenerConversacionesCliente() {
   const session = await getSession()
-  if (session.user.role === "ADMIN" && !session.user.esEmpleado) return []
+  if (!tieneAccesoSoporteCliente(session)) return []
 
   const convs = await db.conversacionSoporte.findMany({
     where: { userId: session.user.id },
@@ -104,6 +109,7 @@ export async function obtenerConversacionesCliente() {
 
 export async function obtenerMensajesCliente(conversacionId: string) {
   const session = await getSession()
+  if (!tieneAccesoSoporteCliente(session)) throw new Error("No tienes acceso a este módulo")
   const conv = await db.conversacionSoporte.findUnique({ where: { id: conversacionId } })
   if (!conv || conv.userId !== session.user.id) throw new Error("No autorizado")
 
@@ -118,25 +124,56 @@ export async function obtenerMensajesCliente(conversacionId: string) {
   return mensajes.reverse().map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
 }
 
-export async function enviarMensajeCliente(conversacionId: string, contenido: string, paginaOrigen?: string) {
+// Devuelve { error } en vez de lanzar para los casos esperados (igual que
+// el resto de las Server Actions del proyecto — ver comentario de
+// crearEmpleado en empleados-acciones.ts): un throw desde una Server
+// Action pierde su mensaje real en producción (Next.js lo reemplaza por uno
+// genérico al cruzar al cliente), así que un dato de retorno normal es la
+// única forma confiable de que el mensaje real llegue a la pantalla.
+export async function enviarMensajeCliente(conversacionId: string | null, contenido: string, paginaOrigen?: string): Promise<
+  | { error: string }
+  | { id: string; conversacionId: string; de: string; autorNombre: string | null; contenido: string; createdAt: string }
+  | undefined
+> {
   const session = await getSession()
+  if (!tieneAccesoSoporteCliente(session)) return { error: "No tienes acceso a este módulo" }
+  if (esSoloLectura(session.user.modulosPermitidos, "soporte")) return { error: "Tu acceso a Soporte es solo de lectura" }
   const texto = contenido.trim()
   if (!texto) return
-  if (texto.length > 2000) throw new Error("El mensaje es demasiado largo (máximo 2000 caracteres).")
+  if (texto.length > 2000) return { error: "El mensaje es demasiado largo (máximo 2000 caracteres)." }
 
-  // Las tres consultas son independientes entre sí (ninguna necesita el
-  // resultado de otra, solo conversacionId) — antes iban en dos viajes
-  // seguidos a la base de datos (el conv primero, los conteos después);
-  // ahora es uno solo. La validación de dueño del hilo sigue pasando antes
-  // de usar cualquiera de los resultados.
-  const desde = new Date(Date.now() - 5 * 60 * 1000)
-  const [conv, recientes, totalMensajes] = await Promise.all([
-    db.conversacionSoporte.findUnique({ where: { id: conversacionId } }),
-    db.mensajeSoporte.count({ where: { conversacionId, de: "cliente", createdAt: { gte: desde } } }),
-    db.mensajeSoporte.count({ where: { conversacionId } }),
-  ])
-  if (!conv || conv.userId !== session.user.id) throw new Error("No autorizado")
-  if (recientes >= 20) throw new Error("Estás escribiendo muy rápido — espera un momento antes de enviar otro mensaje.")
+  // Sin hilo todavía (primer mensaje de "Envíanos un mensaje" en Inicio):
+  // se crea recién acá, en el mismo envío — antes crearNuevaConversacion()
+  // era una acción aparte que el widget llamaba primero, lo que dejaba una
+  // ventana donde un hilo vacío (sin ningún mensaje) podía quedar creado en
+  // la base de datos sin que el cliente nunca llegara a escribirle nada
+  // (por ejemplo, si cierra el panel antes de escribir, o si algo llama a
+  // esa acción directamente sin pasar por la UI) — esos hilos fantasma
+  // nunca se podían limpiar y quedaban ensuciando tanto la pestaña
+  // Mensajes del cliente como el inbox de Soporte para siempre.
+  let conv: { id: string; userId: string }
+  let totalMensajes: number
+  if (conversacionId) {
+    // Las tres consultas son independientes entre sí (ninguna necesita el
+    // resultado de otra, solo conversacionId) — antes iban en dos viajes
+    // seguidos a la base de datos (el conv primero, los conteos después);
+    // ahora es uno solo. La validación de dueño del hilo sigue pasando antes
+    // de usar cualquiera de los resultados.
+    const desde = new Date(Date.now() - 5 * 60 * 1000)
+    const [convExistente, recientes, total] = await Promise.all([
+      db.conversacionSoporte.findUnique({ where: { id: conversacionId } }),
+      db.mensajeSoporte.count({ where: { conversacionId, de: "cliente", createdAt: { gte: desde } } }),
+      db.mensajeSoporte.count({ where: { conversacionId } }),
+    ])
+    if (!convExistente || convExistente.userId !== session.user.id) throw new Error("No autorizado")
+    if (recientes >= 20) return { error: "Estás escribiendo muy rápido — espera un momento antes de enviar otro mensaje." }
+    conv = convExistente
+    totalMensajes = total
+  } else {
+    conv = await db.conversacionSoporte.create({ data: { userId: session.user.id } })
+    totalMensajes = 0
+  }
+  conversacionId = conv.id
 
   const esPrimerMensaje = totalMensajes === 0
   const urgente = detectarUrgencia(texto)
@@ -225,8 +262,10 @@ export async function enviarMensajeCliente(conversacionId: string, contenido: st
   // su burbuja optimista en vez de pedir la conversación completa de
   // nuevo, que era un segundo viaje redondo al servidor completo (con sus
   // propias consultas a la base de datos) solo para traer lo mismo que ya
-  // tiene en pantalla más este único mensaje nuevo.
-  return { id: mensaje.id, de: mensaje.de, autorNombre: mensaje.autorNombre, contenido: mensaje.contenido, createdAt: mensaje.createdAt.toISOString() }
+  // tiene en pantalla más este único mensaje nuevo. conversacionId va
+  // incluido para el caso de un hilo recién creado en este mismo envío —
+  // el widget no tenía forma de saber su id hasta ahora.
+  return { id: mensaje.id, conversacionId, de: mensaje.de, autorNombre: mensaje.autorNombre, contenido: mensaje.contenido, createdAt: mensaje.createdAt.toISOString() }
 }
 
 // ── Panel de soporte (staff ADMIN) ──────────────────────────────────────

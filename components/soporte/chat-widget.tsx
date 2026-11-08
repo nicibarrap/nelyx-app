@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition } from "react"
 import { usePathname } from "next/navigation"
 import { toast } from "sonner"
 import {
-  crearNuevaConversacion, obtenerMensajesCliente, enviarMensajeCliente, contarNoLeidosCliente,
+  obtenerMensajesCliente, enviarMensajeCliente, contarNoLeidosCliente,
   obtenerConversacionesCliente,
 } from "@/app/actions/soporte-acciones"
 
@@ -21,7 +21,7 @@ function tiempoRelativo(iso: string) {
   return `Hace ${Math.round(h / 24)}d`
 }
 
-export function ChatSoporteWidget() {
+export function ChatSoporteWidget({ soloLectura = false }: { soloLectura?: boolean }) {
   const [open, setOpen] = useState(false)
   const [vista, setVista] = useState<Vista>("inicio")
   const [origenHilo, setOrigenHilo] = useState<Vista>("inicio")
@@ -132,15 +132,18 @@ export function ChatSoporteWidget() {
 
     start(async () => {
       try {
-        // Si venimos de "Enviános un mensaje" sin conversación creada aún
-        // (conversacionId null), este primer envío la crea recién ahora.
-        let id = conversacionId
-        if (!id) {
-          const nueva = await crearNuevaConversacion()
-          id = nueva.id
-          setConversacionId(id)
+        // Si venimos de "Enviános un mensaje" sin conversación creada aún,
+        // conversacionId sigue null acá — enviarMensajeCliente crea el hilo
+        // en el mismo envío (ver comentario en soporte-acciones.ts) y
+        // devuelve su id recién creado.
+        const real = await enviarMensajeCliente(conversacionId, contenido, pathname)
+        if (!real) return
+        if ("error" in real) {
+          setMensajes(prev => prev.filter(m => m.id !== idOptimista))
+          setTexto(contenido)
+          toast.error(real.error)
+          return
         }
-        const real = await enviarMensajeCliente(id, contenido, pathname)
         // Reemplaza la burbuja optimista por la real en vez de volver a
         // pedir toda la conversación — antes eso era un segundo viaje
         // redondo completo al servidor (con sus propias consultas a la
@@ -148,9 +151,9 @@ export function ChatSoporteWidget() {
         // más este único mensaje nuevo, y se sentía como una demora extra.
         // La respuesta automática / de soporte sigue llegando igual por
         // el polling cada 4s mientras el hilo está abierto.
-        if (real) {
-          setMensajes(prev => prev.map(m => m.id === idOptimista ? real : m))
-        }
+        const { conversacionId: idRecienCreado, ...mensajeReal } = real
+        if (!conversacionId) setConversacionId(idRecienCreado)
+        setMensajes(prev => prev.map(m => m.id === idOptimista ? mensajeReal : m))
       } catch (err) {
         setMensajes(prev => prev.filter(m => m.id !== idOptimista))
         setTexto(contenido)
@@ -165,11 +168,17 @@ export function ChatSoporteWidget() {
       <p className="text-xs text-[var(--c-text3)] leading-relaxed">
         Escríbenos tu duda o el problema que tengas con la plataforma — normalmente respondemos en minutos.
       </p>
-      <button onClick={abrirConversacionActiva} disabled={pending}
-        className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--c-border2)] bg-[var(--c-hover)] px-3.5 py-3 text-left transition-all hover:border-blue-400/40 disabled:opacity-60">
-        <span className="text-xs font-semibold text-[var(--c-text)]">Envíanos un mensaje</span>
-        <span className="text-blue-400">➤</span>
-      </button>
+      {soloLectura ? (
+        <p className="text-[11px] text-[var(--c-text4)] leading-relaxed bg-[var(--c-hover)] border border-[var(--c-border2)] rounded-xl px-3.5 py-3">
+          Solo puedes ver las conversaciones de Soporte — pídele al dueño que te habilite escribir.
+        </p>
+      ) : (
+        <button onClick={abrirConversacionActiva} disabled={pending}
+          className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--c-border2)] bg-[var(--c-hover)] px-3.5 py-3 text-left transition-all hover:border-blue-400/40 disabled:opacity-60">
+          <span className="text-xs font-semibold text-[var(--c-text)]">Envíanos un mensaje</span>
+          <span className="text-blue-400">➤</span>
+        </button>
+      )}
       {noLeidos > 0 && (
         <button onClick={irAMensajes} className="w-full text-left rounded-xl border border-blue-400/30 bg-blue-500/5 px-3.5 py-3 transition-all hover:bg-blue-500/10">
           <span className="text-xs font-semibold text-blue-400">Tienes respuestas nuevas — ver Mensajes →</span>
@@ -238,15 +247,21 @@ export function ChatSoporteWidget() {
         })}
       </div>
 
-      <form onSubmit={enviar} className="p-3 border-t border-[var(--c-border2)] flex-shrink-0 flex gap-2">
-        <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Escribe tu mensaje…" maxLength={2000}
-          className="flex-1 h-10 rounded-xl px-3.5 text-sm outline-none border border-[var(--c-border2)] bg-[var(--c-hover)] text-[var(--c-text)] placeholder:text-[var(--c-text4)] focus:border-blue-400/50" />
-        <button type="submit" disabled={pending || !texto.trim()}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-white disabled:opacity-40 transition-all hover:brightness-110"
-          style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}>
-          {pending ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "➤"}
-        </button>
-      </form>
+      {soloLectura ? (
+        <p className="p-3 border-t border-[var(--c-border2)] flex-shrink-0 text-center text-[11px] text-[var(--c-text4)]">
+          Solo puedes ver este hilo — pídele al dueño que te habilite responder.
+        </p>
+      ) : (
+        <form onSubmit={enviar} className="p-3 border-t border-[var(--c-border2)] flex-shrink-0 flex gap-2">
+          <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Escribe tu mensaje…" maxLength={2000}
+            className="flex-1 h-10 rounded-xl px-3.5 text-sm outline-none border border-[var(--c-border2)] bg-[var(--c-hover)] text-[var(--c-text)] placeholder:text-[var(--c-text4)] focus:border-blue-400/50" />
+          <button type="submit" disabled={pending || !texto.trim()}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white disabled:opacity-40 transition-all hover:brightness-110"
+            style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}>
+            {pending ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "➤"}
+          </button>
+        </form>
+      )}
     </>
   )
 

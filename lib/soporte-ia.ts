@@ -51,6 +51,15 @@ export async function generarRespuestaIA(mensajeCliente: string): Promise<string
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
 
+  // Sin timeout, un fetch colgado podía comerse todo el tiempo de ejecución
+  // del after() que la llama (ver enviarMensajeCliente en soporte-acciones.ts)
+  // sin que nunca se alcanzara a escribir ni siquiera el mensaje de respaldo
+  // (MENSAJE_AUTO_RESPUESTA) — el cliente se quedaba sin ninguna respuesta
+  // automática, en silencio. 9s da margen de sobra para una respuesta normal
+  // de Haiku sin arriesgar el resto de la función.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 9000)
+
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -66,6 +75,7 @@ export async function generarRespuestaIA(mensajeCliente: string): Promise<string
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: mensajeCliente }],
       }),
+      signal: controller.signal,
     })
 
     if (!res.ok) {
@@ -82,7 +92,14 @@ export async function generarRespuestaIA(mensajeCliente: string): Promise<string
     if (!texto || texto === "ESCALAR") return null
     return texto
   } catch (err) {
-    Sentry.captureException(err, { extra: { etapa: "generarRespuestaIA" } })
+    // No reporta a Sentry si fue nuestro propio timeout abortando — eso no
+    // es un error real de la integración, solo la API tardando más de lo
+    // esperado; igual se cae al mensaje de respaldo normalmente.
+    if (!(err instanceof Error && err.name === "AbortError")) {
+      Sentry.captureException(err, { extra: { etapa: "generarRespuestaIA" } })
+    }
     return null
+  } finally {
+    clearTimeout(timeout)
   }
 }

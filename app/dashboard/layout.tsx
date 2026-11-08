@@ -10,6 +10,7 @@ import { ChatSoporteWidget } from "@/components/soporte/chat-widget"
 import { NavegacionProvider } from "@/components/dashboard/navegacion-provider"
 import { ContenidoDashboard } from "@/components/dashboard/contenido-dashboard"
 import { db } from "@/lib/db"
+import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -44,7 +45,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <AutoReparadorPush />
         <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />
         <AutoRevalidarReconexion />
-        {session.user.role !== "ADMIN" && <ChatSoporteWidget />}
+        {session.user.role !== "ADMIN" && tieneAcceso(modulosPermitidos, "soporte") && (
+          <ChatSoporteWidget soloLectura={esSoloLectura(modulosPermitidos, "soporte")} />
+        )}
       </div>
     </NavegacionProvider>
   )
