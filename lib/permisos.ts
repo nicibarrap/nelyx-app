@@ -20,6 +20,15 @@ export const MODULOS_NELYX = [
   { key: "calendario", label: "Calendario", ruta: "/dashboard/calendario" },
   { key: "aprende", label: "Aprende", ruta: "/dashboard/aprende" },
   { key: "configuracion", label: "Configuración", ruta: "/dashboard/configuracion" },
+  // Sin "ruta" real (no es una página, es el burbuja de chat flotante que
+  // aparece en todo /dashboard) — se gatea aparte en dashboard/layout.tsx,
+  // no a través de moduloDeRuta/middleware como el resto. Por defecto NINGÚN
+  // empleado lo ve (antes no estaba gateado en absoluto: cualquier empleado,
+  // sin importar sus demás permisos, podía abrir el widget y leer TODO el
+  // historial de conversaciones de la cuenta con Soporte Nelyx — incluyendo
+  // cosas que el dueño haya escrito ahí sobre facturación, o incluso sobre
+  // ese mismo empleado).
+  { key: "soporte", label: "Soporte Nelyx", ruta: "" },
 ] as const
 
 export type ModuloKey = typeof MODULOS_NELYX[number]["key"]

@@ -22,6 +22,7 @@
     "@auth/prisma-adapter": "^2.7.2",
     "@prisma/client": "^5.22.0",
     "@sentry/nextjs": "^10.75.1",
+    "@vercel/blob": "^2.8.2",
     "@zxing/library": "^0.23.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",

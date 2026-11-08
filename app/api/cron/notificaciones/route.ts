@@ -4,6 +4,7 @@ import { notificar } from "@/lib/notificaciones"
 import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { sincronizarSuscripciones } from "@/lib/suscripciones"
+import { limpiarAdjuntosSoporte } from "@/lib/limpieza-adjuntos-soporte"
 import * as Sentry from "@sentry/nextjs"
 
 export const dynamic = "force-dynamic"
@@ -243,9 +244,14 @@ async function ejecutarCron() {
     })
   }
 
+  // ── 9) LIMPIEZA SEMANAL: adjuntos de chats de Soporte resueltos hace 7+
+  // días (ver lib/limpieza-adjuntos-soporte.ts) ───────────────────────────
+  const adjuntosLimpiados = await limpiarAdjuntosSoporte(ahora)
+
   return NextResponse.json({
     ok: true,
     revisadas: eventosHoy.length + tareasHoy.length + costosFijos.length + deudas.length + cuentas.length + productos.length + clientesCumpleanos.length,
     enviadas,
+    adjuntosLimpiados,
   })
 }
