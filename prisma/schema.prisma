@@ -803,6 +803,13 @@ model CierreCaja {
   // contado - esperado: positivo = sobró plata, negativo = faltó.
   diferencia       Decimal?  @db.Decimal(12, 2)
   observacion      String?   @db.Text
+  // Snapshot de lo vendido durante el turno por cada método de pago
+  // (incluye tarjeta y transferencia, no solo efectivo) — puramente
+  // informativo, no participa del cuadre de arriba. Ya formateado como
+  // texto legible (mismo criterio que RegistroEliminacion.resumen), así
+  // sobrevive intacto aunque algún Movimiento de ese turno se elimine
+  // después. Null en cajas cerradas antes de que existiera este campo.
+  ventasPorMetodoResumen String? @db.Text
   cerradoPorNombre String?
   fechaCierre      DateTime?
 

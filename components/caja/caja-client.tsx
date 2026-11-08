@@ -14,12 +14,15 @@ interface CierreCajaDTO {
   montoContado: number | null
   diferencia: number | null
   observacion: string | null
+  ventasPorMetodoResumen: string | null
   cerradoPorNombre: string | null
   fechaCierre: string | null
 }
 
+interface VentaPorMetodoDTO { metodo: string; monto: number }
+
 interface Props {
-  actual: { abierta: CierreCajaDTO | null; montoEsperadoAhora: number | null; puedeEscribir: boolean }
+  actual: { abierta: CierreCajaDTO | null; montoEsperadoAhora: number | null; ventasPorMetodo: VentaPorMetodoDTO[]; puedeEscribir: boolean }
   historialInicial: CierreCajaDTO[]
 }
 
@@ -27,6 +30,42 @@ const inp = "w-full h-11 bg-[var(--c-input)] border border-[var(--c-border)] rou
 
 function formatFechaHora(iso: string) {
   return new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+}
+
+// Nombres libres (vienen tal cual de Movimiento.metodoPago — "Efectivo",
+// "Tarjeta", "Transferencia", "Débito", "Crédito", "Cheque", "Otro", o
+// "Sin especificar" para movimientos viejos sin método guardado), así que
+// el ícono es solo decorativo por nombre conocido, con un respaldo genérico
+// para cualquier otro que aparezca.
+const ICONO_METODO: Record<string, string> = {
+  Efectivo: "💵", Tarjeta: "💳", Débito: "💳", Crédito: "💳",
+  Transferencia: "🏛️", Cheque: "📝", Otro: "•",
+}
+
+function VentasPorMetodo({ ventas }: { ventas: VentaPorMetodoDTO[] }) {
+  const total = ventas.reduce((a, v) => a + v.monto, 0)
+  return (
+    <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6">
+      <p className="text-sm font-bold text-[var(--c-text)] mb-1">💰 Ventas de este turno</p>
+      <p className="text-[11px] text-[var(--c-text4)] mb-4">Todo lo vendido desde que abriste, por método de pago — informativo, no afecta el cuadre de arriba (eso solo mira el efectivo).</p>
+      {ventas.length === 0 ? (
+        <p className="text-xs text-[var(--c-text4)]">Todavía no hay ventas registradas en este turno.</p>
+      ) : (
+        <div className="space-y-2">
+          {ventas.map(v => (
+            <div key={v.metodo} className="flex items-center justify-between text-sm">
+              <span className="text-[var(--c-text2)]">{ICONO_METODO[v.metodo] ?? "•"} {v.metodo}</span>
+              <span className="font-semibold text-[var(--c-text)]">{formatCLP(v.monto)}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between text-sm pt-2 mt-1 border-t border-[var(--c-border)]">
+            <span className="font-semibold text-[var(--c-text2)]">Total del turno</span>
+            <span className="font-bold text-[var(--c-text)]">{formatCLP(total)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function TarjetaDiferencia({ diferencia }: { diferencia: number }) {
@@ -49,7 +88,7 @@ export function CajaClient({ actual, historialInicial }: Props) {
   const [observacion, setObservacion] = useState("")
   const [mostrarCierre, setMostrarCierre] = useState(false)
 
-  const { abierta, montoEsperadoAhora, puedeEscribir } = actual
+  const { abierta, montoEsperadoAhora, ventasPorMetodo, puedeEscribir } = actual
   // Sin estado propio a propósito: router.refresh() (tras abrir/cerrar)
   // vuelve a pedirle los datos al servidor y pasa un historialInicial
   // nuevo — envolverlo en useState lo habría dejado "pegado" en el valor
@@ -62,7 +101,8 @@ export function CajaClient({ actual, historialInicial }: Props) {
     const monto = Number(montoAperturaDisplay.replace(/\./g, "")) || 0
     startTransition(async () => {
       try {
-        await abrirCaja(monto)
+        const resultado = await abrirCaja(monto)
+        if (resultado?.error) { toast.error(resultado.error); return }
         toast.success("Caja abierta")
         setMontoAperturaDisplay("")
         router.refresh()
@@ -77,7 +117,8 @@ export function CajaClient({ actual, historialInicial }: Props) {
     const monto = Number(montoContadoDisplay.replace(/\./g, "")) || 0
     startTransition(async () => {
       try {
-        await cerrarCaja(monto, observacion || undefined)
+        const resultado = await cerrarCaja(monto, observacion || undefined)
+        if (resultado?.error) { toast.error(resultado.error); return }
         toast.success("Caja cerrada")
         setMontoContadoDisplay(""); setObservacion(""); setMostrarCierre(false)
         router.refresh()
@@ -167,6 +208,8 @@ export function CajaClient({ actual, historialInicial }: Props) {
         </div>
       )}
 
+      {abierta && <VentasPorMetodo ventas={ventasPorMetodo} />}
+
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
         <p className="text-xs font-semibold text-[var(--c-text)] px-5 py-4 border-b border-[var(--c-border)]">Historial de cierres</p>
         {historial.length === 0 ? (
@@ -186,6 +229,7 @@ export function CajaClient({ actual, historialInicial }: Props) {
                   {c.cerradoPorNombre !== c.abiertoPorNombre && c.cerradoPorNombre != null && <> · Cerró <span className="font-medium text-[var(--c-text3)]">{c.cerradoPorNombre}</span></>}
                   {" · "}Inicial {formatCLP(c.montoApertura)} · Esperado {formatCLP(c.montoEsperado ?? 0)} · Contado {formatCLP(c.montoContado ?? 0)}
                 </p>
+                {c.ventasPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Ventas del turno: {c.ventasPorMetodoResumen}</p>}
                 {c.observacion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 italic">"{c.observacion}"</p>}
               </div>
             ))}

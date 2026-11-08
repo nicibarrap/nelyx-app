@@ -65,14 +65,17 @@ describe("abrirCaja", () => {
     comoDueno(dueno)
     await abrirCaja(10000)
 
-    await expect(abrirCaja(5000)).rejects.toThrow(/ya hay una caja abierta/i)
+    // { error } como dato de retorno, no una excepción — ver comentario en
+    // abrirCaja (caja-acciones.ts).
+    const resultado = await abrirCaja(5000)
+    expect(resultado?.error).toMatch(/ya hay una caja abierta/i)
   })
 
   it("rechaza un monto inválido", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
-    await expect(abrirCaja(-100)).rejects.toThrow(/monto inválido/i)
-    await expect(abrirCaja(NaN)).rejects.toThrow(/monto inválido/i)
+    expect((await abrirCaja(-100))?.error).toMatch(/monto inválido/i)
+    expect((await abrirCaja(NaN))?.error).toMatch(/monto inválido/i)
   })
 })
 
@@ -95,6 +98,26 @@ describe("monto esperado — solo cuenta movimientos en Efectivo desde la apertu
   })
 })
 
+describe("obtenerCajaActual — ventasPorMetodo (informativo, no filtra por método)", () => {
+  it("agrupa TODO lo vendido del turno por método, a diferencia del cuadre que solo mira efectivo", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+
+    await crearMovimiento(dueno.id, "VENTA", 5000, "Efectivo")
+    await crearMovimiento(dueno.id, "VENTA", 8000, "Débito")
+    await crearMovimiento(dueno.id, "VENTA", 3000, "Transferencia")
+    await crearMovimiento(dueno.id, "GASTO", 1000, "Efectivo") // no es venta, no debe aparecer acá
+
+    const actual = await obtenerCajaActual()
+    expect(actual.ventasPorMetodo).toEqual([
+      { metodo: "Débito", monto: 8000 },
+      { metodo: "Efectivo", monto: 5000 },
+      { metodo: "Transferencia", monto: 3000 },
+    ])
+  })
+})
+
 describe("cerrarCaja", () => {
   it("calcula esperado/diferencia y los deja fijos en el registro cerrado", async () => {
     const dueno = await crearDueno()
@@ -113,6 +136,30 @@ describe("cerrarCaja", () => {
     expect(historial[0].fechaCierre).not.toBeNull()
   })
 
+  it("guarda el resumen de ventas por método del turno, para consulta futura en el historial", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+    await crearMovimiento(dueno.id, "VENTA", 5000, "Efectivo")
+    await crearMovimiento(dueno.id, "VENTA", 8000, "Débito")
+
+    await cerrarCaja(15000)
+
+    const historial = await obtenerHistorialCajas()
+    expect(historial[0].ventasPorMetodoResumen).toBe("Débito $8.000 · Efectivo $5.000")
+  })
+
+  it("si no hubo ventas en el turno, el resumen queda null (no un string vacío)", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+
+    await cerrarCaja(10000)
+
+    const historial = await obtenerHistorialCajas()
+    expect(historial[0].ventasPorMetodoResumen).toBeNull()
+  })
+
   it("después de cerrar, no queda ninguna caja abierta", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
@@ -126,7 +173,8 @@ describe("cerrarCaja", () => {
   it("rechaza cerrar si no hay ninguna caja abierta", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
-    await expect(cerrarCaja(1000)).rejects.toThrow(/no hay una caja abierta/i)
+    const resultado = await cerrarCaja(1000)
+    expect(resultado?.error).toMatch(/no hay una caja abierta/i)
   })
 
   it("registra quién cerró, incluso si fue distinto a quien abrió", async () => {

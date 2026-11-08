@@ -111,7 +111,11 @@ describe("crearEmpleado / actualizarEmpleado — no permiten dos empleados activ
     comoDueno(dueno)
 
     await crearEmpleado("Juan", "1111", ["venta"])
-    await expect(crearEmpleado("juan", "2222", ["venta"])).rejects.toThrow(/ya tienes un usuario activo llamado/i)
+    // { error } como dato de retorno, no una excepción — ver comentario en
+    // crearEmpleado (acciones.ts): un throw desde una Server Action pierde
+    // su mensaje en producción.
+    const resultado = await crearEmpleado("juan", "2222", ["venta"])
+    expect(resultado?.error).toMatch(/ya tienes un usuario activo llamado/i)
 
     const empleados = await db.user.findMany({ where: { cuentaPrincipalId: dueno.id } })
     expect(empleados).toHaveLength(1)
@@ -149,7 +153,8 @@ describe("crearEmpleado / actualizarEmpleado — no permiten dos empleados activ
     await crearEmpleado("Ana", "2222", ["venta"])
     const ana = await db.user.findFirstOrThrow({ where: { cuentaPrincipalId: dueno.id, nombre: "Ana" } })
 
-    await expect(actualizarEmpleado(ana.id, { nombre: "juan" })).rejects.toThrow(/ya tienes un usuario activo llamado/i)
+    const resultado = await actualizarEmpleado(ana.id, { nombre: "juan" })
+    expect(resultado?.error).toMatch(/ya tienes un usuario activo llamado/i)
   })
 
   it("actualizarEmpleado permite guardar sin cambiar el nombre (no choca contra sí mismo)", async () => {
@@ -180,7 +185,10 @@ describe("eliminarMovimiento — permiso aparte para eliminar + bitácora", () =
     const mov = await crearMovimientoDeGasto(dueno.id)
     comoEmpleado(dueno.id, "Ana", ["movimientos"])
 
-    await expect(eliminarMovimiento(mov.id)).rejects.toThrow(/no tienes permiso para eliminar movimientos/i)
+    // { error } como dato de retorno, no una excepción — ver comentario en
+    // eliminarMovimiento (acciones.ts).
+    const resultado = await eliminarMovimiento(mov.id)
+    expect(resultado?.error).toMatch(/no tienes permiso para eliminar movimientos/i)
     await expect(db.movimiento.findUnique({ where: { id: mov.id } })).resolves.not.toBeNull()
     await expect(db.registroEliminacion.findMany({ where: { userId: dueno.id } })).resolves.toHaveLength(0)
   })

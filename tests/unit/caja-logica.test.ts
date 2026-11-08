@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { calcularMontoEsperado, calcularDiferencia } from "@/lib/caja"
+import { calcularMontoEsperado, calcularDiferencia, agruparVentasPorMetodo, formatearVentasPorMetodo } from "@/lib/caja"
 
 describe("calcularMontoEsperado", () => {
   it("sin movimientos, el esperado es exactamente el monto de apertura", () => {
@@ -42,5 +42,54 @@ describe("calcularDiferencia", () => {
 
   it("contado menor a esperado — negativo, faltó plata", () => {
     expect(calcularDiferencia(4500, 5000)).toBe(-500)
+  })
+})
+
+describe("agruparVentasPorMetodo", () => {
+  it("suma ventas e ingresos agrupando por método, ordenado de mayor a menor", () => {
+    const grupos = agruparVentasPorMetodo([
+      { tipo: "VENTA", monto: 5000, metodoPago: "Efectivo" },
+      { tipo: "VENTA", monto: 12000, metodoPago: "Débito" },
+      { tipo: "VENTA", monto: 3000, metodoPago: "Efectivo" },
+      { tipo: "INGRESO_EXTRA", monto: 2000, metodoPago: "Transferencia" },
+    ])
+    expect(grupos).toEqual([
+      { metodo: "Débito", monto: 12000 },
+      { metodo: "Efectivo", monto: 8000 },
+      { metodo: "Transferencia", monto: 2000 },
+    ])
+  })
+
+  it("ignora egresos (GASTO/COSTO_FIJO/RETIRO) — esto es solo lo vendido, no el neto de caja", () => {
+    const grupos = agruparVentasPorMetodo([
+      { tipo: "VENTA", monto: 5000, metodoPago: "Efectivo" },
+      { tipo: "GASTO", monto: 1000, metodoPago: "Efectivo" },
+    ])
+    expect(grupos).toEqual([{ metodo: "Efectivo", monto: 5000 }])
+  })
+
+  it("agrupa movimientos sin método (legado) bajo \"Sin especificar\"", () => {
+    const grupos = agruparVentasPorMetodo([{ tipo: "VENTA", monto: 1000, metodoPago: null }])
+    expect(grupos).toEqual([{ metodo: "Sin especificar", monto: 1000 }])
+  })
+
+  it("sin movimientos, devuelve lista vacía", () => {
+    expect(agruparVentasPorMetodo([])).toEqual([])
+  })
+})
+
+describe("formatearVentasPorMetodo", () => {
+  const formatearMonto = (n: number) => `$${n}`
+
+  it("sin ventas, devuelve string vacío", () => {
+    expect(formatearVentasPorMetodo([], formatearMonto)).toBe("")
+  })
+
+  it("une cada método con su monto formateado, separados por ·", () => {
+    const texto = formatearVentasPorMetodo(
+      [{ metodo: "Efectivo", monto: 5000 }, { metodo: "Débito", monto: 12000 }],
+      formatearMonto
+    )
+    expect(texto).toBe("Efectivo $5000 · Débito $12000")
   })
 })

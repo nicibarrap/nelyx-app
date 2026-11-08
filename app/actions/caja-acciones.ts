@@ -5,7 +5,8 @@ import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
-import { calcularMontoEsperado, calcularDiferencia, METODO_PAGO_EFECTIVO } from "@/lib/caja"
+import { calcularMontoEsperado, calcularDiferencia, agruparVentasPorMetodo, formatearVentasPorMetodo, METODO_PAGO_EFECTIVO, type VentaPorMetodo } from "@/lib/caja"
+import { formatCLP } from "@/lib/utils"
 
 async function getSession() {
   const session = await auth()
@@ -47,7 +48,7 @@ async function conTransaccionSerializable<T>(fn: (tx: Prisma.TransactionClient) 
 function serializeCierre(c: {
   id: string; montoApertura: Prisma.Decimal; abiertoPorNombre: string | null; fechaApertura: Date
   montoEsperado: Prisma.Decimal | null; montoContado: Prisma.Decimal | null; diferencia: Prisma.Decimal | null
-  observacion: string | null; cerradoPorNombre: string | null; fechaCierre: Date | null
+  observacion: string | null; ventasPorMetodoResumen: string | null; cerradoPorNombre: string | null; fechaCierre: Date | null
 }) {
   return {
     id: c.id,
@@ -58,6 +59,7 @@ function serializeCierre(c: {
     montoContado: c.montoContado != null ? Number(c.montoContado) : null,
     diferencia: c.diferencia != null ? Number(c.diferencia) : null,
     observacion: c.observacion,
+    ventasPorMetodoResumen: c.ventasPorMetodoResumen,
     cerradoPorNombre: c.cerradoPorNombre,
     fechaCierre: c.fechaCierre ? c.fechaCierre.toISOString() : null,
   }
@@ -70,29 +72,40 @@ function serializeCierre(c: {
 export async function obtenerCajaActual() {
   const session = await getSession()
   const puedeEscribir = tieneAcceso(session.user.modulosPermitidos, "caja") && !esSoloLectura(session.user.modulosPermitidos, "caja")
-  if (!tieneAcceso(session.user.modulosPermitidos, "caja")) return { abierta: null, montoEsperadoAhora: null, puedeEscribir: false }
+  if (!tieneAcceso(session.user.modulosPermitidos, "caja")) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], puedeEscribir: false }
 
   const abierta = await db.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
-  if (!abierta) return { abierta: null, montoEsperadoAhora: null, puedeEscribir }
+  if (!abierta) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], puedeEscribir }
 
+  // Sin filtrar por método acá — se trae todo lo del turno de una sola vez
+  // y se calculan ambas cosas en memoria: el cuadre (solo efectivo) y el
+  // desglose de ventas por método (todos), que es puramente informativo.
   const movs = await db.movimiento.findMany({
-    where: { userId: session.user.id, metodoPago: METODO_PAGO_EFECTIVO, createdAt: { gte: abierta.fechaApertura } },
-    select: { tipo: true, monto: true },
+    where: { userId: session.user.id, createdAt: { gte: abierta.fechaApertura } },
+    select: { tipo: true, monto: true, metodoPago: true },
   })
-  const montoEsperadoAhora = calcularMontoEsperado(Number(abierta.montoApertura), movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto) })))
-  return { abierta: serializeCierre(abierta), montoEsperadoAhora, puedeEscribir }
+  const movsParsed = movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto), metodoPago: m.metodoPago }))
+  const montoEsperadoAhora = calcularMontoEsperado(Number(abierta.montoApertura), movsParsed.filter(m => m.metodoPago === METODO_PAGO_EFECTIVO))
+  const ventasPorMetodo = agruparVentasPorMetodo(movsParsed)
+  return { abierta: serializeCierre(abierta), montoEsperadoAhora, ventasPorMetodo, puedeEscribir }
 }
 
-export async function abrirCaja(montoInicial: number) {
+// Las dos acciones devuelven { error } en vez de lanzar un Error para los
+// casos esperados (monto inválido, caja ya abierta, etc.): un throw desde
+// una Server Action pierde su mensaje en producción (Next.js lo reemplaza
+// por uno genérico al cruzar al cliente — protocolo de React Flight), así
+// que un dato de retorno normal es la única forma confiable de que el
+// mensaje real llegue a la pantalla.
+export async function abrirCaja(montoInicial: number): Promise<{ error: string } | undefined> {
   const session = await getSessionEscritura()
-  if (isNaN(montoInicial) || montoInicial < 0) throw new Error("Monto inválido")
+  if (isNaN(montoInicial) || montoInicial < 0) return { error: "Monto inválido" }
 
-  await conTransaccionSerializable(async (tx) => {
+  const error = await conTransaccionSerializable(async (tx) => {
     // Releído DENTRO de la transacción — dos clics en "Abrir caja" casi
     // simultáneos (o dos personas) no deben poder crear dos cajas abiertas
     // a la vez para la misma cuenta.
     const yaAbierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null } })
-    if (yaAbierta) throw new Error("Ya hay una caja abierta. Cierra esa primero para poder abrir una nueva.")
+    if (yaAbierta) return "Ya hay una caja abierta. Cierra esa primero para poder abrir una nueva."
     await tx.cierreCaja.create({
       data: {
         userId: session.user.id,
@@ -100,36 +113,43 @@ export async function abrirCaja(montoInicial: number) {
         abiertoPorNombre: session.user.esEmpleado ? session.user.name : null,
       },
     })
+    return undefined
   })
+  if (error) return { error }
   revalidatePath("/dashboard/caja")
 }
 
-export async function cerrarCaja(montoContado: number, observacion?: string) {
+export async function cerrarCaja(montoContado: number, observacion?: string): Promise<{ error: string } | undefined> {
   const session = await getSessionEscritura()
-  if (isNaN(montoContado) || montoContado < 0) throw new Error("Monto inválido")
+  if (isNaN(montoContado) || montoContado < 0) return { error: "Monto inválido" }
 
-  await conTransaccionSerializable(async (tx) => {
+  const error = await conTransaccionSerializable(async (tx) => {
     const abierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
-    if (!abierta) throw new Error("No hay una caja abierta")
+    if (!abierta) return "No hay una caja abierta"
 
     const fechaCierre = new Date()
     const movs = await tx.movimiento.findMany({
-      where: { userId: session.user.id, metodoPago: METODO_PAGO_EFECTIVO, createdAt: { gte: abierta.fechaApertura, lte: fechaCierre } },
-      select: { tipo: true, monto: true },
+      where: { userId: session.user.id, createdAt: { gte: abierta.fechaApertura, lte: fechaCierre } },
+      select: { tipo: true, monto: true, metodoPago: true },
     })
-    const montoEsperado = calcularMontoEsperado(Number(abierta.montoApertura), movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto) })))
+    const movsParsed = movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto), metodoPago: m.metodoPago }))
+    const montoEsperado = calcularMontoEsperado(Number(abierta.montoApertura), movsParsed.filter(m => m.metodoPago === METODO_PAGO_EFECTIVO))
     const diferencia = calcularDiferencia(montoContado, montoEsperado)
+    const ventasPorMetodoResumen = formatearVentasPorMetodo(agruparVentasPorMetodo(movsParsed), formatCLP) || null
 
     await tx.cierreCaja.update({
       where: { id: abierta.id },
       data: {
         montoEsperado, montoContado, diferencia,
         observacion: observacion?.trim() || null,
+        ventasPorMetodoResumen,
         cerradoPorNombre: session.user.esEmpleado ? session.user.name : null,
         fechaCierre,
       },
     })
+    return undefined
   })
+  if (error) return { error }
   revalidatePath("/dashboard/caja")
 }
 
