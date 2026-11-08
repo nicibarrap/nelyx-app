@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import { ChevronLeft } from "lucide-react"
 import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 import { contarNoLeidosAdmin } from "@/app/actions/soporte-acciones"
+import { contarNuevasSugerenciasAdmin } from "@/app/actions/sugerencias-acciones"
 import { useNavegacionPendiente } from "@/components/dashboard/navegacion-provider"
 
 // Click normal (sin modificadores) de un link del Sidebar: navega a través
@@ -118,6 +119,7 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
   // que se cierra sola al sacar el mouse.
   const [hoverExpanded, setHoverExpanded] = useState(false)
   const [noLeidosSoporte, setNoLeidosSoporte] = useState(0)
+  const [nuevasSugerencias, setNuevasSugerencias] = useState(0)
   const pathname = usePathname()
   const { navegarA } = useNavegacionPendiente()
 
@@ -147,6 +149,20 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
     async function chequear() {
       const n = await contarNoLeidosAdmin().catch(() => 0)
       if (activo) setNoLeidosSoporte(n)
+    }
+    chequear()
+    const interval = setInterval(chequear, 20000)
+    return () => { activo = false; clearInterval(interval) }
+  }, [userRole, esEmpleado])
+
+  // Mismo patrón, para el número junto a "Sugerencias" — cuántas siguen
+  // en estado "nueva" (sin que Nelyx las haya revisado todavía).
+  useEffect(() => {
+    if (userRole !== "ADMIN" || esEmpleado) return
+    let activo = true
+    async function chequear() {
+      const n = await contarNuevasSugerenciasAdmin().catch(() => 0)
+      if (activo) setNuevasSugerencias(n)
     }
     chequear()
     const interval = setInterval(chequear, 20000)
@@ -219,8 +235,9 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
           <>
             <SectionLabel label="Administración" collapsed={efectivo} />
             {[
-              { href: "/admin/clientes", icon: "👥", label: "Clientes NELYX" },
-              { href: "/admin/soporte", icon: "💬", label: "Soporte NELYX" },
+              { href: "/admin/clientes", icon: "👥", label: "Clientes NELYX", badge: 0 },
+              { href: "/admin/soporte", icon: "💬", label: "Soporte NELYX", badge: noLeidosSoporte },
+              { href: "/admin/sugerencias", icon: "💡", label: "Sugerencias", badge: nuevasSugerencias },
             ].map(item => (
               <Link key={item.href} href={item.href}
                 onClick={e => { if (esClickNormal(e)) { e.preventDefault(); navegarA(item.href) } }}
@@ -231,13 +248,13 @@ export function Sidebar({ userRole, modulosPermitidos, esEmpleado }: { userRole:
                 }`}>
                 <span className="text-sm w-5 text-center">{item.icon}</span>
                 {!efectivo && <span className="flex-1">{item.label}</span>}
-                {item.href === "/admin/soporte" && noLeidosSoporte > 0 && (
+                {item.badge > 0 && (
                   <span
                     className={`flex-shrink-0 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none ${
                       efectivo ? "absolute top-1 right-1 w-2 h-2" : "min-w-[18px] h-[18px] px-1"
                     }`}
                   >
-                    {!efectivo && (noLeidosSoporte > 99 ? "99+" : noLeidosSoporte)}
+                    {!efectivo && (item.badge > 99 ? "99+" : item.badge)}
                   </span>
                 )}
               </Link>
