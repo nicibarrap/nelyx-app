@@ -169,6 +169,42 @@ describe("enviarMensajeCliente — validaciones", () => {
   })
 })
 
+describe("enviarMensajeCliente — adjuntos", () => {
+  it("permite un mensaje sin texto si trae una imagen adjunta", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    const resultado = await enviarMensajeCliente(null, "", undefined, {
+      url: "https://blob.vercel-storage.com/captura.png", nombre: "captura.png", tipo: "image/png", tamano: 1000,
+    })
+    await flushAfter()
+    expect(resultado && "error" in resultado).toBe(false)
+    if (!resultado || "error" in resultado) throw new Error("no debería fallar")
+    expect(resultado.adjuntoUrl).toBe("https://blob.vercel-storage.com/captura.png")
+  })
+
+  it("rechaza un tipo de archivo que no sea imagen, aunque el tamaño sea válido", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    const resultado = await enviarMensajeCliente(null, "mira esto", undefined, {
+      url: "https://blob.vercel-storage.com/documento.pdf", nombre: "documento.pdf", tipo: "application/pdf", tamano: 1000,
+    })
+    expect(resultado && "error" in resultado ? resultado.error : null).toMatch(/solo se pueden adjuntar imágenes/i)
+    expect(await db.conversacionSoporte.count({ where: { userId: dueno.id } })).toBe(0)
+  })
+
+  it("rechaza una imagen de más de 8MB", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+
+    const resultado = await enviarMensajeCliente(null, "foto grande", undefined, {
+      url: "https://blob.vercel-storage.com/foto.png", nombre: "foto.png", tipo: "image/png", tamano: 9 * 1024 * 1024,
+    })
+    expect(resultado && "error" in resultado ? resultado.error : null).toMatch(/demasiado grande/i)
+  })
+})
+
 describe("obtenerMensajesCliente / enviarMensajeCliente — aislamiento entre cuentas", () => {
   it("una cuenta no puede leer ni escribir en el hilo de otra", async () => {
     const duenoA = await crearDueno()

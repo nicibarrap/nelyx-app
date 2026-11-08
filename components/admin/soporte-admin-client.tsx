@@ -6,12 +6,16 @@ import {
   obtenerConversacionesAdmin, obtenerMensajesAdmin, enviarMensajeSoporte, marcarConversacionResuelta,
 } from "@/app/actions/soporte-acciones"
 import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
+import { validarArchivoAdjunto, subirAdjuntoSoporte, imagenDePortapapeles, type AdjuntoSubido } from "@/lib/soporte-adjuntos-cliente"
 
 type Conversacion = {
   id: string; estado: string; negocio: string; ultimoMensajeDe: string
   ultimoMensajeAt: string; ultimoMensaje: string; urgente: boolean; noLeidos: number
 }
-type Mensaje = { id: string; de: string; autorNombre: string | null; contenido: string; paginaOrigen: string | null; createdAt: string }
+type Mensaje = {
+  id: string; de: string; autorNombre: string | null; contenido: string; paginaOrigen: string | null; createdAt: string
+  adjuntoUrl?: string | null; adjuntoNombre?: string | null; adjuntoEliminadoAuto?: boolean
+}
 
 const RESPUESTAS_RAPIDAS = [
   "¡Hola! Estamos revisando tu caso, en un momento te contamos más 🙂",
@@ -36,8 +40,37 @@ export function SoporteAdminClient({ conversacionInicialId }: { conversacionInic
   const [mensajes, setMensajes] = useState<Mensaje[]>([])
   const [texto, setTexto] = useState("")
   const [soloAbiertas, setSoloAbiertas] = useState(true)
+  const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null)
+  const [previewAdjunto, setPreviewAdjunto] = useState<string | null>(null)
+  const [subiendoAdjunto, setSubiendoAdjunto] = useState(false)
   const [pending, start] = useTransition()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    return () => { if (previewAdjunto) URL.revokeObjectURL(previewAdjunto) }
+  }, [previewAdjunto])
+
+  function elegirArchivo(file: File | null) {
+    if (!file) return
+    const error = validarArchivoAdjunto(file)
+    if (error) { toast.error(error); return }
+    if (previewAdjunto) URL.revokeObjectURL(previewAdjunto)
+    setArchivoAdjunto(file)
+    setPreviewAdjunto(URL.createObjectURL(file))
+  }
+
+  function quitarAdjunto() {
+    if (previewAdjunto) URL.revokeObjectURL(previewAdjunto)
+    setArchivoAdjunto(null)
+    setPreviewAdjunto(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  function alPegar(e: React.ClipboardEvent) {
+    const file = imagenDePortapapeles(e)
+    if (file) { e.preventDefault(); elegirArchivo(file) }
+  }
 
   async function cargarLista() {
     const data = await obtenerConversacionesAdmin()
@@ -69,11 +102,22 @@ export function SoporteAdminClient({ conversacionInicialId }: { conversacionInic
   function enviar(e: React.FormEvent) {
     e.preventDefault()
     const contenido = texto.trim()
-    if (!contenido || !seleccionada) return
+    const archivo = archivoAdjunto
+    if ((!contenido && !archivo) || !seleccionada) return
     setTexto("")
+    quitarAdjunto()
     start(async () => {
       try {
-        await enviarMensajeSoporte(seleccionada, contenido)
+        let adjunto: AdjuntoSubido | undefined
+        if (archivo) {
+          setSubiendoAdjunto(true)
+          try {
+            adjunto = await subirAdjuntoSoporte(archivo)
+          } finally {
+            setSubiendoAdjunto(false)
+          }
+        }
+        await enviarMensajeSoporte(seleccionada, contenido, adjunto)
         await cargarMensajes(seleccionada)
         await cargarLista()
       } catch (err) {
@@ -161,7 +205,15 @@ export function SoporteAdminClient({ conversacionInicialId }: { conversacionInic
                       <div className={`max-w-[75%] rounded-2xl px-3 py-2 ${esSoporte ? "rounded-br-sm" : "rounded-bl-sm"}`}
                         style={{ background: esSoporte ? "linear-gradient(135deg,#2563eb,#3b82f6)" : "var(--c-hover)", color: esSoporte ? "#fff" : "var(--c-text)" }}>
                         {!esSoporte && <p className="text-[10px] font-semibold mb-0.5 opacity-70">{esSistema ? "Mensaje automático" : m.autorNombre || "Cliente"}</p>}
-                        <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">{m.contenido}</p>
+                        {m.adjuntoEliminadoAuto ? (
+                          <p className={`text-[11px] italic opacity-70 ${m.contenido ? "mb-1.5" : ""}`}>🖼️ Imagen eliminada automáticamente</p>
+                        ) : m.adjuntoUrl && (
+                          <a href={m.adjuntoUrl} target="_blank" rel="noopener noreferrer" className={`block ${m.contenido ? "mb-1.5" : ""}`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={m.adjuntoUrl} alt={m.adjuntoNombre ?? "Imagen adjunta"} className="max-w-full max-h-56 rounded-lg object-cover" />
+                          </a>
+                        )}
+                        {m.contenido && <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">{m.contenido}</p>}
                         <div className={`flex items-center gap-1.5 mt-1 text-[9px] ${esSoporte ? "text-white/60" : "text-[var(--c-text4)]"}`}>
                           <span>{tiempoRelativo(m.createdAt)}</span>
                           {m.paginaOrigen && !esSoporte && !esSistema && <span>· desde {m.paginaOrigen}</span>}
@@ -181,15 +233,33 @@ export function SoporteAdminClient({ conversacionInicialId }: { conversacionInic
                 ))}
               </div>
 
-              <form onSubmit={enviar} className="p-3 border-t border-[var(--c-border2)] flex-shrink-0 flex gap-2">
-                <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Responder como Soporte Nelyx…" maxLength={2000}
+              {previewAdjunto && (
+                <div className="px-4 pt-2.5 border-t border-[var(--c-border2)] flex items-center gap-2 flex-shrink-0">
+                  <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-[var(--c-border2)] flex-shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewAdjunto} alt="Vista previa" className="w-full h-full object-cover" />
+                  </div>
+                  <span className="text-[11px] text-[var(--c-text4)] truncate flex-1">{archivoAdjunto?.name}</span>
+                  <button type="button" onClick={quitarAdjunto} className="w-6 h-6 rounded-lg hover:bg-[var(--c-hover)] flex items-center justify-center text-[var(--c-text4)] flex-shrink-0" aria-label="Quitar imagen">✕</button>
+                </div>
+              )}
+              <form onSubmit={enviar} className={`p-3 flex-shrink-0 flex gap-2 ${previewAdjunto ? "" : "border-t border-[var(--c-border2)]"}`}>
+                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden"
+                  onChange={e => elegirArchivo(e.target.files?.[0] ?? null)} />
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={pending}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-[var(--c-text3)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] disabled:opacity-40 transition-all flex-shrink-0"
+                  aria-label="Adjuntar imagen">
+                  📎
+                </button>
+                <input value={texto} onChange={e => setTexto(e.target.value)} onPaste={alPegar} placeholder="Responder como Soporte Nelyx…" maxLength={2000}
                   className="flex-1 h-10 rounded-xl px-3.5 text-sm outline-none border border-[var(--c-border2)] bg-[var(--c-hover)] text-[var(--c-text)] placeholder:text-[var(--c-text4)] focus:border-sky-400/50" />
-                <button type="submit" disabled={pending || !texto.trim()}
+                <button type="submit" disabled={pending || (!texto.trim() && !archivoAdjunto)}
                   className="h-10 px-4 rounded-xl text-white text-sm font-bold disabled:opacity-40 transition-all hover:brightness-110"
                   style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}>
                   Enviar
                 </button>
               </form>
+              {subiendoAdjunto && <p className="px-4 pb-2 text-[10px] text-[var(--c-text4)]">Subiendo imagen…</p>}
             </>
           )}
         </div>

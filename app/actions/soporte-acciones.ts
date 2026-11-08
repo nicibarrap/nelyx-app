@@ -28,6 +28,23 @@ function nombreAutor(session: Awaited<ReturnType<typeof getSession>>) {
   return session.user.name || (session.user.esEmpleado ? "Empleado" : "Dueño de cuenta")
 }
 
+/** Lo que llega del lado del cliente después de subir el archivo a Vercel
+ * Blob (ver app/api/soporte/subir-adjunto/route.ts) — esta acción no sube
+ * nada, solo guarda la referencia junto con el mensaje. El tipo y el
+ * tamaño ya quedaron validados server-side al generar el token de subida;
+ * acá se vuelve a chequear por las dudas (defensa en profundidad, nunca
+ * confiar ciegamente en un dato que viene del cliente). */
+interface AdjuntoInput { url: string; nombre: string; tipo: string; tamano: number }
+const TIPOS_ADJUNTO_PERMITIDOS = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+const TAMANO_ADJUNTO_MAXIMO = 8 * 1024 * 1024
+
+function adjuntoValido(adjunto: AdjuntoInput | undefined | null): string | null {
+  if (!adjunto) return null
+  if (!TIPOS_ADJUNTO_PERMITIDOS.includes(adjunto.tipo)) return "Solo se pueden adjuntar imágenes (PNG, JPG, WEBP o GIF)."
+  if (adjunto.tamano > TAMANO_ADJUNTO_MAXIMO) return "La imagen es demasiado grande (máximo 8MB)."
+  return null
+}
+
 // Cuenta de Nelyx Soporte usándose a sí misma (no un dueño/empleado real) —
 // nunca debe poder abrir el widget de cliente.
 function esCuentaDeSoporte(session: Awaited<ReturnType<typeof getSession>>) {
@@ -130,17 +147,19 @@ export async function obtenerMensajesCliente(conversacionId: string) {
 // Action pierde su mensaje real en producción (Next.js lo reemplaza por uno
 // genérico al cruzar al cliente), así que un dato de retorno normal es la
 // única forma confiable de que el mensaje real llegue a la pantalla.
-export async function enviarMensajeCliente(conversacionId: string | null, contenido: string, paginaOrigen?: string): Promise<
+export async function enviarMensajeCliente(conversacionId: string | null, contenido: string, paginaOrigen?: string, adjunto?: AdjuntoInput): Promise<
   | { error: string }
-  | { id: string; conversacionId: string; de: string; autorNombre: string | null; contenido: string; createdAt: string }
+  | { id: string; conversacionId: string; de: string; autorNombre: string | null; contenido: string; createdAt: string; adjuntoUrl: string | null; adjuntoNombre: string | null; adjuntoTipo: string | null }
   | undefined
 > {
   const session = await getSession()
   if (!tieneAccesoSoporteCliente(session)) return { error: "No tienes acceso a este módulo" }
   if (esSoloLectura(session.user.modulosPermitidos, "soporte")) return { error: "Tu acceso a Soporte es solo de lectura" }
   const texto = contenido.trim()
-  if (!texto) return
+  if (!texto && !adjunto) return
   if (texto.length > 2000) return { error: "El mensaje es demasiado largo (máximo 2000 caracteres)." }
+  const errorAdjunto = adjuntoValido(adjunto)
+  if (errorAdjunto) return { error: errorAdjunto }
 
   // Sin hilo todavía (primer mensaje de "Envíanos un mensaje" en Inicio):
   // se crea recién acá, en el mismo envío — antes crearNuevaConversacion()
@@ -187,11 +206,14 @@ export async function enviarMensajeCliente(conversacionId: string | null, conten
   // sí — otro viaje menos a la base de datos antes de responder.
   const [mensaje] = await Promise.all([
     db.mensajeSoporte.create({
-      data: { conversacionId, de: "cliente", autorNombre: nombreAutor(session), contenido: texto, paginaOrigen, urgente },
+      data: {
+        conversacionId, de: "cliente", autorNombre: nombreAutor(session), contenido: texto, paginaOrigen, urgente,
+        adjuntoUrl: adjunto?.url, adjuntoNombre: adjunto?.nombre, adjuntoTipo: adjunto?.tipo, adjuntoTamano: adjunto?.tamano,
+      },
     }),
     db.conversacionSoporte.update({
       where: { id: conversacionId },
-      data: { estado: "abierta", ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date(), recordatorioEnviado: false },
+      data: { estado: "abierta", fechaResuelta: null, ultimoMensajeDe: "cliente", ultimoMensajeAt: new Date(), recordatorioEnviado: false },
     }),
   ])
 
@@ -265,7 +287,10 @@ export async function enviarMensajeCliente(conversacionId: string | null, conten
   // tiene en pantalla más este único mensaje nuevo. conversacionId va
   // incluido para el caso de un hilo recién creado en este mismo envío —
   // el widget no tenía forma de saber su id hasta ahora.
-  return { id: mensaje.id, conversacionId, de: mensaje.de, autorNombre: mensaje.autorNombre, contenido: mensaje.contenido, createdAt: mensaje.createdAt.toISOString() }
+  return {
+    id: mensaje.id, conversacionId, de: mensaje.de, autorNombre: mensaje.autorNombre, contenido: mensaje.contenido, createdAt: mensaje.createdAt.toISOString(),
+    adjuntoUrl: mensaje.adjuntoUrl, adjuntoNombre: mensaje.adjuntoNombre, adjuntoTipo: mensaje.adjuntoTipo,
+  }
 }
 
 // ── Panel de soporte (staff ADMIN) ──────────────────────────────────────
@@ -307,17 +332,22 @@ export async function obtenerMensajesAdmin(conversacionId: string) {
   return mensajes.reverse().map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
 }
 
-export async function enviarMensajeSoporte(conversacionId: string, contenido: string) {
+export async function enviarMensajeSoporte(conversacionId: string, contenido: string, adjunto?: AdjuntoInput) {
   await getSessionAdmin()
   const texto = contenido.trim()
-  if (!texto) return
+  if (!texto && !adjunto) return
   if (texto.length > 2000) throw new Error("El mensaje es demasiado largo (máximo 2000 caracteres).")
+  const errorAdjunto = adjuntoValido(adjunto)
+  if (errorAdjunto) throw new Error(errorAdjunto)
 
   const conv = await db.conversacionSoporte.findUnique({ where: { id: conversacionId } })
   if (!conv) throw new Error("Conversación no encontrada")
 
   await db.mensajeSoporte.create({
-    data: { conversacionId, de: "soporte", autorNombre: "Soporte Nelyx", contenido: texto },
+    data: {
+      conversacionId, de: "soporte", autorNombre: "Soporte Nelyx", contenido: texto,
+      adjuntoUrl: adjunto?.url, adjuntoNombre: adjunto?.nombre, adjuntoTipo: adjunto?.tipo, adjuntoTamano: adjunto?.tamano,
+    },
   })
   await db.conversacionSoporte.update({
     where: { id: conversacionId },
@@ -328,7 +358,14 @@ export async function enviarMensajeSoporte(conversacionId: string, contenido: st
 
 export async function marcarConversacionResuelta(conversacionId: string, resuelta: boolean) {
   await getSessionAdmin()
-  await db.conversacionSoporte.update({ where: { id: conversacionId }, data: { estado: resuelta ? "resuelta" : "abierta" } })
+  // fechaResuelta es el ancla que usa la limpieza semanal de adjuntos (ver
+  // cron/notificaciones) — se limpia al reabrir para que un hilo reabierto
+  // no arrastre una fecha vieja que lo haga candidato a limpieza de nuevo
+  // sin haber pasado otra semana resuelto de verdad.
+  await db.conversacionSoporte.update({
+    where: { id: conversacionId },
+    data: { estado: resuelta ? "resuelta" : "abierta", fechaResuelta: resuelta ? new Date() : null },
+  })
 
   // Al marcar resuelta (no al reabrir) se avisa al cliente — mismo mensaje
   // de cierre que ya existía para el recordatorio automático por inactividad,
