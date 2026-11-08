@@ -98,6 +98,26 @@ describe("monto esperado — solo cuenta movimientos en Efectivo desde la apertu
   })
 })
 
+describe("obtenerCajaActual — ventasPorMetodo (informativo, no filtra por método)", () => {
+  it("agrupa TODO lo vendido del turno por método, a diferencia del cuadre que solo mira efectivo", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+
+    await crearMovimiento(dueno.id, "VENTA", 5000, "Efectivo")
+    await crearMovimiento(dueno.id, "VENTA", 8000, "Débito")
+    await crearMovimiento(dueno.id, "VENTA", 3000, "Transferencia")
+    await crearMovimiento(dueno.id, "GASTO", 1000, "Efectivo") // no es venta, no debe aparecer acá
+
+    const actual = await obtenerCajaActual()
+    expect(actual.ventasPorMetodo).toEqual([
+      { metodo: "Débito", monto: 8000 },
+      { metodo: "Efectivo", monto: 5000 },
+      { metodo: "Transferencia", monto: 3000 },
+    ])
+  })
+})
+
 describe("cerrarCaja", () => {
   it("calcula esperado/diferencia y los deja fijos en el registro cerrado", async () => {
     const dueno = await crearDueno()
@@ -114,6 +134,30 @@ describe("cerrarCaja", () => {
     expect(historial[0].diferencia).toBe(-500)
     expect(historial[0].observacion).toBe("sobró un poco de vuelto")
     expect(historial[0].fechaCierre).not.toBeNull()
+  })
+
+  it("guarda el resumen de ventas por método del turno, para consulta futura en el historial", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+    await crearMovimiento(dueno.id, "VENTA", 5000, "Efectivo")
+    await crearMovimiento(dueno.id, "VENTA", 8000, "Débito")
+
+    await cerrarCaja(15000)
+
+    const historial = await obtenerHistorialCajas()
+    expect(historial[0].ventasPorMetodoResumen).toBe("Débito $8.000 · Efectivo $5.000")
+  })
+
+  it("si no hubo ventas en el turno, el resumen queda null (no un string vacío)", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+
+    await cerrarCaja(10000)
+
+    const historial = await obtenerHistorialCajas()
+    expect(historial[0].ventasPorMetodoResumen).toBeNull()
   })
 
   it("después de cerrar, no queda ninguna caja abierta", async () => {

@@ -36,3 +36,37 @@ export function calcularMontoEsperado(montoApertura: number, movimientosEfectivo
 export function calcularDiferencia(montoContado: number, montoEsperado: number): number {
   return montoContado - montoEsperado
 }
+
+export interface MovimientoConMetodo extends MovimientoParaCaja { metodoPago: string | null }
+export interface VentaPorMetodo { metodo: string; monto: number }
+
+/** Lo vendido durante el turno, agrupado por método de pago — a diferencia
+ * de calcularMontoEsperado, acá entra CUALQUIER método (tarjeta,
+ * transferencia, etc.), no solo efectivo: es puramente informativo, para
+ * que quien cierra la caja vea el total del turno completo, no solo la
+ * parte que tiene que contar a mano. Una venta "pendiente" (a crédito) no
+ * genera Movimiento hasta que se cobra, así que no puede aparecer acá
+ * mientras siga sin pagarse — eso vive en Cuentas por Cobrar, no acá. */
+export function agruparVentasPorMetodo(movimientos: MovimientoConMetodo[]): VentaPorMetodo[] {
+  const porMetodo = new Map<string, number>()
+  for (const m of movimientos) {
+    if (!TIPOS_INGRESO_CAJA.includes(m.tipo)) continue
+    // Movimientos de antes de que este campo existiera (o alguno que se
+    // escape de los caminos que ya lo completan) pueden venir sin método —
+    // se agrupan aparte en vez de desaparecer del total.
+    const metodo = m.metodoPago || "Sin especificar"
+    porMetodo.set(metodo, (porMetodo.get(metodo) ?? 0) + m.monto)
+  }
+  return Array.from(porMetodo.entries())
+    .map(([metodo, monto]) => ({ metodo, monto }))
+    .sort((a, b) => b.monto - a.monto)
+}
+
+/** Texto legible de una sola línea — lo que queda guardado en
+ * CierreCaja.ventasPorMetodoResumen al cerrar (ver comentario del campo en
+ * el schema). formatearMonto se pasa desde afuera para no acoplar esta
+ * lógica pura a formatCLP (que vive en lib/utils.ts). */
+export function formatearVentasPorMetodo(ventas: VentaPorMetodo[], formatearMonto: (monto: number) => string): string {
+  if (ventas.length === 0) return ""
+  return ventas.map(v => `${v.metodo} ${formatearMonto(v.monto)}`).join(" · ")
+}
