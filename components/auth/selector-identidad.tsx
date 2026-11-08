@@ -53,7 +53,15 @@ export function SelectorIdentidad({ info, cuentaId, onListo, oscuro, esEmpleadoA
     if (result?.error) {
       const estado = await verificarBloqueoPin(empleadoElegido.id)
       if (estado.bloqueado) {
-        toast.error(`Demasiados intentos — espera ${estado.minutosRestantes} minuto${estado.minutosRestantes === 1 ? "" : "s"} e inténtalo de nuevo.`)
+        const unidad = `minuto${estado.minutosRestantes === 1 ? "" : "s"}`
+        // Antes ambos casos mostraban el mismo texto — "demasiados
+        // intentos" sonaba a que ESTE empleado quedó bloqueado, aunque en
+        // realidad fuera el límite por IP (cualquier usuario que se
+        // intente desde este mismo aparato/red cae en el mismo freno).
+        const mensaje = estado.motivo === "red"
+          ? `Demasiados intentos desde este dispositivo — espera ${estado.minutosRestantes} ${unidad} antes de volver a intentar, con cualquier usuario.`
+          : `El PIN de ${empleadoElegido.nombre} quedó bloqueado por demasiados intentos — espera ${estado.minutosRestantes} ${unidad} e inténtalo de nuevo.`
+        toast.error(mensaje)
       } else {
         toast.error("PIN incorrecto")
       }

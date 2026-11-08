@@ -118,13 +118,17 @@ function FormEmpleado({ empleado, onCerrar, onGuardado }: { empleado?: Empleado;
 
     start(async () => {
       try {
-        if (esEdicion) {
-          await actualizarEmpleado(empleado.id, { nombre, modulosPermitidos: modulos, pin: pin || undefined })
-          toast.success("Usuario actualizado")
-        } else {
-          await crearEmpleado(nombre, pin, modulos)
-          toast.success(`✅ ${nombre} ya puede entrar con su PIN`)
-        }
+        // crearEmpleado/actualizarEmpleado devuelven { error } en vez de
+        // lanzar una excepción para los casos esperados (nombre repetido,
+        // etc.) — un throw desde una Server Action llega al cliente con su
+        // mensaje reemplazado por uno genérico en producción (así serializa
+        // errores React Flight), así que un dato de retorno normal es la
+        // única forma confiable de mostrar ESTE mensaje tal cual.
+        const resultado = esEdicion
+          ? await actualizarEmpleado(empleado.id, { nombre, modulosPermitidos: modulos, pin: pin || undefined })
+          : await crearEmpleado(nombre, pin, modulos)
+        if (resultado?.error) { toast.error(resultado.error); return }
+        toast.success(esEdicion ? "Usuario actualizado" : `✅ ${nombre} ya puede entrar con su PIN`)
         onGuardado()
       } catch (err: any) {
         toast.error(err?.message ?? "Error al guardar")
@@ -286,6 +290,15 @@ export function UsuariosClient({ empleadosIniciales }: { empleadosIniciales: Emp
   const [mostrarActividad, setMostrarActividad] = useState(false)
   const [mostrarEliminados, setMostrarEliminados] = useState(false)
   const [isPending, start] = useTransition()
+
+  // useState(empleadosIniciales) solo usa ese valor en el primer render —
+  // un router.refresh() tras crear/editar un usuario (ver recargar() más
+  // abajo) vuelve a traer la lista fresca del servidor, pero sin este
+  // efecto, `empleados` se quedaba "pegado" en lo que había al montar el
+  // componente, y recién se veía el usuario nuevo recargando la página a
+  // mano. handleToggle (más abajo) sigue actualizando este estado en el
+  // momento para esa acción puntual, sin esperar un refresh.
+  useEffect(() => { setEmpleados(empleadosIniciales) }, [empleadosIniciales])
 
   function recargar() {
     setMostrarForm(false); setEditando(null)

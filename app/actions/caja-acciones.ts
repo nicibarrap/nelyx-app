@@ -83,16 +83,22 @@ export async function obtenerCajaActual() {
   return { abierta: serializeCierre(abierta), montoEsperadoAhora, puedeEscribir }
 }
 
-export async function abrirCaja(montoInicial: number) {
+// Las dos acciones devuelven { error } en vez de lanzar un Error para los
+// casos esperados (monto inválido, caja ya abierta, etc.): un throw desde
+// una Server Action pierde su mensaje en producción (Next.js lo reemplaza
+// por uno genérico al cruzar al cliente — protocolo de React Flight), así
+// que un dato de retorno normal es la única forma confiable de que el
+// mensaje real llegue a la pantalla.
+export async function abrirCaja(montoInicial: number): Promise<{ error: string } | undefined> {
   const session = await getSessionEscritura()
-  if (isNaN(montoInicial) || montoInicial < 0) throw new Error("Monto inválido")
+  if (isNaN(montoInicial) || montoInicial < 0) return { error: "Monto inválido" }
 
-  await conTransaccionSerializable(async (tx) => {
+  const error = await conTransaccionSerializable(async (tx) => {
     // Releído DENTRO de la transacción — dos clics en "Abrir caja" casi
     // simultáneos (o dos personas) no deben poder crear dos cajas abiertas
     // a la vez para la misma cuenta.
     const yaAbierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null } })
-    if (yaAbierta) throw new Error("Ya hay una caja abierta. Cierra esa primero para poder abrir una nueva.")
+    if (yaAbierta) return "Ya hay una caja abierta. Cierra esa primero para poder abrir una nueva."
     await tx.cierreCaja.create({
       data: {
         userId: session.user.id,
@@ -100,17 +106,19 @@ export async function abrirCaja(montoInicial: number) {
         abiertoPorNombre: session.user.esEmpleado ? session.user.name : null,
       },
     })
+    return undefined
   })
+  if (error) return { error }
   revalidatePath("/dashboard/caja")
 }
 
-export async function cerrarCaja(montoContado: number, observacion?: string) {
+export async function cerrarCaja(montoContado: number, observacion?: string): Promise<{ error: string } | undefined> {
   const session = await getSessionEscritura()
-  if (isNaN(montoContado) || montoContado < 0) throw new Error("Monto inválido")
+  if (isNaN(montoContado) || montoContado < 0) return { error: "Monto inválido" }
 
-  await conTransaccionSerializable(async (tx) => {
+  const error = await conTransaccionSerializable(async (tx) => {
     const abierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
-    if (!abierta) throw new Error("No hay una caja abierta")
+    if (!abierta) return "No hay una caja abierta"
 
     const fechaCierre = new Date()
     const movs = await tx.movimiento.findMany({
@@ -129,7 +137,9 @@ export async function cerrarCaja(montoContado: number, observacion?: string) {
         fechaCierre,
       },
     })
+    return undefined
   })
+  if (error) return { error }
   revalidatePath("/dashboard/caja")
 }
 

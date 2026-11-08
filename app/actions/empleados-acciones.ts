@@ -67,11 +67,21 @@ export async function obtenerRegistroEliminaciones(dias: number = 90) {
   return registros.map(r => ({ ...r, createdAt: r.createdAt.toISOString() }))
 }
 
-export async function crearEmpleado(nombre: string, pin: string, modulosPermitidos: string[]) {
+/** Igual que cualquier otro throw de validación acá adentro: en producción,
+ * Next.js reemplaza el .message de un Error lanzado desde una Server Action
+ * por un texto genérico ("A digest property is included...") antes de que
+ * llegue al cliente — es el protocolo de React Flight, no un bug de Next en
+ * sí, pero vuelve inútil cualquier mensaje pensado para mostrarse tal cual.
+ * Por eso un error ESPERADO (algo que el dueño puede corregir, como un
+ * nombre repetido) se devuelve como dato normal ({ error }), no se lanza —
+ * eso sí llega intacto. Un error inesperado (DB caída, etc.) sigue
+ * lanzándose más abajo; el catch del cliente ya tiene un mensaje genérico
+ * de respaldo para ese caso. */
+export async function crearEmpleado(nombre: string, pin: string, modulosPermitidos: string[]): Promise<{ error: string } | undefined> {
   const session = await getSessionDueno()
   const nombreLimpio = nombre.trim()
-  if (!nombreLimpio) throw new Error("El nombre es obligatorio")
-  if (!/^\d{4}$/.test(pin)) throw new Error("El PIN debe ser de exactamente 4 números")
+  if (!nombreLimpio) return { error: "El nombre es obligatorio" }
+  if (!/^\d{4}$/.test(pin)) return { error: "El PIN debe ser de exactamente 4 números" }
 
   // El historial de movimientos y "Actividad de usuarios" identifican a
   // cada empleado por su NOMBRE (Movimiento.realizadoPorNombre), no por su
@@ -82,7 +92,7 @@ export async function crearEmpleado(nombre: string, pin: string, modulosPermitid
     where: { cuentaPrincipalId: session.user.id, activo: true, nombre: { equals: nombreLimpio, mode: "insensitive" } },
     select: { id: true },
   })
-  if (yaExiste) throw new Error(`Ya tienes un usuario activo llamado "${nombreLimpio}". Usa un nombre distinto (por ejemplo, agrega el apellido) para poder identificar a cada uno en el historial.`)
+  if (yaExiste) return { error: `Ya tienes un usuario activo llamado "${nombreLimpio}". Usa un nombre distinto (por ejemplo, agrega el apellido) para poder identificar a cada uno en el historial.` }
 
   const pinHash = await bcrypt.hash(pin, 10)
   // Email sintético — nunca se muestra ni se usa para enviar nada, solo
@@ -101,7 +111,7 @@ export async function crearEmpleado(nombre: string, pin: string, modulosPermitid
   revalidatePath("/dashboard/usuarios")
 }
 
-export async function actualizarEmpleado(empleadoId: string, cambios: { nombre?: string; modulosPermitidos?: string[]; pin?: string }) {
+export async function actualizarEmpleado(empleadoId: string, cambios: { nombre?: string; modulosPermitidos?: string[]; pin?: string }): Promise<{ error: string } | undefined> {
   const session = await getSessionDueno()
   const empleado = await db.user.findFirst({ where: { id: empleadoId, cuentaPrincipalId: session.user.id } })
   if (!empleado) throw new Error("Empleado no encontrado")
@@ -109,7 +119,7 @@ export async function actualizarEmpleado(empleadoId: string, cambios: { nombre?:
   const data: any = {}
   if (cambios.nombre !== undefined) {
     const nombreLimpio = cambios.nombre.trim()
-    if (!nombreLimpio) throw new Error("El nombre es obligatorio")
+    if (!nombreLimpio) return { error: "El nombre es obligatorio" }
     // Mismo chequeo que crearEmpleado — evita que un renombre choque con
     // otro empleado activo y vuelva a dejar dos personas indistinguibles
     // en el historial.
@@ -117,12 +127,12 @@ export async function actualizarEmpleado(empleadoId: string, cambios: { nombre?:
       where: { cuentaPrincipalId: session.user.id, activo: true, nombre: { equals: nombreLimpio, mode: "insensitive" }, id: { not: empleadoId } },
       select: { id: true },
     })
-    if (yaExiste) throw new Error(`Ya tienes un usuario activo llamado "${nombreLimpio}". Usa un nombre distinto para poder identificar a cada uno en el historial.`)
+    if (yaExiste) return { error: `Ya tienes un usuario activo llamado "${nombreLimpio}". Usa un nombre distinto para poder identificar a cada uno en el historial.` }
     data.nombre = nombreLimpio
   }
   if (cambios.modulosPermitidos !== undefined) data.modulosPermitidos = cambios.modulosPermitidos
   if (cambios.pin !== undefined && cambios.pin !== "") {
-    if (!/^\d{4}$/.test(cambios.pin)) throw new Error("El PIN debe ser de exactamente 4 números")
+    if (!/^\d{4}$/.test(cambios.pin)) return { error: "El PIN debe ser de exactamente 4 números" }
     data.pin = await bcrypt.hash(cambios.pin, 10)
   }
 
@@ -147,17 +157,24 @@ export async function toggleActivoEmpleado(empleadoId: string) {
  * error de autorización hasta el cliente.
  */
 export async function verificarBloqueoPin(empleadoId: string) {
+  // "motivo" distingue las dos causas posibles de bloqueo, que antes
+  // mostraban el mismo mensaje genérico y confundían a quien lo veía:
+  // "red" = demasiados intentos desde este dispositivo/IP en total (afecta
+  // a CUALQUIER empleado que se intente desde acá, no solo al que se
+  // estaba probando); "cuenta" = este empleado puntual quedó bloqueado por
+  // sus propios 5 intentos fallidos seguidos.
+  //
   // Esta acción es pública y antes no tenía límite propio — se podía
   // llamar directo (sin pasar por el signIn real de empleado-pin en
   // lib/auth.ts) sin gastar nada del límite por IP que sí protege ese
   // login. Se la cuenta como un intento más del mismo contador.
   const ip = await ipActual()
-  if (await demasiadosIntentosDesdeIp(ip)) return { bloqueado: true, minutosRestantes: 15 }
+  if (await demasiadosIntentosDesdeIp(ip)) return { bloqueado: true, minutosRestantes: 15, motivo: "red" as const }
   await registrarIntentoFallido(ip)
 
   const empleado = await db.user.findUnique({ where: { id: empleadoId }, select: { nombre: true, cuentaPrincipalId: true, bloqueadoHastaPin: true } })
   if (!empleado?.bloqueadoHastaPin || empleado.bloqueadoHastaPin <= new Date()) {
-    return { bloqueado: false, minutosRestantes: 0 }
+    return { bloqueado: false, minutosRestantes: 0, motivo: null }
   }
   const minutosRestantes = Math.ceil((empleado.bloqueadoHastaPin.getTime() - Date.now()) / 60000)
   // Avisa al dueño — 5 PIN incorrectos seguidos puede ser un empleado que
@@ -174,7 +191,7 @@ export async function verificarBloqueoPin(empleadoId: string) {
       claveUnica: `pin-bloqueo:${empleadoId}:${empleado.bloqueadoHastaPin.getTime()}`,
     }).catch(() => {})
   }
-  return { bloqueado: true, minutosRestantes }
+  return { bloqueado: true, minutosRestantes, motivo: "cuenta" as const }
 }
 
 /**

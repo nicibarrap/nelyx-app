@@ -65,14 +65,17 @@ describe("abrirCaja", () => {
     comoDueno(dueno)
     await abrirCaja(10000)
 
-    await expect(abrirCaja(5000)).rejects.toThrow(/ya hay una caja abierta/i)
+    // { error } como dato de retorno, no una excepción — ver comentario en
+    // abrirCaja (caja-acciones.ts).
+    const resultado = await abrirCaja(5000)
+    expect(resultado?.error).toMatch(/ya hay una caja abierta/i)
   })
 
   it("rechaza un monto inválido", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
-    await expect(abrirCaja(-100)).rejects.toThrow(/monto inválido/i)
-    await expect(abrirCaja(NaN)).rejects.toThrow(/monto inválido/i)
+    expect((await abrirCaja(-100))?.error).toMatch(/monto inválido/i)
+    expect((await abrirCaja(NaN))?.error).toMatch(/monto inválido/i)
   })
 })
 
@@ -126,7 +129,8 @@ describe("cerrarCaja", () => {
   it("rechaza cerrar si no hay ninguna caja abierta", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
-    await expect(cerrarCaja(1000)).rejects.toThrow(/no hay una caja abierta/i)
+    const resultado = await cerrarCaja(1000)
+    expect(resultado?.error).toMatch(/no hay una caja abierta/i)
   })
 
   it("registra quién cerró, incluso si fue distinto a quien abrió", async () => {

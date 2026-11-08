@@ -281,14 +281,18 @@ async function ingresarMovimientoInterno(formData: FormData) {
   if (clienteId) revalidatePath("/dashboard/clientes")
 }
 
-export async function eliminarMovimiento(id: string) {
+export async function eliminarMovimiento(id: string): Promise<{ error: string } | undefined> {
   const session = await getSessionEscritura("movimientos")
   // Además del acceso normal de escritura a "movimientos" (ya exigido por
   // getSessionEscritura arriba), eliminar requiere el permiso aparte
   // "movimientos:eliminar" — el dueño decide caso por caso si confía esto a
   // un empleado, independiente de si puede registrar movimientos nuevos.
+  // Se devuelve como dato ({ error }) en vez de lanzarse: un throw desde una
+  // Server Action pierde su mensaje en producción (Next.js lo reemplaza por
+  // uno genérico al cruzar al cliente, protocolo de React Flight), así que
+  // esta es la única forma confiable de que este mensaje llegue tal cual.
   if (session.user.esEmpleado && !puedeEliminar(session.user.modulosPermitidos, "movimientos")) {
-    throw new Error("No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios.")
+    return { error: "No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios." }
   }
   const mov = await db.movimiento.findFirst({ where: { id, userId: session.user.id } })
   if (!mov) throw new Error("No encontrado")

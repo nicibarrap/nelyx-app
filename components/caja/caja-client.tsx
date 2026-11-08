@@ -62,7 +62,8 @@ export function CajaClient({ actual, historialInicial }: Props) {
     const monto = Number(montoAperturaDisplay.replace(/\./g, "")) || 0
     startTransition(async () => {
       try {
-        await abrirCaja(monto)
+        const resultado = await abrirCaja(monto)
+        if (resultado?.error) { toast.error(resultado.error); return }
         toast.success("Caja abierta")
         setMontoAperturaDisplay("")
         router.refresh()
@@ -77,7 +78,8 @@ export function CajaClient({ actual, historialInicial }: Props) {
     const monto = Number(montoContadoDisplay.replace(/\./g, "")) || 0
     startTransition(async () => {
       try {
-        await cerrarCaja(monto, observacion || undefined)
+        const resultado = await cerrarCaja(monto, observacion || undefined)
+        if (resultado?.error) { toast.error(resultado.error); return }
         toast.success("Caja cerrada")
         setMontoContadoDisplay(""); setObservacion(""); setMostrarCierre(false)
         router.refresh()
