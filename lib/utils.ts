@@ -18,6 +18,16 @@ export function formatFechaCorta(fecha: Date | string): string {
   return new Date(fecha).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
 }
 
+// Normaliza nombres/descripciones guardados en MAYÚSCULA SOSTENIDA (común
+// al tipear rápido desde el celular) a Capitalización de Título — solo
+// cosmético, el dato guardado no se toca. Si el texto no es 100%
+// mayúsculas (o no tiene letras), se deja intacto: así no se arruinan
+// siglas o mayúsculas intencionales (ej. "iPhone 15 Pro", "USB-C").
+export function capitalizarSiEsMayuscula(s: string): string {
+  if (s === s.toLowerCase() || s !== s.toUpperCase()) return s
+  return s.toLowerCase().replace(/(^|\s)\p{L}/gu, c => c.toUpperCase())
+}
+
 export const ETIQUETAS: Record<string, { label: string; emoji: string; color: string }> = {
   VENTA:         { label: "Venta",         emoji: "💰", color: "text-green-400 border-green-800 bg-green-950" },
   DEVOLUCION:    { label: "Devolución",    emoji: "↩️", color: "text-amber-400 border-amber-800 bg-amber-950" },

@@ -2,7 +2,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { formatCLP, ETIQUETAS } from "@/lib/utils"
+import { formatCLP, ETIQUETAS, capitalizarSiEsMayuscula } from "@/lib/utils"
 import { eliminarMovimiento } from "@/app/actions/acciones"
 import { getColorCategoria } from "@/lib/categorias"
 import { getEmojiProducto } from "@/lib/emojis"
@@ -29,16 +29,6 @@ const ICONO_METODO_PAGO: Record<string, string> = {
 // así le restan ancho a Detalle (la columna elástica), que en pantallas
 // anchas se ve menos "lejos" de Importe cuando el texto es corto.
 const GRID_COLS = "lg:grid-cols-[92px_150px_170px_minmax(0,1fr)_150px_44px]"
-
-// Normaliza nombres/descripciones guardados en MAYÚSCULA SOSTENIDA (común
-// al tipear rápido desde el celular) a Capitalización de Título — solo
-// cosmético, el dato guardado no se toca. Si el texto no es 100%
-// mayúsculas (o no tiene letras), se deja intacto: así no se arruinan
-// siglas o mayúsculas intencionales (ej. "iPhone 15 Pro", "USB-C").
-function capitalizarSiEsMayuscula(s: string): string {
-  if (s === s.toLowerCase() || s !== s.toUpperCase()) return s
-  return s.toLowerCase().replace(/(^|\s)\p{L}/gu, c => c.toUpperCase())
-}
 
 export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
   const router = useRouter()
