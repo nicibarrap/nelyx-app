@@ -92,23 +92,32 @@ export async function solicitarResetPassword(emailInput: string): Promise<{ ok: 
   return { ok: true, mensaje: MENSAJE_GENERICO }
 }
 
-export async function validarTokenReset(tokenPlano: string): Promise<{ valido: boolean }> {
-  if (!tokenPlano) return { valido: false }
+export async function validarTokenReset(tokenPlano: string): Promise<{ valido: boolean; esInvitacion: boolean }> {
+  if (!tokenPlano) return { valido: false, esInvitacion: false }
   const registro = await db.passwordResetToken.findUnique({ where: { tokenHash: hashToken(tokenPlano) } })
-  if (!registro || !tokenResetValido(registro)) return { valido: false }
-  return { valido: true }
+  if (!registro || !tokenResetValido(registro)) return { valido: false, esInvitacion: false }
+  return { valido: true, esInvitacion: registro.esInvitacion }
 }
 
-export async function resetearPassword(tokenPlano: string, nuevaPassword: string): Promise<{ ok: boolean }> {
+export async function resetearPassword(tokenPlano: string, nuevaPassword: string, aceptaPrivacidad?: boolean): Promise<{ ok: boolean }> {
   if (!nuevaPassword || nuevaPassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.")
   const registro = await db.passwordResetToken.findUnique({ where: { tokenHash: hashToken(tokenPlano) } })
   if (!registro || !tokenResetValido(registro)) throw new Error("Este link ya no es válido. Solicita uno nuevo.")
+  // Solo se exige en la primera activación (invitación) — un reset normal
+  // de alguien que ya tiene cuenta no vuelve a pedirlo.
+  if (registro.esInvitacion && !aceptaPrivacidad) throw new Error("Debes aceptar la Política de Privacidad para activar tu cuenta.")
 
   const hash = await bcrypt.hash(nuevaPassword, 10)
   await db.$transaction([
     // Limpia también cualquier bloqueo por intentos fallidos previo — un
     // reset exitoso es un buen punto para empezar de cero.
-    db.user.update({ where: { id: registro.userId }, data: { password: hash, intentosFallidosPin: 0, bloqueadoHastaPin: null } }),
+    db.user.update({
+      where: { id: registro.userId },
+      data: {
+        password: hash, intentosFallidosPin: 0, bloqueadoHastaPin: null,
+        ...(registro.esInvitacion ? { consentimientoAceptadoAt: new Date() } : {}),
+      },
+    }),
     db.passwordResetToken.update({ where: { id: registro.id }, data: { usedAt: new Date() } }),
     // Invalida cualquier otro link de reset pendiente de esta misma
     // cuenta — si alguien pidió varios, cambiar la contraseña con uno
@@ -148,6 +157,7 @@ export async function enviarInvitacionCliente(userId: string): Promise<{ ok: boo
       userId: user.id,
       tokenHash: hashToken(tokenPlano),
       expiresAt: new Date(Date.now() + EXPIRA_INVITACION_DIAS * 24 * 60 * 60 * 1000),
+      esInvitacion: true,
     },
   })
 

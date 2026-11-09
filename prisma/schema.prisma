@@ -66,6 +66,11 @@ model User {
   // vencimiento — configurable porque el valor fijo anterior (2 días) se
   // saltaba por completo una cuenta creada con vencimiento "mañana".
   recordatoriosCobranzaDiasAntes    Int                      @default(2)
+  // Cuándo aceptó la Política de Privacidad por primera vez (al activar
+  // su cuenta vía invitación) — null en cuentas creadas antes de que
+  // existiera este chequeo. Es evidencia de que se pidió y aceptó, no
+  // un gate de acceso: nunca bloquea a alguien que ya tiene cuenta.
+  consentimientoAceptadoAt          DateTime?
 }
 
 enum Rol {
@@ -581,6 +586,11 @@ model PasswordResetToken {
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
+  // true = este token viene de enviarInvitacionCliente (primera
+  // contraseña de una cuenta nueva), no de "olvidé mi contraseña" — ahí,
+  // y solo ahí, la página pide aceptar la Política de Privacidad antes de
+  // activar la cuenta (ver resetearPassword).
+  esInvitacion Boolean @default(false)
 
   @@index([userId, createdAt])
 }

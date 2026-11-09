@@ -5,6 +5,8 @@ import { validarTokenReset, resetearPassword } from "@/app/actions/password-rese
 
 export function RestablecerForm({ token }: { token: string }) {
   const [estado, setEstado] = useState<"validando" | "valido" | "invalido" | "listo">("validando")
+  const [esInvitacion, setEsInvitacion] = useState(false)
+  const [aceptaPrivacidad, setAceptaPrivacidad] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
 
@@ -13,7 +15,10 @@ export function RestablecerForm({ token }: { token: string }) {
       setEstado("invalido")
       return
     }
-    validarTokenReset(token).then(({ valido }) => setEstado(valido ? "valido" : "invalido"))
+    validarTokenReset(token).then(({ valido, esInvitacion }) => {
+      setEstado(valido ? "valido" : "invalido")
+      setEsInvitacion(esInvitacion)
+    })
   }, [token])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -25,9 +30,13 @@ export function RestablecerForm({ token }: { token: string }) {
       toast.error("Las contraseñas no coinciden")
       return
     }
+    if (esInvitacion && !aceptaPrivacidad) {
+      toast.error("Debes aceptar la Política de Privacidad para continuar")
+      return
+    }
     setLoading(true)
     try {
-      await resetearPassword(token, nuevaPassword)
+      await resetearPassword(token, nuevaPassword, aceptaPrivacidad)
       setEstado("listo")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo restablecer la contraseña")
@@ -114,7 +123,20 @@ export function RestablecerForm({ token }: { token: string }) {
             className={inp} style={inpStyle} />
         </div>
       </div>
-      <button type="submit" disabled={loading}
+      {esInvitacion && (
+        <label className="flex items-start gap-2.5 text-xs text-white/55 cursor-pointer select-none">
+          <input type="checkbox" checked={aceptaPrivacidad} onChange={e => setAceptaPrivacidad(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-white/20 bg-transparent accent-blue-500 flex-shrink-0" />
+          <span>
+            Acepto la{" "}
+            <a href="/legal/privacidad" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">
+              Política de Privacidad
+            </a>{" "}
+            de Nelyx.
+          </span>
+        </label>
+      )}
+      <button type="submit" disabled={loading || (esInvitacion && !aceptaPrivacidad)}
         className="w-full h-12 font-semibold text-white rounded-xl transition-all duration-200 flex items-center justify-center gap-2 hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 active:brightness-95 disabled:hover:translate-y-0 disabled:hover:brightness-100"
         style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)", boxShadow: "0 4px 24px rgba(37,99,235,0.35)" }}>
         {loading ? (
