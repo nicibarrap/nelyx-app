@@ -154,6 +154,13 @@ function FormEmpleado({ empleado, onCerrar, onGuardado }: { empleado?: Empleado;
             <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" maxLength={4} autoComplete="off" placeholder="••••" className={`${inp} tracking-[0.3em]`} />
           </div>
           <SelectorModulos seleccionados={modulos} onChange={setModulos} />
+          {!esEdicion && (
+            <p className="text-[10px] text-[var(--c-text4)] leading-relaxed">
+              Al crear este acceso, confirmas que informaste a esta persona sobre el tratamiento de sus
+              datos según nuestra{" "}
+              <a href="/legal/privacidad" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline">Política de Privacidad</a>.
+            </p>
+          )}
         </div>
         <div className="flex gap-2 mt-5">
           <button onClick={onCerrar} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-sm font-semibold rounded-xl hover:bg-[var(--c-hover)] transition-all">Cancelar</button>
@@ -256,7 +263,7 @@ function RegistroEliminaciones({ onCerrar }: { onCerrar: () => void }) {
           <p className="text-sm font-bold text-[var(--c-text)]">🗑️ Eliminados</p>
           <button onClick={onCerrar} className="text-[var(--c-text4)] hover:text-[var(--c-text2)] text-lg">✕</button>
         </div>
-        <p className="text-[11px] text-[var(--c-text4)] mb-3">Movimientos eliminados y quién lo hizo — últimos 90 días. Lo que dice cada línea es un resumen de cómo era el movimiento antes de borrarse, no se puede deshacer desde aquí.</p>
+        <p className="text-[11px] text-[var(--c-text4)] mb-3">Movimientos, clientes y proveedores eliminados, y quién lo hizo — últimos 90 días. Lo que dice cada línea es un resumen de cómo era antes de borrarse, no se puede deshacer desde aquí.</p>
 
         <div className="flex-1 overflow-y-auto -mx-1 px-1">
           {items === null ? (

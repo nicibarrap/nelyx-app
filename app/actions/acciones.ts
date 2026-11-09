@@ -1980,6 +1980,21 @@ export async function eliminarCliente(id: string) {
   // (quedan sin cliente asociado, pero no se borran).
   const pendiente = await db.cuentaPorCobrar.findFirst({ where: { clienteId: id, userId: session.user.id, estado: { not: "pagada" } } })
   if (pendiente) throw new Error("Este cliente tiene una cuenta por cobrar pendiente — cóbrala o márcala como pagada antes de eliminarlo.")
+
+  const cliente = await db.cliente.findFirst({ where: { id, userId: session.user.id } })
+  if (!cliente) throw new Error("No encontrado")
+
+  // Mismo criterio que eliminarMovimiento: queda un snapshot de texto de
+  // quién era antes de borrar sus datos personales — útil tanto para
+  // rastrear qué pasó como, de cara a la Ley 21.719, para dejar evidencia
+  // de cuándo se eliminó la información de un titular de datos.
+  await db.registroEliminacion.create({
+    data: {
+      userId: session.user.id, tipo: "CLIENTE",
+      resumen: `${cliente.nombre}${cliente.apellido ? ` ${cliente.apellido}` : ""}${cliente.empresa ? ` (${cliente.empresa})` : ""}`,
+      eliminadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+    },
+  })
   await db.cliente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/clientes")
   revalidatePath("/dashboard/venta")
@@ -2085,6 +2100,19 @@ export async function eliminarProveedor(id: string) {
   if (tieneGastos || tieneReposiciones) {
     throw new Error("Este proveedor tiene compras registradas — desactívalo en vez de eliminarlo, para conservar el historial.")
   }
+
+  const proveedor = await db.proveedor.findFirst({ where: { id, userId: session.user.id } })
+  if (!proveedor) throw new Error("No encontrado")
+
+  // Mismo criterio que eliminarCliente/eliminarMovimiento — snapshot antes
+  // de borrar sus datos personales.
+  await db.registroEliminacion.create({
+    data: {
+      userId: session.user.id, tipo: "PROVEEDOR",
+      resumen: `${proveedor.nombre}${proveedor.empresa ? ` (${proveedor.empresa})` : ""}`,
+      eliminadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+    },
+  })
   await db.proveedor.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/proveedores")
 }

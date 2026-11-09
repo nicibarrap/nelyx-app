@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { auth } from "@/lib/auth"
 import { obtenerConfigNotificaciones } from "@/app/actions/notificaciones-acciones"
 import { obtenerPlantillasCobranza } from "@/app/actions/cobranza-acciones"
 import { obtenerConexionesPago } from "@/app/actions/pagos-acciones"
@@ -11,6 +12,7 @@ import { ConexionMaquinaPagoClient } from "@/components/configuracion/conexion-m
 import { AutomatizacionesClienteClient } from "@/components/configuracion/automatizaciones-cliente-client"
 import { ProyectosTareaClient } from "@/components/configuracion/proyectos-tarea-client"
 import { CategoriasConfigClient } from "@/components/configuracion/categorias-config-client"
+import { PrivacidadDatosClient } from "@/components/configuracion/privacidad-datos-client"
 import { ConfiguracionLayout, type SeccionConfig } from "@/components/configuracion/configuracion-layout"
 
 export const metadata: Metadata = { title: "Configuración" }
@@ -19,6 +21,7 @@ export const dynamic = "force-dynamic"
 const CAMPOS = ["calendario","tareas","deudas","costosFijos","cuentasCobrar","clientes","inventario","reportes","renovaciones","alertasGenerales","soporte"] as const
 
 export default async function ConfiguracionPage() {
+  const session = await auth()
   const [cfgRaw, plantillas, conexionesPago, automatizaciones, proyectosTarea, categorias] = await Promise.all([obtenerConfigNotificaciones(), obtenerPlantillasCobranza(), obtenerConexionesPago(), obtenerAutomatizacionesCliente(), obtenerProyectosTarea(), obtenerTodasCategoriasPersonalizadas()])
   const cfg: Record<string, boolean> = {}
   for (const campo of CAMPOS) cfg[campo] = cfgRaw[campo]
@@ -43,6 +46,12 @@ export default async function ConfiguracionPage() {
     { id: "categorias", icon: "🏷️", titulo: "Categorías", content: <div className="space-y-5"><CategoriasConfigClient categorias={categorias} /><ProyectosTareaClient proyectos={proyectosTarea} /></div> },
     { id: "diagnostico", icon: "🔧", titulo: "Diagnóstico técnico", content: <DiagnosticoPushClient /> },
   ]
+  // Exportar/eliminar "mis datos" es una acción exclusiva del dueño sobre
+  // su propia cuenta — un empleado ni siquiera debería ver la opción,
+  // además de que la Server Action la rechaza igual si se invoca directo.
+  if (!session?.user?.esEmpleado) {
+    secciones.push({ id: "privacidad", icon: "🔒", titulo: "Privacidad y datos", content: <PrivacidadDatosClient email={session?.user?.email ?? ""} /> })
+  }
 
   return (
     <div className="space-y-5 animate-fade-up max-w-6xl">

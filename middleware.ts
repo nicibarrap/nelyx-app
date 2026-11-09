@@ -16,7 +16,11 @@ export default auth(async (req) => {
   const { pathname } = req.nextUrl
   const session = req.auth
 
-  if (pathname === "/auth/login" || pathname === "/auth/forzar-salida" || pathname === "/auth/recuperar" || pathname === "/auth/restablecer") {
+  // /legal/* (política de privacidad, términos) tiene que ser legible sin
+  // sesión — la leen tanto quienes todavía no tienen cuenta como los
+  // clientes finales de un negocio que usa Nelyx, que nunca inician sesión
+  // acá pero sí son titulares de datos que un dueño carga sobre ellos.
+  if (pathname === "/auth/login" || pathname === "/auth/forzar-salida" || pathname === "/auth/recuperar" || pathname === "/auth/restablecer" || pathname.startsWith("/legal/")) {
     // Una Server Action invocada DESDE /auth/login (p. ej. obtenerEmpleadosDeMiCuenta,
     // que se llama justo después de iniciar sesión, antes de salir de esta pantalla)
     // también le llega al middleware como POST a esta misma ruta. Si se redirige
