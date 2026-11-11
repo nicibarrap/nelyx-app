@@ -12,9 +12,12 @@ export const PRIORIDAD_CFG: Record<string, { label: string; color: string; icono
 }
 
 async function configDe(userId: string) {
-  let cfg = await db.notificacionConfig.findUnique({ where: { userId } })
-  if (!cfg) cfg = await db.notificacionConfig.create({ data: { userId } })
-  return cfg
+  // upsert, no findUnique+create: el cron procesa lotes de notificaciones en
+  // paralelo (procesarEnLotes) y dos ítems del mismo usuario en el mismo lote
+  // podían pasar el findUnique (sin config todavía) antes de que el primer
+  // create confirmara, y el segundo create rompía el @unique de userId
+  // (JAVASCRIPT-NEXTJS-G en Sentry).
+  return db.notificacionConfig.upsert({ where: { userId }, create: { userId }, update: {} })
 }
 
 /**
