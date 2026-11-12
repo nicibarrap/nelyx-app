@@ -9,6 +9,7 @@ import { CentroCobranza } from "@/components/cuentas-cobrar/centro-cobranza"
 import type { NivelCobranza } from "@/lib/cobranza"
 import { sugerirLimiteCredito, SEGMENTOS_CFG, type SegmentoCliente } from "@/lib/cliente-insights"
 import { CampoFecha } from "@/components/shared/campo-fecha"
+import { PanelLateral } from "@/components/shared/panel-lateral"
 
 const TIPOS = ["Minorista","Mayorista","Empresa","Distribuidor","Particular"]
 const AVATAR_COLORS = ["bg-sky-500","bg-emerald-500","bg-violet-500","bg-amber-500","bg-red-500","bg-pink-500","bg-teal-500","bg-orange-500"]
@@ -543,10 +544,14 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
   const [search, setSearch] = useState("")
   const [filtro, setFiltro] = useState<"todos"|"deuda"|"frecuentes"|"inactivos"|"debieron_volver">("todos")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
 
   const selected = useMemo(() => clientesData.find(c => c.id === selectedId) ?? null, [clientesData, selectedId])
+
+  function handleSelect(id: string) { setSelectedId(id); setMobileDetailOpen(true) }
+  function handleEditar(cliente: Cliente) { setMobileDetailOpen(false); setEditando(cliente); setSelectedId(null) }
 
   // Clientes más valiosos — antes vivía duplicado en Reportes; ahora vive
   // acá, calculado sobre los mismos datos que ya se cargaron para la lista,
@@ -634,7 +639,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
           <p className="text-[11px] text-[var(--c-text4)] mb-4">Por total comprado histórico</p>
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             {clientesMasValiosos.map((c, i) => (
-              <button key={c.id} onClick={() => setSelectedId(c.id)}
+              <button key={c.id} onClick={() => handleSelect(c.id)}
                 className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:border-sky-500/30 transition-all text-left">
                 <span className="text-xs font-bold text-[var(--c-text4)] w-4 flex-shrink-0">{i + 1}</span>
                 <div className="min-w-0 flex-1">
@@ -654,7 +659,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
           <p className="text-[11px] text-[var(--c-text4)] mb-4">Según cuánto suelen tardar entre compra y compra</p>
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             {clientesDebieronVolver.map(c => (
-              <button key={c.id} onClick={() => setSelectedId(c.id)}
+              <button key={c.id} onClick={() => handleSelect(c.id)}
                 className="flex flex-col gap-1 p-3 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:border-amber-500/30 transition-all text-left">
                 <p className="text-xs font-semibold text-[var(--c-text)] truncate">{c.nombre} {c.apellido ?? ""}</p>
                 <p className="text-[11px] text-[var(--c-warning)]">cada ~{Math.round(c.intervaloPromedioDias!)}d, van {c.diasSinCompra}</p>
@@ -698,7 +703,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
                 {!search && <button onClick={() => setShowForm(true)} className="mt-3 text-xs px-4 py-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl hover:bg-sky-500/20 transition-all">+ Agregar primer cliente</button>}
               </div>
             ) : filtrados.map(c => (
-              <div key={c.id} onClick={() => setSelectedId(c.id === selectedId ? null : c.id)}
+              <div key={c.id} onClick={() => handleSelect(c.id)}
                 className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all ${selectedId === c.id ? "bg-sky-500/5 border-l-2 border-sky-500" : "hover:bg-[var(--c-hover)]"} ${!c.activo ? "opacity-60" : ""}`}>
                 <Avatar nombre={c.nombre} apellido={c.apellido} size="sm" />
                 <div className="flex-1 min-w-0">
@@ -718,8 +723,13 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
           </div>
         </div>
 
-        {/* Panel perfil */}
-        <div className="lg:col-span-2">
+        {/* Panel perfil — fijo al lado de la lista en pantallas grandes
+            (lg y mayor: PC y tablet en horizontal). En celular y tablet
+            vertical se abre como panel lateral (ver PanelLateral más
+            abajo), mismo patrón que Cuentas por Cobrar, Costos Fijos y
+            Productos, en vez de quedar incrustado abajo de la lista
+            obligando a hacer scroll para encontrarlo. */}
+        <div className="hidden lg:block lg:col-span-2">
           {selected ? (
             // key={selected.id} fuerza a React a remontar el panel al
             // cambiar de cliente — sin esto, estados internos como la nota
@@ -730,7 +740,7 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
               key={selected.id}
               cliente={selected}
               onClose={() => setSelectedId(null)}
-              onEdit={() => { setEditando(selected); setSelectedId(null) }}
+              onEdit={() => handleEditar(selected)}
               nombreNegocio={nombreNegocio} usuarioEnvia={usuarioEnvia} plantillas={plantillas}
             />
           ) : (
@@ -744,6 +754,19 @@ export function ClientesClient({ clientesData, metricas, nombreNegocio, usuarioE
           )}
         </div>
       </div>
+
+      {/* Panel perfil — celular y tablet vertical (bajo el breakpoint lg) */}
+      <PanelLateral abierto={mobileDetailOpen && !!selected} onClose={() => setMobileDetailOpen(false)} className="lg:hidden">
+        {selected && (
+          <ClientePanel
+            key={selected.id}
+            cliente={selected}
+            onClose={() => setMobileDetailOpen(false)}
+            onEdit={() => handleEditar(selected)}
+            nombreNegocio={nombreNegocio} usuarioEnvia={usuarioEnvia} plantillas={plantillas}
+          />
+        )}
+      </PanelLateral>
     </div>
   )
 }
