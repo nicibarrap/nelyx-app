@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearProveedor, actualizarProveedor, eliminarProveedor, toggleActivoProveedor, toggleFavoritoProveedor, crearNotaProveedor, eliminarNotaProveedor } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
+import { PanelLateral } from "@/components/shared/panel-lateral"
 
 const CATEGORIAS = ["Mercadería","Carnes","Frutas y verduras","Abarrotes","Bebidas","Lácteos","Insumos","Packaging","Servicios","Tecnología","Transporte","Otros"]
 const AVATAR_COLORS = ["bg-sky-500","bg-emerald-500","bg-violet-500","bg-amber-500","bg-red-500","bg-orange-500","bg-teal-500","bg-pink-500"]
@@ -311,6 +312,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
   const [search, setSearch] = useState("")
   const [filtro, setFiltro] = useState<"todos"|"activos"|"inactivos"|"favoritos"|"deuda">("todos")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState<Proveedor | null>(null)
 
@@ -318,10 +320,13 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
   // (ej. el aviso de vencimiento de una deuda vinculada a este proveedor).
   useEffect(() => {
     const id = searchParams.get("id")
-    if (id) setSelectedId(id)
+    if (id) { setSelectedId(id); setMobileDetailOpen(true) }
   }, [searchParams])
 
   const selected = useMemo(() => proveedoresData.find(p => p.id === selectedId) ?? null, [proveedoresData, selectedId])
+
+  function handleSelect(id: string) { setSelectedId(id); setMobileDetailOpen(true) }
+  function handleEditar(prov: Proveedor) { setMobileDetailOpen(false); setEditando(prov); setSelectedId(null) }
 
   const filtrados = useMemo(() => {
     let list = proveedoresData
@@ -397,7 +402,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
           </div>
           <div className="divide-y divide-[var(--c-border2)]">
             {rankingCompras.map((p, i) => (
-              <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[var(--c-hover)] transition-all cursor-pointer" onClick={() => setSelectedId(p.id)}>
+              <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[var(--c-hover)] transition-all cursor-pointer" onClick={() => handleSelect(p.id)}>
                 <span className={`text-sm font-black w-6 text-center ${i === 0 ? "text-[var(--c-warning)]" : i === 1 ? "text-[var(--c-text3)]" : "text-[var(--c-text4)]"}`}>#{i+1}</span>
                 <Avatar nombre={p.nombre} size="sm" />
                 <div className="flex-1">
@@ -442,7 +447,7 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
                 {!search && <button onClick={() => setShowForm(true)} className="mt-2 text-xs text-sky-400">+ Agregar primer proveedor</button>}
               </div>
             ) : filtrados.map(p => (
-              <div key={p.id} onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+              <div key={p.id} onClick={() => handleSelect(p.id)}
                 className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all ${selectedId === p.id ? "bg-sky-500/5 border-l-2 border-sky-500" : "hover:bg-[var(--c-hover)]"} ${!p.activo ? "opacity-60" : ""}`}>
                 <Avatar nombre={p.nombre} size="sm" />
                 <div className="flex-1 min-w-0">
@@ -462,14 +467,19 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
           </div>
         </div>
 
-        {/* Panel perfil */}
-        <div className="lg:col-span-2">
+        {/* Panel perfil — fijo al lado de la lista en pantallas grandes
+            (lg y mayor: PC y tablet en horizontal). En celular y tablet
+            vertical se abre como panel lateral (ver PanelLateral más
+            abajo), mismo patrón que Cuentas por Cobrar, Costos Fijos y
+            Productos, en vez de quedar incrustado abajo de la lista
+            obligando a hacer scroll para encontrarlo. */}
+        <div className="hidden lg:block lg:col-span-2">
           {selected ? (
             // key={selected.id} fuerza a React a remontar el panel al
             // cambiar de proveedor — mismo fix que en ClientePanel: sin
             // esto, una nota tipeada sin enviar quedaba pegada y se podía
             // adjuntar al proveedor equivocado al cambiar de selección.
-            <ProveedorPanel key={selected.id} prov={selected} onClose={() => setSelectedId(null)} onEdit={() => { setEditando(selected); setSelectedId(null) }} />
+            <ProveedorPanel key={selected.id} prov={selected} onClose={() => setSelectedId(null)} onEdit={() => handleEditar(selected)} />
           ) : (
             <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl h-full flex items-center justify-center p-10 text-center min-h-[300px]">
               <div>
@@ -481,6 +491,13 @@ export function ProveedoresClient({ proveedoresData, metricas }: Props) {
           )}
         </div>
       </div>
+
+      {/* Panel perfil — celular y tablet vertical (bajo el breakpoint lg) */}
+      <PanelLateral abierto={mobileDetailOpen && !!selected} onClose={() => setMobileDetailOpen(false)} className="lg:hidden">
+        {selected && (
+          <ProveedorPanel key={selected.id} prov={selected} onClose={() => setMobileDetailOpen(false)} onEdit={() => handleEditar(selected)} />
+        )}
+      </PanelLateral>
     </div>
   )
 }
