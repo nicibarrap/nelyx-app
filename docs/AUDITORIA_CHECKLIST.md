@@ -2,11 +2,21 @@
 
 Lista de verificación acumulada a partir de las auditorías ya hechas en este
 proyecto (Deudas, Cuentas por Cobrar, Venta, Movimientos, Costos Fijos,
-Clientes, Proveedores, Alertas, Reportes, Resumen). Cada punto existe porque
-ya causó al menos un bug real — no es una lista teórica. Úsala como punto de
-partida al auditar un módulo nuevo (Calendario, Aprende, Configuración,
-Usuarios) o al revisar cualquier módulo ya auditado después de un cambio
-grande.
+Clientes, Proveedores, Alertas, Reportes, Resumen, Caja, Usuarios). Cada
+punto existe porque ya causó al menos un bug real — no es una lista
+teórica. Úsala como punto de partida al auditar un módulo nuevo (Calendario,
+Aprende, Configuración) o al revisar cualquier módulo ya auditado después de
+un cambio grande.
+
+Caja (2026-11-13) encontró uno: `crearCostoUnico` y `marcarCostoPagado`
+(los dos únicos caminos que crean un Movimiento tipo COSTO_FIJO) nunca
+guardaban `metodoPago` — el campo quedaba `null`, así que un costo fijo
+pagado en efectivo nunca se restaba del cierre de caja (`lib/caja.ts` solo
+cuenta movimientos con `metodoPago === "Efectivo"` exactamente). Es el
+mismo patrón de la categoría §4 de abajo: un módulo nuevo (Caja) depende de
+una señal que un módulo más viejo (Costos Fijos) nunca llenó. Usuarios se
+revisó a fondo y ya estaba bien defendido (IDOR, rate-limit en PIN,
+atribución por nombre) — sin hallazgos nuevos.
 
 No reemplaza el pensar — es una lista de "no te olvides de mirar esto",
 no una que garantice que el módulo queda perfecto. Ver la sección final

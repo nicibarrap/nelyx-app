@@ -1662,6 +1662,10 @@ export async function crearCostoUnico(formData: FormData) {
   if (!monto || monto <= 0) throw new Error("Monto inválido")
   const fecha = new Date(formData.get("fecha") as string)
   const categoria = (formData.get("categoria") as string)?.trim() || "Costos fijos"
+  // Mismo criterio que ingresarMovimiento/registrarPago: sin esto, un costo
+  // único pagado en efectivo quedaba indistinguible de uno por transferencia
+  // y el cierre de caja (lib/caja.ts) nunca podía contarlo.
+  const metodoPago = (formData.get("metodoPago") as string) || "Efectivo"
 
   await db.movimiento.create({
     data: {
@@ -1670,6 +1674,7 @@ export async function crearCostoUnico(formData: FormData) {
       fecha,
       descripcion: nombre,
       categoria,
+      metodoPago,
       userId: session.user.id,
       realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
     }
@@ -1850,6 +1855,11 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
   if (!monto || monto <= 0) throw new Error("Monto inválido")
   const fechaStr = formData.get("fecha") as string
   const fecha = fechaStr ? new Date(fechaStr) : new Date()
+  // Mismo criterio que crearCostoUnico: sin esto, el pago mensual de un
+  // costo recurrente (la fuente más frecuente de movimientos COSTO_FIJO)
+  // quedaba siempre invisible para el cierre de caja (lib/caja.ts), sin
+  // importar si de verdad se pagó con el efectivo de la caja.
+  const metodoPago = (formData.get("metodoPago") as string) || "Efectivo"
 
   try {
     await conTransaccionSerializable(async (tx) => {
@@ -1868,6 +1878,7 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
           fecha,
           descripcion: generacion.costoFijo.nombre,
           categoria: generacion.costoFijo.categoria || "Costos fijos",
+          metodoPago,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
         }

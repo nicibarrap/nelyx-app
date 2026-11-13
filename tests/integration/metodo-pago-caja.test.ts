@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
-import { ingresarMovimiento, registrarPago, registrarPagoCuenta } from "@/app/actions/acciones"
+import { ingresarMovimiento, registrarPago, registrarPagoCuenta, crearCostoUnico, marcarCostoPagado } from "@/app/actions/acciones"
 
 // Mismos stubs que deudas.test.ts / race-conditions.test.ts.
 let sesionActual: { user: { id: string; esEmpleado: boolean; name: string } } | null = null
@@ -81,5 +81,50 @@ describe("Movimiento.metodoPago queda guardado en todos los caminos que afectan 
     await registrarPagoCuenta(cuenta.id, formData({ monto: "15000", fecha: "2026-11-05" }))
     const mov = await db.movimiento.findFirstOrThrow({ where: { userId: user.id, tipo: "INGRESO_EXTRA" } })
     expect(mov.metodoPago).toBe("Efectivo")
+  })
+
+  // Bug real encontrado en esta auditoría: crearCostoUnico y marcarCostoPagado
+  // (los dos únicos caminos que crean un Movimiento tipo COSTO_FIJO) nunca
+  // guardaban metodoPago — quedaba null en el Movimiento, así que un costo
+  // fijo pagado en efectivo nunca se restaba del cuadre de caja (lib/caja.ts
+  // solo cuenta movimientos con metodoPago === "Efectivo" exactamente).
+  it("crearCostoUnico sin método explícito asume Efectivo", async () => {
+    const user = await crearUsuario()
+    await crearCostoUnico(formData({ nombre: "Permiso municipal", monto: "30000", fecha: "2026-11-05" }))
+    const mov = await db.movimiento.findFirstOrThrow({ where: { userId: user.id, tipo: "COSTO_FIJO" } })
+    expect(mov.metodoPago).toBe("Efectivo")
+  })
+
+  it("crearCostoUnico respeta el método de pago enviado", async () => {
+    const user = await crearUsuario()
+    await crearCostoUnico(formData({ nombre: "Permiso municipal", monto: "30000", fecha: "2026-11-05", metodoPago: "Transferencia" }))
+    const mov = await db.movimiento.findFirstOrThrow({ where: { userId: user.id, tipo: "COSTO_FIJO" } })
+    expect(mov.metodoPago).toBe("Transferencia")
+  })
+
+  it("marcarCostoPagado (costo recurrente) sin método explícito asume Efectivo", async () => {
+    const user = await crearUsuario()
+    const costo = await db.costoFijoRecurrente.create({
+      data: { nombre: "Arriendo", monto: 100000, fechaInicio: new Date(), estado: "activo", userId: user.id },
+    })
+    const generacion = await db.generacionCosto.create({
+      data: { costoFijoId: costo.id, mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), pagado: false },
+    })
+    await marcarCostoPagado(generacion.id, formData({ monto: "100000", fecha: new Date().toISOString() }))
+    const mov = await db.movimiento.findFirstOrThrow({ where: { userId: user.id, tipo: "COSTO_FIJO" } })
+    expect(mov.metodoPago).toBe("Efectivo")
+  })
+
+  it("marcarCostoPagado (costo recurrente) respeta el método de pago enviado", async () => {
+    const user = await crearUsuario()
+    const costo = await db.costoFijoRecurrente.create({
+      data: { nombre: "Arriendo", monto: 100000, fechaInicio: new Date(), estado: "activo", userId: user.id },
+    })
+    const generacion = await db.generacionCosto.create({
+      data: { costoFijoId: costo.id, mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), pagado: false },
+    })
+    await marcarCostoPagado(generacion.id, formData({ monto: "100000", fecha: new Date().toISOString(), metodoPago: "Transferencia" }))
+    const mov = await db.movimiento.findFirstOrThrow({ where: { userId: user.id, tipo: "COSTO_FIJO" } })
+    expect(mov.metodoPago).toBe("Transferencia")
   })
 })
