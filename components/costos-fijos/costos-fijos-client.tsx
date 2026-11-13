@@ -13,6 +13,7 @@ import { InfoTooltip } from "@/components/shared/kpi-tooltip"
 import { PanelLateral } from "@/components/shared/panel-lateral"
 
 const FRECUENCIA_LABEL: Record<FrecuenciaCosto, string> = { mensual: "Mensual", trimestral: "Trimestral", anual: "Anual" }
+const METODOS_PAGO = ["Efectivo", "Transferencia", "Débito", "Crédito", "Cheque", "Otro"]
 
 const inp = "w-full h-10 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] placeholder:text-[var(--c-text4)] outline-none focus:border-sky-500 transition-colors"
 
@@ -146,6 +147,7 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
   const [fechaInicio, setFechaInicio] = useState(costoExistente ? costoExistente.fechaInicio.slice(0, 10) : localToday())
   const [fechaTermino, setFechaTermino] = useState(costoExistente?.fechaTermino ? costoExistente.fechaTermino.slice(0, 10) : "")
   const [fechaUnico, setFechaUnico] = useState(localToday())
+  const [metodoPagoUnico, setMetodoPagoUnico] = useState("Efectivo")
 
   const fechaLabel = frecuencia === "mensual" ? "Se repite el día" : frecuencia === "trimestral" ? "Fecha de inicio (se repite cada 3 meses)" : "Fecha de inicio (se repite cada año)"
 
@@ -173,6 +175,7 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
           toast.success("✅ Costo fijo recurrente creado")
         } else {
           fd.set("fecha", fechaUnico)
+          fd.set("metodoPago", metodoPagoUnico)
           await crearCostoUnico(fd)
           toast.success("✅ Costo único registrado")
         }
@@ -247,9 +250,17 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
             </p>
 
             {!esRecurrente ? (
-              <div>
-                <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Fecha del gasto *</label>
-                <CampoFecha required value={fechaUnico} onChange={e => setFechaUnico(e.target.value)} className={inp} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Fecha del gasto *</label>
+                  <CampoFecha required value={fechaUnico} onChange={e => setFechaUnico(e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-[var(--c-text3)] font-semibold block mb-1">Método de pago</label>
+                  <select value={metodoPagoUnico} onChange={e => setMetodoPagoUnico(e.target.value)} className={inp}>
+                    {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
               </div>
             ) : (
               <div className="space-y-3.5">
@@ -346,6 +357,12 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
           <label className="text-[10px] text-[var(--c-text3)] block mb-1">Fecha de pago</label>
           <CampoFecha name="fecha" required defaultValue={localToday()} className={`${inp} h-9 text-xs`} />
         </div>
+      </div>
+      <div>
+        <label className="text-[10px] text-[var(--c-text3)] block mb-1">Método de pago</label>
+        <select name="metodoPago" defaultValue="Efectivo" className={`${inp} h-9 text-xs`}>
+          {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
       </div>
       <div className="flex gap-2">
         <button type="button" onClick={onClose}
