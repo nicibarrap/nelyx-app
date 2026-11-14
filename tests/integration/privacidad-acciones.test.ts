@@ -6,7 +6,7 @@ import { resetearPassword, enviarInvitacionCliente } from "@/app/actions/passwor
 import { eliminarCliente, eliminarProveedor } from "@/app/actions/acciones"
 
 // Mismo patrón que soporte-acciones.test.ts / caja.test.ts.
-let sesionActual: { user: { id: string; email?: string; esEmpleado?: boolean; name: string; role?: string; modulosPermitidos?: string[] | null } } | null = null
+let sesionActual: { user: { id: string; email?: string; esEmpleado?: boolean; name: string; role?: string; modulosPermitidos?: string[] | null; empleadoId?: string } } | null = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({
@@ -26,8 +26,14 @@ function comoDueno(dueno: { id: string; nombre: string; email: string }) {
   sesionActual = { user: { id: dueno.id, email: dueno.email, esEmpleado: false, name: dueno.nombre, role: "USER", modulosPermitidos: null } }
 }
 
-function comoEmpleado(duenoId: string, nombre: string) {
-  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, role: "USER", modulosPermitidos: ["clientes"] } }
+// Crea una fila real de empleado con empleadoId, igual que un login real
+// por PIN — ver el mismo comentario en empleados-permisos.test.ts.
+async function comoEmpleado(duenoId: string, nombre: string) {
+  const modulosPermitidos = ["clientes"]
+  const empleado = await db.user.create({
+    data: { nombre, email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: duenoId, pin: "x", modulosPermitidos, activo: true },
+  })
+  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, role: "USER", modulosPermitidos, empleadoId: empleado.id } }
 }
 
 function comoAdmin(id: string) {
@@ -58,7 +64,7 @@ describe("eliminarMiCuenta", () => {
 
   it("un empleado no puede eliminar la cuenta del dueño", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana")
+    await comoEmpleado(dueno.id, "Ana")
     await expect(eliminarMiCuenta(dueno.email)).rejects.toThrow(/solo el dueño/i)
     expect(await db.user.findUnique({ where: { id: dueno.id } })).not.toBeNull()
   })
@@ -95,7 +101,7 @@ describe("exportarMisDatos", () => {
 
   it("un empleado no puede exportar los datos del dueño", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana")
+    await comoEmpleado(dueno.id, "Ana")
     await expect(exportarMisDatos()).rejects.toThrow(/solo el dueño/i)
   })
 })

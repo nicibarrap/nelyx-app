@@ -81,6 +81,18 @@ export default auth(async (req) => {
       const checkUrl = new URL("/api/check-session", baseUrl)
       const res = await fetch(checkUrl.toString(), {
         headers: { cookie: req.headers.get("cookie") ?? "" },
+        // Next.js cachea fetch() por defecto (su propio Data Cache, aparte
+        // de cualquier caché que uno arme a mano) — sin esto, todo el
+        // comentario de arriba ("sin caché, se consulta en cada request")
+        // queda en la intención: en producción, esta llamada podía servir
+        // una respuesta vieja cacheada, y un cambio de módulo o la
+        // suspensión de una cuenta no se reflejaba hasta que esa caché
+        // expirara sola, por request. Bug real: a un empleado se le daba
+        // acceso a un módulo nuevo, el ícono aparecía en el menú (otra
+        // consulta, sin este problema) pero entrar seguía mandando a
+        // "sin-permiso" porque esta llamada seguía devolviendo los
+        // módulos de antes.
+        cache: "no-store",
       })
       const data = await res.json()
       if (!data.activo) {

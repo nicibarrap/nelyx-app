@@ -63,10 +63,31 @@ export function agruparVentasPorMetodo(movimientos: MovimientoConMetodo[]): Vent
 }
 
 /** Texto legible de una sola línea — lo que queda guardado en
- * CierreCaja.ventasPorMetodoResumen al cerrar (ver comentario del campo en
- * el schema). formatearMonto se pasa desde afuera para no acoplar esta
- * lógica pura a formatCLP (que vive en lib/utils.ts). */
-export function formatearVentasPorMetodo(ventas: VentaPorMetodo[], formatearMonto: (monto: number) => string): string {
-  if (ventas.length === 0) return ""
-  return ventas.map(v => `${v.metodo} ${formatearMonto(v.monto)}`).join(" · ")
+ * CierreCaja.ventasPorMetodoResumen/gastosPorMetodoResumen al cerrar (ver
+ * comentario de esos campos en el schema). formatearMonto se pasa desde
+ * afuera para no acoplar esta lógica pura a formatCLP (que vive en
+ * lib/utils.ts). Misma forma para ventas y gastos, así que sirve para
+ * ambas listas. */
+export function formatearVentasPorMetodo(items: VentaPorMetodo[], formatearMonto: (monto: number) => string): string {
+  if (items.length === 0) return ""
+  return items.map(v => `${v.metodo} ${formatearMonto(v.monto)}`).join(" · ")
+}
+
+/** Lo gastado durante el turno (GASTO + COSTO_FIJO + RETIRO), agrupado por
+ * método de pago — misma idea que agruparVentasPorMetodo pero para el lado
+ * de los egresos: entra CUALQUIER método, no solo efectivo, es puramente
+ * informativo (el cuadre de arriba ya lo descuenta solo si fue en
+ * efectivo). Existe para que quien cierra la caja pueda VER que un costo
+ * fijo/gasto/retiro pagado en efectivo sí quedó contado, en vez de tener
+ * que confiar a ciegas en que el número de "esperado" ya lo restó. */
+export function agruparGastosPorMetodo(movimientos: MovimientoConMetodo[]): VentaPorMetodo[] {
+  const porMetodo = new Map<string, number>()
+  for (const m of movimientos) {
+    if (!TIPOS_EGRESO_CAJA.includes(m.tipo)) continue
+    const metodo = m.metodoPago || "Sin especificar"
+    porMetodo.set(metodo, (porMetodo.get(metodo) ?? 0) + m.monto)
+  }
+  return Array.from(porMetodo.entries())
+    .map(([metodo, monto]) => ({ metodo, monto }))
+    .sort((a, b) => b.monto - a.monto)
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
 import { abrirCaja, cerrarCaja, obtenerCajaActual, obtenerHistorialCajas } from "@/app/actions/caja-acciones"
 
-let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null } } | null = null
+let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null; empleadoId?: string } } | null = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({
@@ -20,8 +20,13 @@ function comoDueno(dueno: { id: string; nombre: string }) {
   sesionActual = { user: { id: dueno.id, esEmpleado: false, name: dueno.nombre, modulosPermitidos: null } }
 }
 
-function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
-  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, modulosPermitidos } }
+// Crea una fila real de empleado con empleadoId, igual que un login real
+// por PIN — ver el mismo comentario en empleados-permisos.test.ts.
+async function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
+  const empleado = await db.user.create({
+    data: { nombre, email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: duenoId, pin: "x", modulosPermitidos, activo: true },
+  })
+  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, modulosPermitidos, empleadoId: empleado.id } }
 }
 
 async function crearMovimiento(userId: string, tipo: string, monto: number, metodoPago: string | null) {
@@ -53,7 +58,7 @@ describe("abrirCaja", () => {
 
   it("atribuye la apertura al empleado que la hizo", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["caja"])
+    await comoEmpleado(dueno.id, "Ana", ["caja"])
     await abrirCaja(5000)
 
     const actual = await obtenerCajaActual()
@@ -95,6 +100,24 @@ describe("monto esperado — solo cuenta movimientos en Efectivo desde la apertu
     const actual = await obtenerCajaActual()
     // 10000 + 5000 - 2000 - 1000 = 12000
     expect(actual.montoEsperadoAhora).toBe(12000)
+  })
+})
+
+describe("obtenerCajaActual — gastosPorMetodo (informativo, no filtra por método)", () => {
+  it("agrupa TODO lo gastado del turno por método, igual que ventasPorMetodo pero para egresos", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+
+    await crearMovimiento(dueno.id, "COSTO_FIJO", 1500, "Efectivo")
+    await crearMovimiento(dueno.id, "GASTO", 2000, "Transferencia")
+    await crearMovimiento(dueno.id, "VENTA", 5000, "Efectivo") // no es gasto, no debe aparecer acá
+
+    const actual = await obtenerCajaActual()
+    expect(actual.gastosPorMetodo).toEqual([
+      { metodo: "Transferencia", monto: 2000 },
+      { metodo: "Efectivo", monto: 1500 },
+    ])
   })
 })
 
@@ -149,6 +172,31 @@ describe("cerrarCaja", () => {
     expect(historial[0].ventasPorMetodoResumen).toBe("Débito $8.000 · Efectivo $5.000")
   })
 
+  it("guarda el resumen de gastos por método del turno — así se puede verificar que un costo fijo en efectivo sí quedó contado, no solo confiar en el número final", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(50000)
+    await crearMovimiento(dueno.id, "COSTO_FIJO", 20000, "Efectivo")
+    await crearMovimiento(dueno.id, "GASTO", 3000, "Transferencia")
+
+    await cerrarCaja(30000)
+
+    const historial = await obtenerHistorialCajas()
+    expect(historial[0].gastosPorMetodoResumen).toBe("Efectivo $20.000 · Transferencia $3.000")
+    expect(historial[0].montoEsperado).toBe(30000) // 50000 - 20000 (solo el de efectivo)
+  })
+
+  it("si no hubo gastos en el turno, el resumen de gastos queda null (no un string vacío)", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+
+    await cerrarCaja(10000)
+
+    const historial = await obtenerHistorialCajas()
+    expect(historial[0].gastosPorMetodoResumen).toBeNull()
+  })
+
   it("si no hubo ventas en el turno, el resumen queda null (no un string vacío)", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
@@ -179,9 +227,9 @@ describe("cerrarCaja", () => {
 
   it("registra quién cerró, incluso si fue distinto a quien abrió", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["caja"])
+    await comoEmpleado(dueno.id, "Ana", ["caja"])
     await abrirCaja(10000)
-    comoEmpleado(dueno.id, "Beto", ["caja"])
+    await comoEmpleado(dueno.id, "Beto", ["caja"])
     await cerrarCaja(10000)
 
     const historial = await obtenerHistorialCajas()
@@ -193,7 +241,7 @@ describe("cerrarCaja", () => {
 describe("permisos — módulo \"caja\"", () => {
   it("un empleado sin el módulo \"caja\" no ve nada y no puede abrir", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["venta"])
+    await comoEmpleado(dueno.id, "Ana", ["venta"])
 
     const actual = await obtenerCajaActual()
     expect(actual.puedeEscribir).toBe(false)
@@ -206,7 +254,7 @@ describe("permisos — módulo \"caja\"", () => {
     comoDueno(dueno)
     await abrirCaja(10000)
 
-    comoEmpleado(dueno.id, "Ana", ["caja:ro"])
+    await comoEmpleado(dueno.id, "Ana", ["caja:ro"])
     const actual = await obtenerCajaActual()
     expect(actual.abierta).not.toBeNull()
     expect(actual.puedeEscribir).toBe(false)

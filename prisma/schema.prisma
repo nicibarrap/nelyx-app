@@ -860,6 +860,13 @@ model CierreCaja {
   // sobrevive intacto aunque algún Movimiento de ese turno se elimine
   // después. Null en cajas cerradas antes de que existiera este campo.
   ventasPorMetodoResumen String?   @db.Text
+  // Mismo criterio que ventasPorMetodoResumen, pero para lo gastado del
+  // turno (GASTO + COSTO_FIJO + RETIRO) — sin esto, quien cierra la caja
+  // no tenía forma de VER que un costo fijo/gasto/retiro pagado en
+  // efectivo quedó contado en el "esperado" de arriba, solo podía
+  // confiar en el número final. Null en cajas cerradas antes de que
+  // existiera este campo.
+  gastosPorMetodoResumen String?   @db.Text
   cerradoPorNombre       String?
   fechaCierre            DateTime?
 

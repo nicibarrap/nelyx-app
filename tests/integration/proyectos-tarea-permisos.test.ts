@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
-import { crearProyectoTarea, editarProyectoTarea, eliminarProyectoTarea } from "@/app/actions/acciones"
+import { crearProyectoTarea, editarProyectoTarea, eliminarProyectoTarea, obtenerProyectosTarea, crearEventoCalendario } from "@/app/actions/acciones"
 
 // Mismos stubs que calendario-repeticion.test.ts / caja.test.ts.
-let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null } } | null = null
+let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null; empleadoId?: string } } | null = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
@@ -15,8 +15,13 @@ function comoDueno(dueno: { id: string; nombre: string }) {
   sesionActual = { user: { id: dueno.id, esEmpleado: false, name: dueno.nombre, modulosPermitidos: null } }
 }
 
-function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
-  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, modulosPermitidos } }
+// Crea una fila real de empleado con empleadoId, igual que un login real
+// por PIN — ver el mismo comentario en empleados-permisos.test.ts.
+async function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
+  const empleado = await db.user.create({
+    data: { nombre, email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: duenoId, pin: "x", modulosPermitidos, activo: true },
+  })
+  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, modulosPermitidos, empleadoId: empleado.id } }
 }
 
 function formData(campos: Record<string, string>) {
@@ -35,7 +40,7 @@ function formData(campos: Record<string, string>) {
 describe("proyectos de tarea — permiso correcto es 'configuracion', no 'calendario'", () => {
   it("un empleado con 'configuracion' pero sin 'calendario' puede crear un proyecto", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["configuracion"])
+    await comoEmpleado(dueno.id, "Ana", ["configuracion"])
     await crearProyectoTarea(formData({ nombre: "Marketing", color: "violeta" }))
     const proyecto = await db.proyectoTarea.findFirstOrThrow({ where: { userId: dueno.id } })
     expect(proyecto.nombre).toBe("Marketing")
@@ -43,7 +48,7 @@ describe("proyectos de tarea — permiso correcto es 'configuracion', no 'calend
 
   it("un empleado con 'calendario' pero sin 'configuracion' NO puede crear un proyecto", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["calendario"])
+    await comoEmpleado(dueno.id, "Ana", ["calendario"])
     await expect(crearProyectoTarea(formData({ nombre: "Marketing", color: "violeta" }))).rejects.toThrow(/no tienes acceso/i)
   })
 
@@ -53,7 +58,7 @@ describe("proyectos de tarea — permiso correcto es 'configuracion', no 'calend
     await crearProyectoTarea(formData({ nombre: "Marketing", color: "violeta" }))
     const proyecto = await db.proyectoTarea.findFirstOrThrow({ where: { userId: dueno.id } })
 
-    comoEmpleado(dueno.id, "Ana", ["configuracion"])
+    await comoEmpleado(dueno.id, "Ana", ["configuracion"])
     await editarProyectoTarea(proyecto.id, formData({ nombre: "Marketing digital", color: "rosado" }))
     const editado = await db.proyectoTarea.findUniqueOrThrow({ where: { id: proyecto.id } })
     expect(editado.nombre).toBe("Marketing digital")
@@ -65,8 +70,39 @@ describe("proyectos de tarea — permiso correcto es 'configuracion', no 'calend
     await crearProyectoTarea(formData({ nombre: "Marketing", color: "violeta" }))
     const proyecto = await db.proyectoTarea.findFirstOrThrow({ where: { userId: dueno.id } })
 
-    comoEmpleado(dueno.id, "Ana", ["configuracion"])
+    await comoEmpleado(dueno.id, "Ana", ["configuracion"])
     await eliminarProyectoTarea(proyecto.id)
     expect(await db.proyectoTarea.findUnique({ where: { id: proyecto.id } })).toBeNull()
+  })
+})
+
+// Regresión relacionada: un dueño reportó que una tarea que creó bajo un
+// proyecto nuevo "no se actualizaba" para el empleado al que le acababa de
+// dar acceso a Calendario. Causa raíz: el mismo bug grave de sesión
+// desactualizada (ver empleados-permisos.test.ts) — obtenerProyectosTarea
+// solo muestra las tareas de un proyecto si tieneAcceso(...,"calendario")
+// da true, y esa sesión seguía usando los permisos viejos del JWT. Con el
+// fix de sesion-activa.ts, debería verlas sin volver a entrar.
+describe("obtenerProyectosTarea — ver las tareas se refresca igual que cualquier otro permiso", () => {
+  it("un empleado al que recién se le da 'calendario' (en la DB) ve las tareas de inmediato, con la misma sesión vieja en memoria", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await crearProyectoTarea(formData({ nombre: "Salud", color: "verde" }))
+    const proyecto = await db.proyectoTarea.findFirstOrThrow({ where: { userId: dueno.id } })
+    await crearEventoCalendario(formData({ titulo: "Control médico", fecha: "2026-12-01", tipo: "tarea", proyectoId: proyecto.id }))
+
+    const empleado = await db.user.create({
+      data: { nombre: "Ana", email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: dueno.id, pin: "x", modulosPermitidos: ["configuracion"], activo: true },
+    })
+    // Sesión vieja: Ana entró cuando solo tenía "configuracion".
+    sesionActual = { user: { id: dueno.id, esEmpleado: true, name: "Ana", modulosPermitidos: ["configuracion"], empleadoId: empleado.id } }
+
+    // El dueño le agrega "calendario" después, directo en la DB.
+    await db.user.update({ where: { id: empleado.id }, data: { modulosPermitidos: ["configuracion", "calendario"] } })
+
+    const proyectos = await obtenerProyectosTarea()
+    const salud = proyectos.find(p => p.nombre === "Salud")
+    expect(salud?.tareas).toHaveLength(1)
+    expect(salud?.tareas[0].titulo).toBe("Control médico")
   })
 })

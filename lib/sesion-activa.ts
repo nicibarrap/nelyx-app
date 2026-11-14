@@ -24,8 +24,23 @@ export async function verificarCuentaActivaOExpulsar(session: Session) {
   const idAVerificar = session.user.empleadoId || session.user.id
   const registro = await db.user.findUnique({
     where: { id: idAVerificar },
-    select: { activo: true, cuentaPrincipal: { select: { activo: true } } },
+    select: { activo: true, modulosPermitidos: true, cuentaPrincipal: { select: { activo: true } } },
   })
   const activo = !!registro && registro.activo && (registro.cuentaPrincipal?.activo ?? true)
   if (!activo) redirect("/auth/forzar-salida")
+
+  // Bug real reportado por un dueño probando en producción: le daba acceso
+  // a un módulo nuevo a un empleado YA logueado y la navegación lo dejaba
+  // entrar (el middleware ya consulta esto fresco — ver middleware.ts),
+  // pero cualquier Server Action de esa pantalla seguía rechazándolo con
+  // "No tienes acceso a este módulo". Causa: session.user.modulosPermitidos
+  // viene del JWT, y el callback jwt() de lib/auth.ts solo lo recalcula al
+  // iniciar sesión — se queda "congelado" con los permisos de cuando el
+  // empleado entró, sin importar cuántos cambios le haga el dueño después,
+  // hasta que vuelva a loguearse. getSession()/getSessionEscritura() de
+  // TODA la plataforma llaman a esta función antes que nada, así que
+  // refrescar acá (reemplazando el valor del JWT por el de la DB, recién
+  // leído arriba) corrige el problema una sola vez para todos los módulos,
+  // sin tener que tocar cada getSessionEscritura(moduloKey) por separado.
+  session.user.modulosPermitidos = session.user.empleadoId ? (registro?.modulosPermitidos ?? null) : null
 }

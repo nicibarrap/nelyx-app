@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { tieneAcceso, esSoloLectura } from "@/lib/permisos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
-import { calcularMontoEsperado, calcularDiferencia, agruparVentasPorMetodo, formatearVentasPorMetodo, METODO_PAGO_EFECTIVO, type VentaPorMetodo } from "@/lib/caja"
+import { calcularMontoEsperado, calcularDiferencia, agruparVentasPorMetodo, agruparGastosPorMetodo, formatearVentasPorMetodo, METODO_PAGO_EFECTIVO, type VentaPorMetodo } from "@/lib/caja"
 import { formatCLP } from "@/lib/utils"
 
 async function getSession() {
@@ -48,7 +48,8 @@ async function conTransaccionSerializable<T>(fn: (tx: Prisma.TransactionClient) 
 function serializeCierre(c: {
   id: string; montoApertura: Prisma.Decimal; abiertoPorNombre: string | null; fechaApertura: Date
   montoEsperado: Prisma.Decimal | null; montoContado: Prisma.Decimal | null; diferencia: Prisma.Decimal | null
-  observacion: string | null; ventasPorMetodoResumen: string | null; cerradoPorNombre: string | null; fechaCierre: Date | null
+  observacion: string | null; ventasPorMetodoResumen: string | null; gastosPorMetodoResumen: string | null
+  cerradoPorNombre: string | null; fechaCierre: Date | null
 }) {
   return {
     id: c.id,
@@ -60,6 +61,7 @@ function serializeCierre(c: {
     diferencia: c.diferencia != null ? Number(c.diferencia) : null,
     observacion: c.observacion,
     ventasPorMetodoResumen: c.ventasPorMetodoResumen,
+    gastosPorMetodoResumen: c.gastosPorMetodoResumen,
     cerradoPorNombre: c.cerradoPorNombre,
     fechaCierre: c.fechaCierre ? c.fechaCierre.toISOString() : null,
   }
@@ -72,14 +74,15 @@ function serializeCierre(c: {
 export async function obtenerCajaActual() {
   const session = await getSession()
   const puedeEscribir = tieneAcceso(session.user.modulosPermitidos, "caja") && !esSoloLectura(session.user.modulosPermitidos, "caja")
-  if (!tieneAcceso(session.user.modulosPermitidos, "caja")) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], puedeEscribir: false }
+  if (!tieneAcceso(session.user.modulosPermitidos, "caja")) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], gastosPorMetodo: [] as VentaPorMetodo[], puedeEscribir: false }
 
   const abierta = await db.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
-  if (!abierta) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], puedeEscribir }
+  if (!abierta) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], gastosPorMetodo: [] as VentaPorMetodo[], puedeEscribir }
 
   // Sin filtrar por método acá — se trae todo lo del turno de una sola vez
-  // y se calculan ambas cosas en memoria: el cuadre (solo efectivo) y el
-  // desglose de ventas por método (todos), que es puramente informativo.
+  // y se calculan ambas cosas en memoria: el cuadre (solo efectivo) y los
+  // desgloses de ventas/gastos por método (todos), que son puramente
+  // informativos — ver agruparGastosPorMetodo en lib/caja.ts.
   const movs = await db.movimiento.findMany({
     where: { userId: session.user.id, createdAt: { gte: abierta.fechaApertura } },
     select: { tipo: true, monto: true, metodoPago: true },
@@ -87,7 +90,8 @@ export async function obtenerCajaActual() {
   const movsParsed = movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto), metodoPago: m.metodoPago }))
   const montoEsperadoAhora = calcularMontoEsperado(Number(abierta.montoApertura), movsParsed.filter(m => m.metodoPago === METODO_PAGO_EFECTIVO))
   const ventasPorMetodo = agruparVentasPorMetodo(movsParsed)
-  return { abierta: serializeCierre(abierta), montoEsperadoAhora, ventasPorMetodo, puedeEscribir }
+  const gastosPorMetodo = agruparGastosPorMetodo(movsParsed)
+  return { abierta: serializeCierre(abierta), montoEsperadoAhora, ventasPorMetodo, gastosPorMetodo, puedeEscribir }
 }
 
 // Las dos acciones devuelven { error } en vez de lanzar un Error para los
@@ -136,6 +140,7 @@ export async function cerrarCaja(montoContado: number, observacion?: string): Pr
     const montoEsperado = calcularMontoEsperado(Number(abierta.montoApertura), movsParsed.filter(m => m.metodoPago === METODO_PAGO_EFECTIVO))
     const diferencia = calcularDiferencia(montoContado, montoEsperado)
     const ventasPorMetodoResumen = formatearVentasPorMetodo(agruparVentasPorMetodo(movsParsed), formatCLP) || null
+    const gastosPorMetodoResumen = formatearVentasPorMetodo(agruparGastosPorMetodo(movsParsed), formatCLP) || null
 
     await tx.cierreCaja.update({
       where: { id: abierta.id },
@@ -143,6 +148,7 @@ export async function cerrarCaja(montoContado: number, observacion?: string): Pr
         montoEsperado, montoContado, diferencia,
         observacion: observacion?.trim() || null,
         ventasPorMetodoResumen,
+        gastosPorMetodoResumen,
         cerradoPorNombre: session.user.esEmpleado ? session.user.name : null,
         fechaCierre,
       },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { calcularMontoEsperado, calcularDiferencia, agruparVentasPorMetodo, formatearVentasPorMetodo } from "@/lib/caja"
+import { calcularMontoEsperado, calcularDiferencia, agruparVentasPorMetodo, agruparGastosPorMetodo, formatearVentasPorMetodo } from "@/lib/caja"
 
 describe("calcularMontoEsperado", () => {
   it("sin movimientos, el esperado es exactamente el monto de apertura", () => {
@@ -75,6 +75,42 @@ describe("agruparVentasPorMetodo", () => {
 
   it("sin movimientos, devuelve lista vacía", () => {
     expect(agruparVentasPorMetodo([])).toEqual([])
+  })
+})
+
+// Bug real reportado por el usuario al probar en producción: un costo fijo
+// pagado en efectivo SÍ se restaba del "esperado" (lib/caja.ts ya lo
+// hacía bien), pero no había ninguna forma de VERLO al cerrar la caja —
+// solo "Ventas de este turno" existía, nunca el lado de los gastos. Esta
+// función es el equivalente para GASTO/COSTO_FIJO/RETIRO.
+describe("agruparGastosPorMetodo", () => {
+  it("suma gastos/costos fijos/retiros agrupando por método, ordenado de mayor a menor", () => {
+    const grupos = agruparGastosPorMetodo([
+      { tipo: "GASTO", monto: 5000, metodoPago: "Efectivo" },
+      { tipo: "COSTO_FIJO", monto: 12000, metodoPago: "Efectivo" },
+      { tipo: "RETIRO", monto: 3000, metodoPago: "Transferencia" },
+    ])
+    expect(grupos).toEqual([
+      { metodo: "Efectivo", monto: 17000 },
+      { metodo: "Transferencia", monto: 3000 },
+    ])
+  })
+
+  it("ignora ingresos (VENTA/INGRESO_EXTRA/DEVOLUCION) — esto es solo lo gastado, no el neto de caja", () => {
+    const grupos = agruparGastosPorMetodo([
+      { tipo: "VENTA", monto: 5000, metodoPago: "Efectivo" },
+      { tipo: "COSTO_FIJO", monto: 1000, metodoPago: "Efectivo" },
+    ])
+    expect(grupos).toEqual([{ metodo: "Efectivo", monto: 1000 }])
+  })
+
+  it("agrupa movimientos sin método (legado) bajo \"Sin especificar\"", () => {
+    const grupos = agruparGastosPorMetodo([{ tipo: "GASTO", monto: 1000, metodoPago: null }])
+    expect(grupos).toEqual([{ metodo: "Sin especificar", monto: 1000 }])
+  })
+
+  it("sin movimientos, devuelve lista vacía", () => {
+    expect(agruparGastosPorMetodo([])).toEqual([])
   })
 })
 
