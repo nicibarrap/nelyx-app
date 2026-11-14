@@ -6,6 +6,7 @@ import { PermisoNotificacionesModal } from "@/components/notificaciones/permiso-
 import { AutoReparadorPush } from "@/components/notificaciones/auto-reparador-push"
 import { AutoLogoutEmpleado } from "@/components/dashboard/auto-logout-empleado"
 import { AutoRevalidarReconexion } from "@/components/dashboard/auto-revalidar-reconexion"
+import { AutoRevalidarPermisos } from "@/components/dashboard/auto-revalidar-permisos"
 import { ChatSoporteWidget } from "@/components/soporte/chat-widget"
 import { NavegacionProvider } from "@/components/dashboard/navegacion-provider"
 import { ContenidoDashboard } from "@/components/dashboard/contenido-dashboard"
@@ -45,6 +46,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <AutoReparadorPush />
         <AutoLogoutEmpleado esEmpleado={session.user.esEmpleado} />
         <AutoRevalidarReconexion />
+        <AutoRevalidarPermisos esEmpleado={session.user.esEmpleado} />
         {session.user.role !== "ADMIN" && tieneAcceso(modulosPermitidos, "soporte") && (
           <ChatSoporteWidget soloLectura={esSoloLectura(modulosPermitidos, "soporte")} />
         )}

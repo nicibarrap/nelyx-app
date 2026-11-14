@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { tieneAcceso, esSoloLectura, claveSoloLectura, moduloDeRuta } from "@/lib/permisos"
+import { tieneAcceso, esSoloLectura, claveSoloLectura, moduloDeRuta, rutaDeInicio } from "@/lib/permisos"
 
 // Estas funciones son la base de todo el control de acceso multi-usuario —
 // cada bug de "permiso faltante" encontrado en las auditorías (Deudas,
@@ -71,5 +71,24 @@ describe("moduloDeRuta", () => {
 
   it("una ruta fuera de /dashboard no matchea nada", () => {
     expect(moduloDeRuta("/login")).toBeNull()
+  })
+})
+
+describe("rutaDeInicio", () => {
+  it("el dueño (null = acceso total) va al resumen de siempre", () => {
+    expect(rutaDeInicio(null)).toBe("/dashboard/resumen")
+  })
+
+  it("un empleado con 'resumen' habilitado va al resumen de siempre", () => {
+    expect(rutaDeInicio(["resumen", "venta"])).toBe("/dashboard/resumen")
+  })
+
+  it("un empleado SIN 'resumen' (ej. un cajero) va a su primer módulo real, en el orden del sidebar", () => {
+    expect(rutaDeInicio(["venta", "movimientos"])).toBe("/dashboard/venta")
+    expect(rutaDeInicio(["movimientos", "venta"])).toBe("/dashboard/venta")
+  })
+
+  it("un empleado sin ningún módulo marcado no tiene dónde aterrizar — cae en sin-permiso, nunca de vuelta en resumen", () => {
+    expect(rutaDeInicio([])).toBe("/dashboard/sin-permiso?modulo=resumen")
   })
 })
