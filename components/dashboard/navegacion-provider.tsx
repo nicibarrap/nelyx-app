@@ -1,5 +1,5 @@
 "use client"
-import { createContext, useContext, useState, useCallback, useEffect, useTransition } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useTransition, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useLinkStatus } from "next/link"
 
@@ -26,7 +26,32 @@ export function NavegacionProvider({ children }: { children: React.ReactNode }) 
   const [pendienteManual, setPendienteState] = useState(false)
   const [isPending, startTransition] = useTransition()
   const setPendiente = useCallback((v: boolean) => setPendienteState(v), [])
-  const navegarA = useCallback((href: string) => { startTransition(() => { router.push(href) }) }, [router])
+  // Identifica cuál es el click de navegación MÁS RECIENTE — si el usuario
+  // toca dos módulos seguidos, solo el último debería poder activar el
+  // respaldo de abajo; uno viejo que recién ahora "se vence" no debe forzar
+  // una recarga hacia un destino que el usuario ya dejó atrás.
+  const navegacionEnCurso = useRef(0)
+  const navegarA = useCallback((href: string) => {
+    const destino = new URL(href, window.location.origin).pathname
+    if (destino === window.location.pathname) return
+    const idEstaNavegacion = ++navegacionEnCurso.current
+    startTransition(() => { router.push(href) })
+    // Red de seguridad: router.push() dentro de un sidebar cuyo propio
+    // Link recién apareció (un módulo que el dueño le acaba de dar a este
+    // empleado) puede quedarse "pegado" — observado en vivo probando esto:
+    // la URL nunca cambia y el overlay de carga queda dando vueltas para
+    // siempre, sin que el usuario pueda hacer nada salvo recargar él
+    // mismo. Si después de un tiempo razonable la URL sigue sin cambiar,
+    // se fuerza una navegación dura — mismo motivo que AutoRevalidarPermisos
+    // y que login-form.tsx ya usan para esto: cuando el router del cliente
+    // no se puede confiar del todo, una navegación real del navegador
+    // nunca se queda pegada a medio camino.
+    setTimeout(() => {
+      if (navegacionEnCurso.current === idEstaNavegacion && window.location.pathname !== destino) {
+        window.location.href = href
+      }
+    }, 3000)
+  }, [router])
   return <Ctx.Provider value={{ pendiente: isPending || pendienteManual, setPendiente, navegarA }}>{children}</Ctx.Provider>
 }
 

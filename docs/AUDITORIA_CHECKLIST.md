@@ -119,6 +119,47 @@ cuando el módulo bloqueado es `resumen` — el resto de los bloqueos
 (alguien navega a mano a un módulo puntual sin permiso) sigue cayendo en
 "sin-permiso" como siempre, que es la respuesta correcta ahí.
 
+**Usuarios/sesión, tercera vuelta (2026-11-14) — un bug distinto, en la
+dirección contraria.** El dueño probó el fix anterior y reportó un
+escenario nuevo: le dio acceso a un módulo (Venta) a un empleado que no
+lo tenía, ya logueado, parado en OTRA pantalla. El sidebar se actualizó
+solo (correcto) y el link a Venta apareció — pero al hacer click, la
+pantalla se quedó pegada con el overlay de carga dando vueltas para
+siempre, sin navegar ni mostrar "no tienes acceso": ningún error, solo un
+spinner infinito. Reproducido en vivo con dos *browser contexts* de
+Playwright: es una condición de carrera intermitente (no reprodujo en
+todos los intentos, lo que explica por qué no se había visto antes) en
+cómo el Sidebar navega — `navegarA()` (en `navegacion-provider.tsx`) usa
+`router.push()` envuelto en `startTransition`, el mismo patrón que
+`login-form.tsx` ya evita a propósito para entrar al dashboard (ver su
+comentario) por la misma razón: el router del cliente de Next.js puede
+quedar en un estado inconsistente, sobre todo justo cuando un `<Link>`
+recién aparece en el DOM (Next.js lo prefetchea automáticamente apenas se
+monta) y se navega a él casi de inmediato. Dos cambios:
+
+1. `components/dashboard/sidebar.tsx`: el `<Link>` de cada módulo ahora
+   usa `prefetch={false}` — saca de la ecuación el prefetch automático
+   como posible fuente del problema, sin costo real (la navegación real
+   sigue siendo instantánea al hacer click).
+2. `navegacion-provider.tsx`: `navegarA()` ahora arma una red de
+   seguridad real — si después de 3 segundos la URL todavía no cambió al
+   destino pedido, fuerza una navegación dura (`window.location.href`) en
+   vez de dejar al usuario mirando el spinner para siempre. Verificado de
+   forma determinística (no depender de pescar la carrera al azar):
+   interceptando la request de navegación para que se cuelgue a
+   propósito, se confirmó que a los 3 segundos el respaldo actúa y la
+   navegación dura sí completa — y por separado, la carrera real volvió a
+   aparecer sola en una corrida normal (la pantalla quedó pegada en
+   Calendario 3 segundos exactos) y el mismo respaldo la resolvió solo,
+   sin que nadie tuviera que recargar a mano.
+
+Lección: cualquier navegación client-side que dependa de `router.push()`
+en este proyecto necesita el mismo tipo de red de seguridad que ya tienen
+`AutoRevalidarPermisos` y `login-form.tsx` — el router de Next.js no es
+infalible, y para una app donde "quedarse pegado" significa que un
+empleado no puede ni ver "no tienes acceso" ni seguir trabajando, confiar
+ciegamente en que el soft-navigation siempre resuelve no es aceptable.
+
 **Caja (2026-11-14) — un segundo hallazgo sobre el fix anterior.** El
 cuadre ya restaba un costo fijo pagado en efectivo (PR #168), pero no
 había ninguna forma de VERLO al cerrar la caja — "Ventas de este turno"
