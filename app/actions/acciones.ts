@@ -2559,8 +2559,16 @@ export async function obtenerProyectosTarea() {
   }))
 }
 
+// Gatea en "configuracion", no "calendario": crear/editar/eliminar un
+// proyecto solo se puede hacer desde Configuración → Categorías (ver
+// proyectos-tarea-client.tsx) — Calendario únicamente deja ASIGNAR un
+// proyecto ya existente a una tarea, nunca administrar la lista. Antes
+// exigía "calendario" (arrastre de cuando esto vivía ahí, previo al PR
+// #154 que lo unificó en Configuración) y un empleado con Configuración
+// pero sin Calendario veía los botones de Nuevo/Editar/Eliminar en esa
+// pantalla sin poder usarlos nunca.
 export async function crearProyectoTarea(formData: FormData) {
-  const session = await getSessionEscritura("calendario")
+  const session = await getSessionEscritura("configuracion")
   const nombre = (formData.get("nombre") as string)?.trim()
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const color = (formData.get("color") as string) || "azul"
@@ -2575,7 +2583,7 @@ export async function crearProyectoTarea(formData: FormData) {
 }
 
 export async function editarProyectoTarea(id: string, formData: FormData) {
-  const session = await getSessionEscritura("calendario")
+  const session = await getSessionEscritura("configuracion")
   const nombre = (formData.get("nombre") as string)?.trim()
   const descripcion = (formData.get("descripcion") as string | null)?.trim() || null
   const color = (formData.get("color") as string) || "azul"
@@ -2590,7 +2598,7 @@ export async function editarProyectoTarea(id: string, formData: FormData) {
 }
 
 export async function eliminarProyectoTarea(id: string) {
-  const session = await getSessionEscritura("calendario")
+  const session = await getSessionEscritura("configuracion")
   // Las tareas que tenían este proyecto asignado NO se eliminan — solo
   // quedan sin categoría (onDelete: SetNull en el schema).
   await db.proyectoTarea.deleteMany({ where: { id, userId: session.user.id } })
