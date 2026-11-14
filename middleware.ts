@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 import { tieneAcceso, rutaDeInicio } from "@/lib/permisos"
+import * as Sentry from "@sentry/nextjs"
 
 // Antes esto se cacheaba por unos segundos en una cookie (nlx_sc) para no
 // pagar una consulta a la DB en cada clic — primero 20s, después bajado a
@@ -100,9 +101,15 @@ export default auth(async (req) => {
         return NextResponse.redirect(new URL("/auth/forzar-salida", req.url))
       }
       modulosFrescos = data.modulosPermitidos
-    } catch {
+    } catch (e) {
       // Si falla la consulta, se usa lo que venga en la sesión (JWT) como
-      // respaldo, en vez de bloquear todo por un error de red pasajero.
+      // respaldo, en vez de bloquear todo por un error de red pasajero —
+      // pero ese respaldo es exactamente el valor potencialmente
+      // desactualizado que todo este mecanismo existe para evitar, así
+      // que silenciarlo del todo (como estaba antes) deja a cualquier
+      // degradación real sin forma de notarse. Se manda a Sentry para que
+      // quede visible si empieza a pasar seguido.
+      Sentry.captureException(e, { extra: { pathname } })
       modulosFrescos = (session.user as any)?.modulosPermitidos
     }
   }
