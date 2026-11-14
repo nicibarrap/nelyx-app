@@ -15,6 +15,7 @@ interface CierreCajaDTO {
   diferencia: number | null
   observacion: string | null
   ventasPorMetodoResumen: string | null
+  gastosPorMetodoResumen: string | null
   cerradoPorNombre: string | null
   fechaCierre: string | null
 }
@@ -22,7 +23,7 @@ interface CierreCajaDTO {
 interface VentaPorMetodoDTO { metodo: string; monto: number }
 
 interface Props {
-  actual: { abierta: CierreCajaDTO | null; montoEsperadoAhora: number | null; ventasPorMetodo: VentaPorMetodoDTO[]; puedeEscribir: boolean }
+  actual: { abierta: CierreCajaDTO | null; montoEsperadoAhora: number | null; ventasPorMetodo: VentaPorMetodoDTO[]; gastosPorMetodo: VentaPorMetodoDTO[]; puedeEscribir: boolean }
   historialInicial: CierreCajaDTO[]
 }
 
@@ -42,17 +43,17 @@ const ICONO_METODO: Record<string, string> = {
   Transferencia: "🏛️", Cheque: "📝", Otro: "•",
 }
 
-function VentasPorMetodo({ ventas }: { ventas: VentaPorMetodoDTO[] }) {
-  const total = ventas.reduce((a, v) => a + v.monto, 0)
+function MovimientosPorMetodo({ titulo, emoji, items, vacio, nota }: { titulo: string; emoji: string; items: VentaPorMetodoDTO[]; vacio: string; nota: string }) {
+  const total = items.reduce((a, v) => a + v.monto, 0)
   return (
     <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6">
-      <p className="text-sm font-bold text-[var(--c-text)] mb-1">💰 Ventas de este turno</p>
-      <p className="text-[11px] text-[var(--c-text4)] mb-4">Todo lo vendido desde que abriste, por método de pago — informativo, no afecta el cuadre de arriba (eso solo mira el efectivo).</p>
-      {ventas.length === 0 ? (
-        <p className="text-xs text-[var(--c-text4)]">Todavía no hay ventas registradas en este turno.</p>
+      <p className="text-sm font-bold text-[var(--c-text)] mb-1">{emoji} {titulo}</p>
+      <p className="text-[11px] text-[var(--c-text4)] mb-4">{nota}</p>
+      {items.length === 0 ? (
+        <p className="text-xs text-[var(--c-text4)]">{vacio}</p>
       ) : (
         <div className="space-y-2">
-          {ventas.map(v => (
+          {items.map(v => (
             <div key={v.metodo} className="flex items-center justify-between text-sm">
               <span className="text-[var(--c-text2)]">{ICONO_METODO[v.metodo] ?? "•"} {v.metodo}</span>
               <span className="font-semibold text-[var(--c-text)]">{formatCLP(v.monto)}</span>
@@ -88,7 +89,7 @@ export function CajaClient({ actual, historialInicial }: Props) {
   const [observacion, setObservacion] = useState("")
   const [mostrarCierre, setMostrarCierre] = useState(false)
 
-  const { abierta, montoEsperadoAhora, ventasPorMetodo, puedeEscribir } = actual
+  const { abierta, montoEsperadoAhora, ventasPorMetodo, gastosPorMetodo, puedeEscribir } = actual
   // Sin estado propio a propósito: router.refresh() (tras abrir/cerrar)
   // vuelve a pedirle los datos al servidor y pasa un historialInicial
   // nuevo — envolverlo en useState lo habría dejado "pegado" en el valor
@@ -208,7 +209,18 @@ export function CajaClient({ actual, historialInicial }: Props) {
         </div>
       )}
 
-      {abierta && <VentasPorMetodo ventas={ventasPorMetodo} />}
+      {abierta && (
+        <>
+          <MovimientosPorMetodo
+            titulo="Ventas de este turno" emoji="💰" items={ventasPorMetodo}
+            vacio="Todavía no hay ventas registradas en este turno."
+            nota="Todo lo vendido desde que abriste, por método de pago — informativo, no afecta el cuadre de arriba (eso solo mira el efectivo)." />
+          <MovimientosPorMetodo
+            titulo="Gastos de este turno" emoji="📤" items={gastosPorMetodo}
+            vacio="Todavía no hay gastos, costos fijos ni retiros registrados en este turno."
+            nota="Gastos, costos fijos y retiros desde que abriste, por método de pago — informativo. Solo lo pagado en efectivo se resta del cuadre de arriba." />
+        </>
+      )}
 
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden">
         <p className="text-xs font-semibold text-[var(--c-text)] px-5 py-4 border-b border-[var(--c-border)]">Historial de cierres</p>
@@ -230,6 +242,7 @@ export function CajaClient({ actual, historialInicial }: Props) {
                   {" · "}Inicial {formatCLP(c.montoApertura)} · Esperado {formatCLP(c.montoEsperado ?? 0)} · Contado {formatCLP(c.montoContado ?? 0)}
                 </p>
                 {c.ventasPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Ventas del turno: {c.ventasPorMetodoResumen}</p>}
+                {c.gastosPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Gastos del turno: {c.gastosPorMetodoResumen}</p>}
                 {c.observacion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 italic">"{c.observacion}"</p>}
               </div>
             ))}

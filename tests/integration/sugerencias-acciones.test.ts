@@ -5,7 +5,7 @@ import {
   contarNuevasSugerenciasAdmin,
 } from "@/app/actions/sugerencias-acciones"
 
-let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; role?: string; modulosPermitidos?: string[] | null } } | null = null
+let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; role?: string; modulosPermitidos?: string[] | null; empleadoId?: string } } | null = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({
@@ -22,8 +22,13 @@ function comoDueno(dueno: { id: string; nombre: string }) {
   sesionActual = { user: { id: dueno.id, esEmpleado: false, name: dueno.nombre, role: "USER", modulosPermitidos: null } }
 }
 
-function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
-  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, role: "USER", modulosPermitidos } }
+// Crea una fila real de empleado con empleadoId, igual que un login real
+// por PIN — ver el mismo comentario en empleados-permisos.test.ts.
+async function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
+  const empleado = await db.user.create({
+    data: { nombre, email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: duenoId, pin: "x", modulosPermitidos, activo: true },
+  })
+  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, role: "USER", modulosPermitidos, empleadoId: empleado.id } }
 }
 
 function comoAdmin(id: string) {
@@ -33,7 +38,7 @@ function comoAdmin(id: string) {
 describe("crearSugerencia — gateada por el mismo permiso \"soporte\" del chat", () => {
   it("un empleado sin el módulo \"soporte\" no puede sugerir nada", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["venta"])
+    await comoEmpleado(dueno.id, "Ana", ["venta"])
 
     const resultado = await crearSugerencia("Exportar a Excel", "Sería útil para contabilidad")
     expect(resultado?.error).toMatch(/no tienes acceso/i)
@@ -42,7 +47,7 @@ describe("crearSugerencia — gateada por el mismo permiso \"soporte\" del chat"
 
   it("un empleado con \"soporte\" puede sugerir, y queda atribuida con su nombre", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["soporte"])
+    await comoEmpleado(dueno.id, "Ana", ["soporte"])
 
     const resultado = await crearSugerencia("Exportar a Excel", "Sería útil para contabilidad")
     expect(resultado).toBeUndefined()
@@ -136,7 +141,7 @@ describe("panel admin de Sugerencias", () => {
 
   it("un empleado (no ADMIN) no puede usar las acciones de panel admin", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["soporte"])
+    await comoEmpleado(dueno.id, "Ana", ["soporte"])
     await expect(obtenerSugerenciasAdmin()).rejects.toThrow(/no autorizado/i)
   })
 })

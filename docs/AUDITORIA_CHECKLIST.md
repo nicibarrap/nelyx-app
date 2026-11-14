@@ -38,6 +38,67 @@ de la herramienta en vez de "configuracion" (ver el comentario de
 zona horaria, IDOR) ya estaba bien cubierto por tests existentes — sin
 otros hallazgos.
 
+**Usuarios/sesión (2026-11-14) — el más grave encontrado hasta ahora,
+reportado por el propio dueño probando en producción.** Dar (o quitar) un
+módulo a un empleado YA logueado no tenía ningún efecto hasta que volvía a
+iniciar sesión: el ícono del módulo nuevo aparecía en el menú (el layout
+del dashboard sí consulta la DB fresca para armarlo), pero entrar, o
+cualquier Server Action de esa pantalla, seguía rechazando con "No tienes
+acceso a este módulo" — porque `session.user.modulosPermitidos` viene del
+JWT, y el callback `jwt()` de `lib/auth.ts` solo lo recalcula al iniciar
+sesión. El middleware YA resolvía esto para la navegación (consulta
+`/api/check-session` fresco en cada request a `/dashboard`), pero a ese
+`fetch()` le faltaba `cache: "no-store"` — Next.js cachea `fetch()` por
+defecto, así que el propio mecanismo pensado para evitar la caché podía
+terminar sirviendo una respuesta vieja igual. Y aunque la navegación
+funcionara, **ninguna Server Action se beneficiaba de ese fix** — cada
+`getSessionEscritura(moduloKey)` de toda la plataforma sigue leyendo
+`session.user.modulosPermitidos` directo, nunca la DB. El arreglo real fue
+en `verificarCuentaActivaOExpulsar` (`lib/sesion-activa.ts`), que YA
+corre al principio de todo `getSession()`/`getSessionEscritura()` de cada
+módulo: ahora también relee `modulosPermitidos` fresco de la DB y
+reemplaza el valor del JWT en la sesión en memoria, antes de que cualquier
+chequeo de permisos lo use — un solo cambio que corrige el problema para
+todos los módulos a la vez, sin tocar cada `getSessionEscritura` uno por
+uno. Efecto colateral que también se arregló solo: un empleado al que se
+le daba acceso a Calendario no veía las tareas de un proyecto hasta
+volver a entrar (`obtenerProyectosTarea` usa el mismo chequeo).
+Lección para toda auditoría futura de permisos: no alcanza con probar
+"¿el chequeo de módulo existe y usa la clave correcta?" (eso ya lo cubre
+este checklist) — también hay que probar "¿un cambio de permiso a mitad
+de sesión se nota de inmediato, en cada capa (ruta, página, Server
+Action), o solo en algunas?". Los tests de permisos de empleados en
+`tests/integration/` usaban un mock de sesión sin `empleadoId` — sin
+consecuencia mientras nada lo necesitaba, pero quedó expuesto apenas este
+fix empezó a depender de él; se corrigió para crear una fila real de
+empleado en la DB, igual que un login real por PIN, en vez de solo
+simular el objeto de sesión a mano.
+
+**Caja (2026-11-14) — un segundo hallazgo sobre el fix anterior.** El
+cuadre ya restaba un costo fijo pagado en efectivo (PR #168), pero no
+había ninguna forma de VERLO al cerrar la caja — "Ventas de este turno"
+solo mostraba ingresos, nunca egresos. Se agregó "Gastos de este turno"
+(gastos/costos fijos/retiros por método, igual patrón que ventas) tanto en
+la vista de la caja abierta como en el historial de cierres
+(`CierreCaja.gastosPorMetodoResumen`, misma idea que
+`ventasPorMetodoResumen`).
+
+**Modal "Nuevo proyecto" con fondo blanco a un lado (2026-11-14).**
+Cualquier overlay `fixed inset-0` anidado dentro de un ancestro con
+`animate-fade-up` (su animación termina en `transform: translateY(0)`,
+que sigue siendo un `transform` distinto de `none`) queda posicionado
+relativo a ESE ancestro, no al viewport — el fondo oscuro no cubre toda
+la pantalla. El resto de los modales centrados del proyecto ya evita esto
+con `createPortal` a `document.body` (ver `ConfirmarEliminarModal` en
+costos-fijos-client.tsx); a `ModalProyecto` (proyectos-tarea-client.tsx)
+se le había quedado afuera de ese patrón. Hay otros modales en el proyecto
+que tampoco usan `createPortal` todavía (productos/escanear-nuevos-client,
+productos/producto-wizard, deudas/formulario-deuda, deudas/lista-deudas,
+notificaciones/permiso-modal, soporte/chat-widget, y uno de los dos en
+ventas/venta-client) — no se tocaron en esta pasada porque no fueron
+reportados, pero valdría la pena una pasada dedicada si vuelve a aparecer
+el mismo síntoma en otra pantalla.
+
 No reemplaza el pensar — es una lista de "no te olvides de mirar esto",
 no una que garantice que el módulo queda perfecto. Ver la sección final
 ("Qué esta lista NO cubre").

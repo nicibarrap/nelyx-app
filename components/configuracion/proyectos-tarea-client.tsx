@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearProyectoTarea, editarProyectoTarea, eliminarProyectoTarea, actualizarEstadoEventoCalendario } from "@/app/actions/acciones"
 
@@ -51,7 +52,17 @@ function ModalProyecto({ editando, onClose }: { editando?: Proyecto | null; onCl
     })
   }
 
-  return (
+  // Portal a document.body — igual que ConfirmarEliminarModal en
+  // costos-fijos-client.tsx y el resto de los modales centrados del
+  // proyecto. Sin esto, al vivir anidado dentro del <div animate-fade-up>
+  // de la página (su animación termina en transform: translateY(0), que
+  // sigue siendo un transform ≠ none), este "fixed inset-0" quedaba
+  // posicionado relativo a ESE div en vez del viewport — el fondo oscuro
+  // solo cubría el alto/ancho de ese contenedor, dejando un hueco en
+  // blanco (el fondo del navegador, sin pintar) en el resto de la
+  // pantalla.
+  if (typeof document === "undefined") return null
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()}
         className="w-full max-w-sm bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl overflow-hidden animate-scale-in">
@@ -89,7 +100,8 @@ function ModalProyecto({ editando, onClose }: { editando?: Proyecto | null; onCl
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body
   )
 }
 

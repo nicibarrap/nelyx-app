@@ -8,7 +8,7 @@ import { crearEmpleado, actualizarEmpleado } from "@/app/actions/empleados-accio
 // sesión de empleado real: id = la cuenta DUEÑA (nunca el id propio del
 // empleado), esEmpleado: true, modulosPermitidos = lo que el dueño le
 // haya habilitado a ESE empleado.
-let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null } } | null = null
+let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null; empleadoId?: string } } | null = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 // getSessionDueno (empleados-acciones.ts) pasa por verificarCuentaActivaOExpulsar,
@@ -27,8 +27,23 @@ async function crearDueno() {
   return user
 }
 
-function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
-  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, modulosPermitidos } }
+// Crea una fila real de empleado y arma la sesión con empleadoId apuntando
+// a ella — igual que produce lib/auth.ts en un login real por PIN. Antes
+// este helper no seteaba empleadoId (sin consecuencia mientras nada lo
+// leía); al arreglar el bug de la auditoría de usuarios (sesion-activa.ts
+// ahora usa empleadoId para refrescar modulosPermitidos desde la DB en
+// cada Server Action, no el valor viejo del JWT), un mock sin empleadoId
+// hacía que verificarCuentaActivaOExpulsar tratara la sesión como la del
+// DUEÑO (acceso total), pisando el modulosPermitidos que el test quería
+// probar.
+async function comoEmpleado(duenoId: string, nombre: string, modulosPermitidos: string[]) {
+  const empleado = await db.user.create({
+    data: {
+      nombre, email: `empleado-${Math.random()}@nelyx.local`, password: "x",
+      cuentaPrincipalId: duenoId, pin: "x", modulosPermitidos, activo: true,
+    },
+  })
+  sesionActual = { user: { id: duenoId, esEmpleado: true, name: nombre, modulosPermitidos, empleadoId: empleado.id } }
 }
 
 function comoDueno(dueno: { id: string; nombre: string }) {
@@ -41,6 +56,48 @@ function formData(campos: Record<string, string>) {
   return fd
 }
 
+// Regresión del bug "grabísimo" reportado por un dueño probando en
+// producción: le daba un módulo nuevo a un empleado YA LOGUEADO y, aunque
+// el ícono aparecía en el menú, entrar seguía rechazándolo con "No tienes
+// acceso a este módulo" — porque session.user.modulosPermitidos viene del
+// JWT y antes solo se recalculaba al iniciar sesión (ver el comentario de
+// verificarCuentaActivaOExpulsar en lib/sesion-activa.ts). Acá se simula
+// exactamente eso: la sesión en memoria se arma UNA vez con los permisos
+// viejos y nunca se vuelve a tocar — solo cambia lo que hay en la DB,
+// como haría el dueño desde Usuarios mientras el empleado sigue conectado.
+describe("permisos de un empleado ya logueado se refrescan sin que tenga que volver a entrar", () => {
+  it("dar un módulo nuevo (en la DB) le abre acceso de inmediato, con la misma sesión vieja en memoria", async () => {
+    const dueno = await crearDueno()
+    const empleado = await db.user.create({
+      data: { nombre: "Ana", email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: dueno.id, pin: "x", modulosPermitidos: ["venta"], activo: true },
+    })
+    // La sesión "vieja" — como quedó el JWT cuando Ana inició sesión, antes de que el dueño le diera "movimientos".
+    sesionActual = { user: { id: dueno.id, esEmpleado: true, name: "Ana", modulosPermitidos: ["venta"], empleadoId: empleado.id } }
+
+    // El dueño le da acceso a "movimientos" DESPUÉS, directo en la DB — ni
+    // actualizarEmpleado tocaría la sesión de Ana, que sigue siendo la misma.
+    await db.user.update({ where: { id: empleado.id }, data: { modulosPermitidos: ["venta", "movimientos"] } })
+
+    // Sin volver a "loguear" a Ana (sesionActual sigue con modulosPermitidos: ["venta"]):
+    await ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" }))
+    const movimiento = await db.movimiento.findFirstOrThrow({ where: { userId: dueno.id } })
+    expect(movimiento.realizadoPorNombre).toBe("Ana")
+  })
+
+  it("quitar un módulo (en la DB) le cierra el acceso de inmediato, aunque la sesión vieja todavía diga que lo tiene", async () => {
+    const dueno = await crearDueno()
+    const empleado = await db.user.create({
+      data: { nombre: "Ana", email: `empleado-${Math.random()}@nelyx.local`, password: "x", cuentaPrincipalId: dueno.id, pin: "x", modulosPermitidos: ["venta", "movimientos"], activo: true },
+    })
+    sesionActual = { user: { id: dueno.id, esEmpleado: true, name: "Ana", modulosPermitidos: ["venta", "movimientos"], empleadoId: empleado.id } }
+
+    await db.user.update({ where: { id: empleado.id }, data: { modulosPermitidos: ["venta"] } })
+
+    await expect(ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" })))
+      .rejects.toThrow("No tienes acceso a este módulo")
+  })
+})
+
 // Regresión del hallazgo central de la auditoría de usuarios: getSessionEscritura
 // solo rechazaba a un empleado marcado explícitamente "módulo:ro" (solo
 // lectura) — un empleado al que un módulo directamente NO se le había
@@ -50,7 +107,7 @@ function formData(campos: Record<string, string>) {
 describe("getSessionEscritura — un empleado no puede escribir fuera de sus módulos habilitados", () => {
   it("sin el módulo en absoluto (ni de solo lectura) la acción se rechaza", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["venta"]) // "movimientos" nunca se le habilitó
+    await comoEmpleado(dueno.id, "Ana", ["venta"]) // "movimientos" nunca se le habilitó
 
     await expect(ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" })))
       .rejects.toThrow("No tienes acceso a este módulo")
@@ -61,7 +118,7 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
 
   it("con el módulo habilitado (lectura y escritura) la acción funciona y queda atribuida al empleado", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["movimientos"])
+    await comoEmpleado(dueno.id, "Ana", ["movimientos"])
 
     await ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" }))
 
@@ -71,7 +128,7 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
 
   it("con el módulo en modo solo lectura (\"movimientos:ro\") la acción se sigue rechazando", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["movimientos:ro"])
+    await comoEmpleado(dueno.id, "Ana", ["movimientos:ro"])
 
     await expect(ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" })))
       .rejects.toThrow("Tu acceso a este módulo es solo de lectura")
@@ -79,7 +136,7 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
 
   it("el mismo chequeo aplica en otro módulo (productos), no solo en movimientos", async () => {
     const dueno = await crearDueno()
-    comoEmpleado(dueno.id, "Ana", ["venta"]) // "productos" nunca se le habilitó
+    await comoEmpleado(dueno.id, "Ana", ["venta"]) // "productos" nunca se le habilitó
 
     await expect(crearProducto(formData({ nombre: "Mani", precio: "1000", costo: "500" })))
       .rejects.toThrow("No tienes acceso a este módulo")
@@ -183,7 +240,7 @@ describe("eliminarMovimiento — permiso aparte para eliminar + bitácora", () =
   it("un empleado con acceso completo a movimientos, pero SIN \"movimientos:eliminar\", no puede eliminar", async () => {
     const dueno = await crearDueno()
     const mov = await crearMovimientoDeGasto(dueno.id)
-    comoEmpleado(dueno.id, "Ana", ["movimientos"])
+    await comoEmpleado(dueno.id, "Ana", ["movimientos"])
 
     // { error } como dato de retorno, no una excepción — ver comentario en
     // eliminarMovimiento (acciones.ts).
@@ -196,7 +253,7 @@ describe("eliminarMovimiento — permiso aparte para eliminar + bitácora", () =
   it("un empleado con \"movimientos:eliminar\" sí puede eliminar, y queda registrado quién fue", async () => {
     const dueno = await crearDueno()
     const mov = await crearMovimientoDeGasto(dueno.id)
-    comoEmpleado(dueno.id, "Ana", ["movimientos", "movimientos:eliminar"])
+    await comoEmpleado(dueno.id, "Ana", ["movimientos", "movimientos:eliminar"])
 
     await eliminarMovimiento(mov.id)
 
@@ -224,7 +281,7 @@ describe("eliminarMovimiento — permiso aparte para eliminar + bitácora", () =
     // Caso defensivo: no debería poder darse desde la UI (SelectorModulos
     // limpia "eliminar" al pasar a solo lectura), pero si de todos modos
     // llegara así, esSoloLectura debe seguir ganando.
-    comoEmpleado(dueno.id, "Ana", ["movimientos:ro", "movimientos:eliminar"])
+    await comoEmpleado(dueno.id, "Ana", ["movimientos:ro", "movimientos:eliminar"])
 
     await expect(eliminarMovimiento(mov.id)).rejects.toThrow(/solo de lectura/i)
   })
