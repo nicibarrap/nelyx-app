@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
-import { tieneAcceso } from "@/lib/permisos"
+import { tieneAcceso, rutaDeInicio } from "@/lib/permisos"
 
 // Antes esto se cacheaba por unos segundos en una cookie (nlx_sc) para no
 // pagar una consulta a la DB en cada clic — primero 20s, después bajado a
@@ -123,7 +123,19 @@ export default auth(async (req) => {
       const match = pathname.match(/^\/dashboard\/([^\/]+)/)
       const modulo = match?.[1]
       if (modulo && modulo !== "sin-permiso" && !tieneAcceso(modulosFrescos, modulo)) {
-        respuesta = NextResponse.redirect(new URL(`/dashboard/sin-permiso?modulo=${modulo}`, req.url))
+        // "/dashboard/resumen" es el destino fijo al que toda la app manda
+        // tras iniciar sesión (login-form.tsx) o al tocar "Volver al
+        // inicio" desde esta misma pantalla de sin-permiso — nunca algo
+        // que el empleado eligió visitar. Un empleado sin ese módulo (el
+        // dueño no le da acceso a la utilidad del negocio) no debería ver
+        // "no tienes acceso" como primera pantalla si en realidad sí tiene
+        // otros módulos usables: se le manda directo al primero que sí
+        // tenga. Si de verdad trató de entrar a otro módulo puntual sin
+        // permiso (un link viejo, una pestaña con un módulo recién
+        // revocado), eso sigue yendo a sin-permiso como siempre.
+        respuesta = modulo === "resumen"
+          ? NextResponse.redirect(new URL(rutaDeInicio(modulosFrescos), req.url))
+          : NextResponse.redirect(new URL(`/dashboard/sin-permiso?modulo=${modulo}`, req.url))
       }
     }
   }

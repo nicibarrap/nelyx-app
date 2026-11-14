@@ -84,6 +84,28 @@ export function claveEliminar(moduloKey: string): string {
   return moduloKey + SUFIJO_PUEDE_ELIMINAR
 }
 
+/** A dónde debería aterrizar un empleado después de iniciar sesión (o al
+ * tocar "Volver al inicio" desde /dashboard/sin-permiso). El dueño (null =
+ * acceso total) y cualquier empleado con "resumen" habilitado van al
+ * resumen de siempre — el destino que toda la app da por hecho
+ * (window.location.href tras el login, los redirects de middleware.ts).
+ * Pero Resumen muestra la utilidad y el estado financiero completo del
+ * negocio: un empleado al que el dueño deliberadamente NO se lo habilitó
+ * (ej. un cajero con solo acceso a Venta) no puede aterrizar ahí, y antes
+ * caía directo en "no tienes acceso" como primera pantalla tras entrar —
+ * aunque sí tuviera otros módulos habilitados y usables. Se le manda en
+ * cambio al primero que sí tenga, en el mismo orden del sidebar. Si no
+ * tiene NINGUNO (recién creado, sin módulos marcados todavía), no hay
+ * ningún otro lugar al que mandarlo — cae en sin-permiso de todos modos
+ * (nunca de vuelta a "/dashboard/resumen": eso formaría un loop infinito
+ * de redirects contra el propio middleware, que llega hasta acá
+ * precisamente porque resumen ya le está prohibido). */
+export function rutaDeInicio(modulosPermitidos: string[] | null | undefined): string {
+  if (tieneAcceso(modulosPermitidos, "resumen")) return "/dashboard/resumen"
+  const primero = MODULOS_NELYX.find(m => m.ruta && tieneAcceso(modulosPermitidos, m.key))
+  return primero?.ruta ?? "/dashboard/sin-permiso?modulo=resumen"
+}
+
 /** Dado un pathname como "/dashboard/productos/reponer", determina a qué
  * módulo pertenece (el primer segmento después de /dashboard/). Rutas
  * fuera de la lista de módulos conocidos (o la raíz /dashboard) siempre

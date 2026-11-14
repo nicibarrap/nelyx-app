@@ -74,6 +74,51 @@ fix empezó a depender de él; se corrigió para crear una fila real de
 empleado en la DB, igual que un login real por PIN, en vez de solo
 simular el objeto de sesión a mano.
 
+**Usuarios/sesión, segunda vuelta (2026-11-14) — el dueño probó el fix de
+arriba y encontró un escenario distinto que seguía fallando.** Reporte
+textual: le dio Configuración + Calendario a un empleado, después le quitó
+esos dos y le dio Venta + Movimiento, y el empleado — sin cerrar sesión ni
+recargar, solo con la pestaña abierta — seguía viendo el sidebar y la
+pantalla de Calendario de antes; los módulos nuevos no aparecían en el
+menú aunque sí funcionaban al entrar por URL directa. El fix anterior
+(`verificarCuentaActivaOExpulsar` + `cache: "no-store"` en
+`/api/check-session`) solo se activa cuando HAY una navegación o un
+request nuevo — una pestaña que simplemente queda abierta, sin que nadie
+haga click en nada, nunca vuelve a pedirle nada al servidor: Next.js no
+re-renderiza un layout de Server Components ya montado por sí solo.
+Reproducido con dos *browser contexts* reales de Playwright (dueño y
+empleado como sesiones separadas) contra `next dev` — la variante con
+`page.reload()` NO reproducía el bug (el fix de la vuelta anterior ya lo
+cubre), pero la variante sin ningún reload, dejando la pestaña del
+empleado inerte mientras el dueño cambiaba sus módulos, sí. Arreglado con
+un componente nuevo siguiendo el mismo patrón ya usado por
+`AutoRevalidarReconexion` (que hace lo mismo pero para la conexión, no los
+permisos): `AutoRevalidarPermisos` (`components/dashboard/
+auto-revalidar-permisos.tsx`), montado en `app/dashboard/layout.tsx` solo
+para sesiones de empleado, que llama `router.refresh()` cada 45s y
+también apenas la pestaña vuelve a estar visible (`visibilitychange`) —
+sin lógica de permisos propia: un `router.refresh()` vuelve a pasar por
+el middleware ya corregido, que es quien decide si lo que ve sigue siendo
+válido. Confirmado con la misma técnica de dos contextos: el sidebar se
+autoactualiza sin ningún reload ni click, y si la página en la que estaba
+el empleado ya no le corresponde, lo manda a "sin tienes acceso" en vez
+de dejarlo viendo contenido fantasma.
+
+Hallazgo relacionado, encontrado mientras se armaba la reproducción (no
+reportado por el dueño, pero real): un empleado al que se le crea/edita
+sin el módulo "Resumen" habilitado (ej. un cajero al que el dueño
+deliberadamente no quiere mostrarle la utilidad del negocio) no podía
+completar el login — toda la app manda a `/dashboard/resumen` después de
+iniciar sesión (hardcodeado en `login-form.tsx`), y como el middleware
+correctamente le niega ese módulo, caía directo en "No tienes acceso" como
+primera pantalla, aunque sí tuviera otros módulos usables. Se agregó
+`rutaDeInicio()` en `lib/permisos.ts` (el dueño o cualquier empleado con
+"resumen" van al resumen de siempre; sin él, al primer módulo real que sí
+tenga, en el orden del sidebar) y se usa en `middleware.ts` únicamente
+cuando el módulo bloqueado es `resumen` — el resto de los bloqueos
+(alguien navega a mano a un módulo puntual sin permiso) sigue cayendo en
+"sin-permiso" como siempre, que es la respuesta correcta ahí.
+
 **Caja (2026-11-14) — un segundo hallazgo sobre el fix anterior.** El
 cuadre ya restaba un costo fijo pagado en efectivo (PR #168), pero no
 había ninguna forma de VERLO al cerrar la caja — "Ventas de este turno"
