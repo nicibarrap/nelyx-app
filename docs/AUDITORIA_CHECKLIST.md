@@ -2,11 +2,11 @@
 
 Lista de verificación acumulada a partir de las auditorías ya hechas en este
 proyecto (Deudas, Cuentas por Cobrar, Venta, Movimientos, Costos Fijos,
-Clientes, Proveedores, Alertas, Reportes, Resumen, Caja, Usuarios). Cada
-punto existe porque ya causó al menos un bug real — no es una lista
-teórica. Úsala como punto de partida al auditar un módulo nuevo (Calendario,
-Aprende, Configuración) o al revisar cualquier módulo ya auditado después de
-un cambio grande.
+Clientes, Proveedores, Alertas, Reportes, Resumen, Caja, Usuarios,
+Calendario, Configuración). Cada punto existe porque ya causó al menos un
+bug real — no es una lista teórica. Úsala como punto de partida al auditar
+un módulo nuevo (Aprende) o al revisar cualquier módulo ya auditado después
+de un cambio grande.
 
 Caja (2026-11-13) encontró uno: `crearCostoUnico` y `marcarCostoPagado`
 (los dos únicos caminos que crean un Movimiento tipo COSTO_FIJO) nunca
@@ -17,6 +17,26 @@ mismo patrón de la categoría §4 de abajo: un módulo nuevo (Caja) depende de
 una señal que un módulo más viejo (Costos Fijos) nunca llenó. Usuarios se
 revisó a fondo y ya estaba bien defendido (IDOR, rate-limit en PIN,
 atribución por nombre) — sin hallazgos nuevos.
+
+Calendario/Configuración (2026-11-14) encontró otro del mismo patrón que
+Caja/Costos Fijos, pero en permisos (§1): `crearProyectoTarea`,
+`editarProyectoTarea` y `eliminarProyectoTarea` (las categorías de tareas
+del Calendario) solo se administran desde Configuración → Categorías —
+Calendario únicamente deja asignar un proyecto ya existente a una tarea,
+nunca crear/editar/eliminarlos — pero las tres acciones exigían el módulo
+"calendario" en vez de "configuracion" (arrastre de cuando esa pantalla
+vivía dentro de Calendario, antes del PR #154 que la movió a
+Configuración). Un empleado con Configuración pero sin Calendario veía los
+botones en pantalla y cualquier click fallaba con "No tienes acceso a este
+módulo". Lección: cuando una pantalla se muda de módulo, sus Server
+Actions hay que revisarlas una por una — no basta con mover el componente.
+El resto de Configuración (Notificaciones, Cobranza, Pagos,
+Automatizaciones, Categorías de Productos/Gastos/Costos Fijos, Privacidad)
+ya gatea correctamente, en algunos casos a propósito con el módulo "dueño"
+de la herramienta en vez de "configuracion" (ver el comentario de
+`cobranza-acciones.ts`). El resto de Calendario (recurrencia de tareas,
+zona horaria, IDOR) ya estaba bien cubierto por tests existentes — sin
+otros hallazgos.
 
 No reemplaza el pensar — es una lista de "no te olvides de mirar esto",
 no una que garantice que el módulo queda perfecto. Ver la sección final
