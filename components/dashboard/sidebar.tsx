@@ -81,7 +81,7 @@ function NavItem({ href, matchHref, icon, label, badge, activo, collapsed, modul
   }
 
   return (
-    <Link href={href}
+    <Link href={href} prefetch={false}
       onClick={e => { if (esClickNormal(e)) { e.preventDefault(); navegarA(href) } }}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all group ${
         isActive
