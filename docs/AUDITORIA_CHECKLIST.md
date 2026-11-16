@@ -160,6 +160,66 @@ infalible, y para una app donde "quedarse pegado" significa que un
 empleado no puede ni ver "no tienes acceso" ni seguir trabajando, confiar
 ciegamente en que el soft-navigation siempre resuelve no es aceptable.
 
+**Usuarios/sesión, cuarta vuelta (2026-11-14) — el mismo problema de
+fondo, una variante más grave.** El dueño probó el fix de la vuelta
+anterior y reportó que el síntoma real ni siquiera era "quedarse
+pegado": al darle un módulo nuevo (Movimientos) a un empleado ya
+logueado, parado en otra pantalla, el ícono aparecía al instante en el
+sidebar (correcto — eso lo arma el layout), pero al hacer click
+respondía derecho "no tienes acceso a este módulo" — sin demora, sin
+spinner. Solo cerrar sesión y volver a entrar (lo que arma un JWT nuevo)
+lo arreglaba. Esto pasaba, según el dueño, con cualquier módulo.
+
+Investigación: se descartó que fuera el CDN de Vercel cacheando
+`/api/check-session` (su caché es opt-in vía headers explícitos — ver la
+documentación de Vercel sobre `Cache-Control`/`CDN-Cache-Control`, que
+este endpoint nunca envía). Se encontró, en cambio, un defecto real en la
+instrumentación agregada en la vuelta anterior: el
+`Sentry.captureException` puesto en el `catch` del fetch interno de
+`middleware.ts` nunca pudo haber mandado nada — este proyecto
+deliberadamente NO instrumenta Sentry en el edge runtime (donde corre
+el middleware), por el peso que le agrega al bundle de cada request —
+así que esa llamada era, en los hechos, código muerto. Se reemplazó por
+`console.error`, que Vercel sí captura en sus logs de función para
+cualquier runtime, sin depender de Sentry.
+
+Después de tres rondas seguidas encontrando una variante nueva del mismo
+problema de fondo (el router del lado del cliente de Next.js —
+`router.push()`, su Router Cache, su prefetch automático — puede quedar
+desincronizado del middleware justo en el instante en que cambian los
+permisos de un empleado ya conectado, y cada parche anterior solo cubría
+la forma específica en que eso se manifestaba la vez anterior), se tomó
+la decisión de fondo: `navegarA()` (`navegacion-provider.tsx`), el único
+punto por el que el Sidebar cambia de módulo, dejó de usar
+`router.push()`/`startTransition()` del todo — ahora hace
+`window.location.href` directo, una navegación dura de verdad. Esto
+elimina el Router Cache del cliente como posible fuente de
+desincronización por completo: cada cambio de módulo vuelve a consultar
+el middleware desde cero, exactamente como un F5, sin ninguna caché del
+lado del cliente de por medio — el mismo motivo por el que
+`login-form.tsx` ya evitaba `router.push()` para entrar al dashboard.
+También dejó obsoleto (y se eliminó) el respaldo de 3 segundos agregado
+en la vuelta anterior — una navegación dura nunca se queda pegada a medio
+camino, no necesita red de seguridad.
+
+El costo, aceptado a propósito: se pierde la transición instantánea
+tipo SPA entre módulos del Sidebar — cada click ahora recarga la página
+completa (un parpadeo breve, como cualquier navegación dura), en vez de
+la transición suave anterior. Dado que esto venía fallando en producción
+de forma repetida e impredecible, y que el costo real es solo estético,
+se prefirió "siempre correcto" sobre "más rápido la mayoría de las
+veces".
+
+Verificado reproduciendo el reporte EXACTO del dueño con Playwright
+(empleado parado en Calendario, dueño le agrega Movimientos sin quitarle
+nada, sin ningún reload manual) 5 veces seguidas contra el fix — las 5
+entraron a Movimientos normal, sin pasar nunca por "no tienes acceso".
+Contra el código viejo (antes de este cambio), la misma corrida
+reprodujo la desincronización real al menos una vez (la pantalla se
+quedó pegada en Calendario varios segundos antes de que el respaldo de
+la vuelta anterior actuara) — confirmando que el problema de fondo era
+real y no solo una sospecha.
+
 **Caja (2026-11-14) — un segundo hallazgo sobre el fix anterior.** El
 cuadre ya restaba un costo fijo pagado en efectivo (PR #168), pero no
 había ninguna forma de VERLO al cerrar la caja — "Ventas de este turno"

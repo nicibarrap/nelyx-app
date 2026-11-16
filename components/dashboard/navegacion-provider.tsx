@@ -1,58 +1,40 @@
 "use client"
-import { createContext, useContext, useState, useCallback, useEffect, useTransition, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { createContext, useContext, useState, useCallback, useEffect } from "react"
 import { useLinkStatus } from "next/link"
 
 type NavegacionCtx = { pendiente: boolean; setPendiente: (v: boolean) => void; navegarA: (href: string) => void }
 const Ctx = createContext<NavegacionCtx | null>(null)
 
-// Guarda si hay una navegación entre módulos en curso — lo consume el
-// overlay del logo parpadeando en el área de contenido. Dos formas de
-// alimentarlo, según quién dispara la navegación:
-//
-// 1) navegarA(href): la usa el Sidebar (riel y vista previa flotante). El
-//    router.push vive ACÁ, en el Provider — que nunca se desmonta mientras
-//    dura la navegación entre módulos del dashboard — en vez de en el
-//    <Link> que el usuario tocó. Así, si ese <Link> específico desaparece
-//    del DOM a mitad de la navegación (p. ej. al sacar el mouse de la
-//    vista previa flotante del riel colapsado, que se cierra sola), el
-//    isPending de este useTransition sigue reflejando la navegación real
-//    hasta que termina — no se "corta" con el elemento que la disparó.
-// 2) SincronizarPendiente, hijo de un <Link> normal fuera del Sidebar (p.
-//    ej. "Volver al Dashboard" en /admin): ese Link nunca se desmonta a
-//    mitad de camino, así que reportar su propio useLinkStatus() alcanza.
+// navegarA(href) — la usa el Sidebar (riel y vista previa flotante) para
+// cambiar de módulo. Hace una navegación DURA de verdad (window.location),
+// no router.push(): se probó router.push() (navegación "suave" de Next)
+// envuelto en startTransition con un respaldo de recarga dura a los 3
+// segundos si se quedaba pegado, pero el síntoma real que seguía
+// reportando el dueño no era quedarse pegado — era directamente mostrar
+// "no tienes acceso" a un módulo recién otorgado, sin que ningún respaldo
+// basado en tiempo pudiera distinguir eso de un rechazo legítimo. Tres
+// veces seguidas encontramos una variante nueva del mismo problema de
+// fondo: el router del lado del cliente de Next.js (su caché de
+// navegación, su prefetch automático) puede quedar desincronizado
+// respecto al middleware server-side en el instante justo en que el
+// dueño cambia los permisos de un empleado ya conectado. La única forma
+// de que esto deje de pasar DE VERDAD, para cualquier módulo, es que cada
+// cambio de módulo dispare una navegación real del navegador — nunca
+// router.push() — así el middleware se vuelve a consultar desde cero,
+// sin ninguna caché del cliente de por medio, exactamente igual que un
+// F5. Mismo motivo por el que login-form.tsx ya hace esto para entrar al
+// dashboard (ver su comentario). El costo es perder la transición
+// instantánea tipo SPA entre módulos — se acepta a propósito, porque acá
+// "más rápido" nunca debería ganarle a "siempre correcto".
 export function NavegacionProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
   const [pendienteManual, setPendienteState] = useState(false)
-  const [isPending, startTransition] = useTransition()
   const setPendiente = useCallback((v: boolean) => setPendienteState(v), [])
-  // Identifica cuál es el click de navegación MÁS RECIENTE — si el usuario
-  // toca dos módulos seguidos, solo el último debería poder activar el
-  // respaldo de abajo; uno viejo que recién ahora "se vence" no debe forzar
-  // una recarga hacia un destino que el usuario ya dejó atrás.
-  const navegacionEnCurso = useRef(0)
   const navegarA = useCallback((href: string) => {
     const destino = new URL(href, window.location.origin).pathname
     if (destino === window.location.pathname) return
-    const idEstaNavegacion = ++navegacionEnCurso.current
-    startTransition(() => { router.push(href) })
-    // Red de seguridad: router.push() dentro de un sidebar cuyo propio
-    // Link recién apareció (un módulo que el dueño le acaba de dar a este
-    // empleado) puede quedarse "pegado" — observado en vivo probando esto:
-    // la URL nunca cambia y el overlay de carga queda dando vueltas para
-    // siempre, sin que el usuario pueda hacer nada salvo recargar él
-    // mismo. Si después de un tiempo razonable la URL sigue sin cambiar,
-    // se fuerza una navegación dura — mismo motivo que AutoRevalidarPermisos
-    // y que login-form.tsx ya usan para esto: cuando el router del cliente
-    // no se puede confiar del todo, una navegación real del navegador
-    // nunca se queda pegada a medio camino.
-    setTimeout(() => {
-      if (navegacionEnCurso.current === idEstaNavegacion && window.location.pathname !== destino) {
-        window.location.href = href
-      }
-    }, 3000)
-  }, [router])
-  return <Ctx.Provider value={{ pendiente: isPending || pendienteManual, setPendiente, navegarA }}>{children}</Ctx.Provider>
+    window.location.href = href
+  }, [])
+  return <Ctx.Provider value={{ pendiente: pendienteManual, setPendiente, navegarA }}>{children}</Ctx.Provider>
 }
 
 export function useNavegacionPendiente() {
