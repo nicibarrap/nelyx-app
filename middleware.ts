@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 import { tieneAcceso, rutaDeInicio } from "@/lib/permisos"
-import * as Sentry from "@sentry/nextjs"
 
 // Antes esto se cacheaba por unos segundos en una cookie (nlx_sc) para no
 // pagar una consulta a la DB en cada clic — primero 20s, después bajado a
@@ -107,9 +106,13 @@ export default auth(async (req) => {
       // pero ese respaldo es exactamente el valor potencialmente
       // desactualizado que todo este mecanismo existe para evitar, así
       // que silenciarlo del todo (como estaba antes) deja a cualquier
-      // degradación real sin forma de notarse. Se manda a Sentry para que
-      // quede visible si empieza a pasar seguido.
-      Sentry.captureException(e, { extra: { pathname } })
+      // degradación real sin forma de notarse. console.error (no
+      // Sentry.captureException: este middleware corre en el edge runtime,
+      // que este proyecto deliberadamente no instrumenta con Sentry por
+      // tamaño de bundle — ver instrumentation.ts — así que esa llamada
+      // nunca mandaba nada) — Vercel sí captura console.error de cualquier
+      // runtime en sus logs de función, sin necesidad de Sentry.
+      console.error("[middleware] fetch a /api/check-session falló", { pathname, error: e })
       modulosFrescos = (session.user as any)?.modulosPermitidos
     }
   }
