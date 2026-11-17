@@ -245,6 +245,49 @@ ventas/venta-client) — no se tocaron en esta pasada porque no fueron
 reportados, pero valdría la pena una pasada dedicada si vuelve a aparecer
 el mismo síntoma en otra pantalla.
 
+**Usuarios/sesión, quinta vuelta (2026-11-17) — la causa real de fondo de
+TODA la serie, no otra variante.** El dueño probó el fix de navegación
+dura de la vuelta anterior y el bug exacto seguía pasando: otorgar un
+módulo a un empleado ya conectado, incluso con navegación dura
+(`window.location.href`), seguía mostrando "no tienes acceso". Las cuatro
+vueltas previas asumieron (correctamente) que el Router Cache del
+cliente era una fuente de desincronización, y cada fix la redujo — pero
+ninguna explicaba por qué el middleware mismo, que SÍ consulta
+`/api/check-session` fresco en cada request, podía devolver datos
+viejos. La respuesta estaba en los logs de error de Vercel
+(`get_runtime_errors`), no en el código ni en Playwright: el catch de
+middleware.ts ("[middleware] fetch a /api/check-session falló",
+agregado en la segunda vuelta) venía disparándose 91 veces en 24 horas
+contra 6 usuarios distintos, con `SyntaxError: Unexpected token '<',
+"<!DOCTYPE "... is not valid JSON` — el fetch interno recibía HTML, no
+JSON. Causa: el proyecto tiene "Vercel Authentication" (SSO Protection)
+activado para todas las URLs del despliegue EXCEPTO el dominio propio
+(confirmado con `get_project`: `ssoProtection.deploymentType:
+"all_except_custom_domains"`), y el `baseUrl` de ese fetch se armaba con
+`VERCEL_URL` — que apunta justo a una de las URLs protegidas
+(`nelyx-xxxxx-....vercel.app`). El fetch, sin ningún token de bypass de
+Vercel, chocaba contra el challenge de autenticación de Vercel en vez de
+llegar al endpoint real, reventaba en `res.json()`, y caía al respaldo
+que usa `session.user.modulosPermitidos` del JWT (viejo) — reproduciendo
+el síntoma reportado de forma consistente, no como una rareza. Arreglo:
+usar `NEXT_PUBLIC_APP_URL` (el dominio propio, `app.nelyx.cl`, ya usado
+en el resto de la plataforma para links de correo — ver `lib/email.ts`)
+en vez de `VERCEL_URL`. Por diseño, ese dominio queda afuera de la
+protección SSO, y al ser siempre el dominio final (no uno con un
+redirect por delante) tampoco reaparece el problema que hizo descartar
+`req.url` en el diseño original. Lección para toda auditoría futura:
+cuando un fix "correcto por diseño" sigue fallando en producción después
+de verificarlo a fondo (Playwright, código, lógica), buscar en los logs
+de la plataforma (`get_runtime_errors`/`get_runtime_logs` de Vercel, no
+solo Sentry) ANTES de seguir iterando sobre hipótesis de código — esta
+causa era 100% invisible en local (la protección SSO es una regla de la
+plataforma de Vercel, inexistente en `localhost`), así que ninguna
+cantidad de pruebas locales, sin importar cuán rigurosas, podía
+encontrarla. Las cuatro vueltas anteriores no estaban "mal" — cada una
+corrigió un problema real y necesario (caché de `fetch()`, Router Cache,
+prefetch, navegación dura) — pero todas dejaban pasar el mismo request
+que, en producción, nunca llegaba a ejecutarse como se esperaba.
+
 No reemplaza el pensar — es una lista de "no te olvides de mirar esto",
 no una que garantice que el módulo queda perfecto. Ver la sección final
 ("Qué esta lista NO cubre").
