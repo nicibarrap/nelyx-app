@@ -68,16 +68,34 @@ export default auth(async (req) => {
   let modulosFrescos: string[] | null | undefined = undefined
   if (!esServerAction && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
     try {
-      // Se arma con VERCEL_URL (la URL fija de este despliegue, provista
-      // por la plataforma) en vez de con req.url — si se arma con el
-      // dominio que el usuario usó para entrar, y ese dominio tiene un
-      // redirect a otro (ej. el dominio viejo redirigiendo al nuevo tras
-      // conectar un dominio propio), este fetch interno cae en ese
-      // redirect entre dominios, pierde la cookie de sesión en el camino,
-      // y esta ruta responde "no hay sesión" — lo que fuerza un cierre de
-      // sesión real para cuentas que sí están activas. VERCEL_URL nunca
-      // pasa por reglas de redirect de dominio custom.
-      const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : req.url
+      // NEXT_PUBLIC_APP_URL (el dominio propio, app.nelyx.cl — mismo que
+      // usa el resto de la plataforma para links de correo, ver lib/email.ts)
+      // en vez de VERCEL_URL. Se probó VERCEL_URL primero pensando que era
+      // más seguro que req.url (ver historial), pero resultó ser la causa
+      // real de esta ronda completa de bugs de permisos: este proyecto
+      // tiene "Vercel Authentication" (SSO Protection) activado para TODAS
+      // las URLs del despliegue EXCEPTO el dominio propio — la URL que da
+      // VERCEL_URL (nelyx-xxxxx-....vercel.app) es justo una de las
+      // protegidas. El fetch interno del middleware (que no lleva ninguna
+      // cookie/token de bypass de Vercel, solo la cookie de sesión de la
+      // app) chocaba contra esa muralla y recibía de vuelta el HTML del
+      // challenge de Vercel en vez del JSON esperado — reventando en
+      // res.json() y cayendo al catch de abajo, que usa como respaldo los
+      // módulos del JWT (viejos). Confirmado con los logs de Vercel:
+      // "[middleware] fetch a /api/check-session falló" con
+      // "SyntaxError: Unexpected token '<', \"<!DOCTYPE \"... is not valid
+      // JSON", 91 veces en 24h contra 6 usuarios distintos — exactamente el
+      // bug que un dueño reportó cuatro veces seguidas (otorgar un módulo
+      // nuevo a un empleado conectado y que siga viendo "no tienes
+      // acceso"), y que ninguna prueba local con Playwright podía
+      // reproducir porque la protección SSO es una regla de la plataforma
+      // de Vercel, inexistente en localhost. app.nelyx.cl queda afuera de
+      // esa protección por diseño (así los dueños pueden entrar sin pasar
+      // por el login de Vercel), así que este fetch nunca choca con ella —
+      // y, al ser siempre el mismo dominio final (no uno viejo con un
+      // redirect por delante), tampoco reaparece el problema original que
+      // hizo descartar req.url.
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : req.url)
       const checkUrl = new URL("/api/check-session", baseUrl)
       const res = await fetch(checkUrl.toString(), {
         headers: { cookie: req.headers.get("cookie") ?? "" },
