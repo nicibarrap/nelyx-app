@@ -32,6 +32,15 @@ export function NavegacionProvider({ children }: { children: React.ReactNode }) 
   const navegarA = useCallback((href: string) => {
     const destino = new URL(href, window.location.origin).pathname
     if (destino === window.location.pathname) return
+    // setPendiente(true) antes de cambiar window.location — sin esto,
+    // OverlayCargaModulo (pensado justo para cubrir este instante, ver su
+    // propio comentario) nunca llegaba a mostrarse en un click del Sidebar:
+    // nada lo activaba. En conexión rápida no se notaba (la navegación dura
+    // terminaba casi al instante), pero en una conexión lenta la pantalla
+    // quedaba en blanco — sin overlay, sin esqueleto de carga (loading.tsx
+    // ya no existe, ver comentario de OverlayCargaModulo) — hasta que
+    // terminara de llegar la página completa.
+    setPendienteState(true)
     window.location.href = href
   }, [])
   return <Ctx.Provider value={{ pendiente: pendienteManual, setPendiente, navegarA }}>{children}</Ctx.Provider>
