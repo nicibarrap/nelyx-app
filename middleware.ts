@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 import { tieneAcceso, rutaDeInicio } from "@/lib/permisos"
+import { db } from "@/lib/db"
 
 // Antes esto se cacheaba por unos segundos en una cookie (nlx_sc) para no
 // pagar una consulta a la DB en cada clic — primero 20s, después bajado a
@@ -8,7 +9,7 @@ import { tieneAcceso, rutaDeInicio } from "@/lib/permisos"
 // NO puede tener ningún margen: mientras dura la ventana de caché, la
 // cuenta suspendida sigue registrando ventas y moviendo stock con
 // normalidad. Se saca la caché por completo — cada request a /dashboard o
-// /admin consulta /api/check-session fresco. Es una sola fila por id
+// /admin consulta la DB fresca (ver más abajo). Es una sola fila por id
 // (barata, indexada por primary key); el costo real de "una consulta más
 // por navegación" es insignificante comparado con el de dejar una cuenta
 // desactivada seguir operando.
@@ -65,72 +66,62 @@ export default auth(async (req) => {
   // Verify user is still active in DB — y de paso, trae los módulos
   // permitidos FRESCOS (no los del JWT, que solo se recalculan al iniciar
   // sesión). Sin caché: se consulta en cada request a /dashboard o /admin.
+  //
+  // Consulta directa a la base de datos (mismo cliente Prisma de @/lib/db
+  // que ya usa el resto de la app, incluido este mismo archivo a través del
+  // adapter de NextAuth en @/lib/auth) — antes esto era un fetch() interno
+  // a /api/check-session, una vuelta completa por otra función serverless
+  // solo para repetir la misma consulta que esa ruta hacía. Ese diseño
+  // sobrevivió cinco rondas de bugs de permisos (caché de fetch(), Router
+  // Cache del cliente, prefetch obsoleto, navegación dura, protección SSO
+  // de Vercel bloqueando la URL del fetch) porque siempre había una causa
+  // más urgente que arreglar primero — pero el salto en sí nunca fue
+  // necesario: no hay ninguna razón por la que el middleware no pueda
+  // consultar la DB directo, con la misma frescura y la misma lógica,
+  // sin la ida y vuelta de red extra (ni su propio riesgo de fallar, que
+  // es justo lo que pasó con la protección SSO). Ver export const config
+  // más abajo: runtime "nodejs" explícito, para que esto no dependa de
+  // qué runtime use Next.js por defecto.
   let modulosFrescos: string[] | null | undefined = undefined
   if (!esServerAction && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
     try {
-      // NEXT_PUBLIC_APP_URL (el dominio propio, app.nelyx.cl — mismo que
-      // usa el resto de la plataforma para links de correo, ver lib/email.ts)
-      // en vez de VERCEL_URL. Se probó VERCEL_URL primero pensando que era
-      // más seguro que req.url (ver historial), pero resultó ser la causa
-      // real de esta ronda completa de bugs de permisos: este proyecto
-      // tiene "Vercel Authentication" (SSO Protection) activado para TODAS
-      // las URLs del despliegue EXCEPTO el dominio propio — la URL que da
-      // VERCEL_URL (nelyx-xxxxx-....vercel.app) es justo una de las
-      // protegidas. El fetch interno del middleware (que no lleva ninguna
-      // cookie/token de bypass de Vercel, solo la cookie de sesión de la
-      // app) chocaba contra esa muralla y recibía de vuelta el HTML del
-      // challenge de Vercel en vez del JSON esperado — reventando en
-      // res.json() y cayendo al catch de abajo, que usa como respaldo los
-      // módulos del JWT (viejos). Confirmado con los logs de Vercel:
-      // "[middleware] fetch a /api/check-session falló" con
-      // "SyntaxError: Unexpected token '<', \"<!DOCTYPE \"... is not valid
-      // JSON", 91 veces en 24h contra 6 usuarios distintos — exactamente el
-      // bug que un dueño reportó cuatro veces seguidas (otorgar un módulo
-      // nuevo a un empleado conectado y que siga viendo "no tienes
-      // acceso"), y que ninguna prueba local con Playwright podía
-      // reproducir porque la protección SSO es una regla de la plataforma
-      // de Vercel, inexistente en localhost. app.nelyx.cl queda afuera de
-      // esa protección por diseño (así los dueños pueden entrar sin pasar
-      // por el login de Vercel), así que este fetch nunca choca con ella —
-      // y, al ser siempre el mismo dominio final (no uno viejo con un
-      // redirect por delante), tampoco reaparece el problema original que
-      // hizo descartar req.url.
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : req.url)
-      const checkUrl = new URL("/api/check-session", baseUrl)
-      const res = await fetch(checkUrl.toString(), {
-        headers: { cookie: req.headers.get("cookie") ?? "" },
-        // Next.js cachea fetch() por defecto (su propio Data Cache, aparte
-        // de cualquier caché que uno arme a mano) — sin esto, todo el
-        // comentario de arriba ("sin caché, se consulta en cada request")
-        // queda en la intención: en producción, esta llamada podía servir
-        // una respuesta vieja cacheada, y un cambio de módulo o la
-        // suspensión de una cuenta no se reflejaba hasta que esa caché
-        // expirara sola, por request. Bug real: a un empleado se le daba
-        // acceso a un módulo nuevo, el ícono aparecía en el menú (otra
-        // consulta, sin este problema) pero entrar seguía mandando a
-        // "sin-permiso" porque esta llamada seguía devolviendo los
-        // módulos de antes.
-        cache: "no-store",
+      // Mismo criterio que /api/check-session (que sigue existiendo — lo
+      // usa AutoRevalidarPermisos desde el navegador, un caso distinto):
+      // session.user.id siempre es la cuenta del dueño, por diseño: hay
+      // que revisar el registro del EMPLEADO si es uno.
+      const idAVerificar = session.user.empleadoId || session.user.id
+      const registro = await db.user.findUnique({
+        where: { id: idAVerificar },
+        select: {
+          activo: true,
+          modulosPermitidos: true,
+          // Un empleado necesita AMBAS cosas activas: su propio registro y
+          // la cuenta dueña de la que depende — si Nelyx suspende la
+          // cuenta del negocio, sus empleados ya conectados no deberían
+          // seguir operando con ella.
+          cuentaPrincipal: { select: { activo: true } },
+        },
       })
-      const data = await res.json()
-      if (!data.activo) {
+      const activo = !!registro && registro.activo && (registro.cuentaPrincipal?.activo ?? true)
+      if (!activo) {
         // Redirect to clean logout page — signs out properly without cookie errors
         return NextResponse.redirect(new URL("/auth/forzar-salida", req.url))
       }
-      modulosFrescos = data.modulosPermitidos
+      // El dueño nunca tiene módulos restringidos (null = acceso total).
+      modulosFrescos = session.user.empleadoId ? (registro?.modulosPermitidos ?? null) : null
     } catch (e) {
       // Si falla la consulta, se usa lo que venga en la sesión (JWT) como
-      // respaldo, en vez de bloquear todo por un error de red pasajero —
+      // respaldo, en vez de bloquear todo por un error pasajero de la DB —
       // pero ese respaldo es exactamente el valor potencialmente
       // desactualizado que todo este mecanismo existe para evitar, así
-      // que silenciarlo del todo (como estaba antes) deja a cualquier
-      // degradación real sin forma de notarse. console.error (no
-      // Sentry.captureException: este middleware corre en el edge runtime,
-      // que este proyecto deliberadamente no instrumenta con Sentry por
-      // tamaño de bundle — ver instrumentation.ts — así que esa llamada
-      // nunca mandaba nada) — Vercel sí captura console.error de cualquier
+      // que silenciarlo del todo deja a cualquier degradación real sin
+      // forma de notarse. console.error (no Sentry.captureException: este
+      // middleware corre en el edge runtime salvo que se fuerce nodejs —
+      // ver runtime más abajo —, y este proyecto deliberadamente no
+      // instrumenta el edge runtime con Sentry por tamaño de bundle, ver
+      // instrumentation.ts) — Vercel sí captura console.error de cualquier
       // runtime en sus logs de función, sin necesidad de Sentry.
-      console.error("[middleware] fetch a /api/check-session falló", { pathname, error: e })
+      console.error("[middleware] consulta de permisos frescos falló", { pathname, error: e })
       modulosFrescos = (session.user as any)?.modulosPermitidos
     }
   }
@@ -179,6 +170,13 @@ export default auth(async (req) => {
 // Gmail cargando el logo del correo) recibía HTML en vez del archivo real.
 // Ahora se excluye cualquier ruta cuyo último segmento tenga extensión
 // (un archivo real de /public) en vez de mantener una lista a mano.
+//
+// runtime: "nodejs" explícito — este archivo ya consulta Prisma directo
+// (ver más arriba) a través del mismo cliente de @/lib/db que usa el resto
+// de la app. Se declara sin ambigüedad en vez de confiar en el runtime por
+// defecto de esta versión de Next.js/Vercel, que puede cambiar entre
+// versiones — con esto, el comportamiento queda fijo pase lo que pase.
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|.*\\.[\\w]+$).*)"]
+  matcher: ["/((?!api|_next/static|_next/image|.*\\.[\\w]+$).*)"],
+  runtime: "nodejs",
 }
