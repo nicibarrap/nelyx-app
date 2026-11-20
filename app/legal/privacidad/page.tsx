@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Política de Privacidad — Nelyx" }
 // clientes finales de un negocio que usa Nelyx, que nunca inician sesión
 // acá pero sí son titulares de los datos que un dueño carga sobre ellos.
 export default function PrivacidadPage() {
-  const actualizado = "9 de noviembre de 2026"
+  const actualizado = "20 de noviembre de 2026"
   return (
     <div className="min-h-screen" style={{ background: "var(--c-bg)", color: "var(--c-text)" }}>
       <div className="max-w-[720px] mx-auto px-6 py-10">
@@ -65,11 +65,16 @@ export default function PrivacidadPage() {
               <li><strong>Anthropic</strong> (EE.UU.) — genera la primera respuesta automática del chat de soporte.</li>
               <li><strong>Resend</strong> (EE.UU.) — envía correos transaccionales (ej. recuperación de contraseña).</li>
               <li><strong>Sentry</strong> — nos avisa cuando algo falla técnicamente en la plataforma.</li>
-              <li><strong>Transbank / Mercado Pago</strong> — procesan pagos, cuando conectas un medio de pago.</li>
+              <li><strong>Transbank, Mercado Pago, TUU, SumUp y BCI Pagos</strong> — procesan pagos, cuando conectas una de sus máquinas o medios de pago.</li>
             </ul>
             <p className="mt-3">
               Como parte de esto, algunos de tus datos se transfieren fuera de Chile (principalmente a EE.UU.).
               Estamos trabajando en formalizar esas transferencias conforme a la normativa vigente.
+            </p>
+            <p className="mt-3">
+              Nelyx nunca mueve ni recibe tu dinero: solo guarda, cifrada, la credencial que te conecta con el
+              proveedor de pago que elijas, y registra los movimientos que esa conexión informa. El cobro en sí
+              lo procesa siempre el proveedor de pago directamente — Nelyx no es parte de esa transacción.
             </p>
           </section>
 
@@ -79,6 +84,12 @@ export default function PrivacidadPage() {
               Mientras tu cuenta esté activa. Las capturas adjuntas en conversaciones de soporte ya resueltas
               se eliminan automáticamente después de 7 días. Si eliminas un cliente o proveedor de tu cuenta,
               sus datos se eliminan de inmediato.
+            </p>
+            <p className="mt-3">
+              Si tu cuenta se suspende por falta de pago de tu suscripción, tus datos se mantienen guardados
+              durante 1 mes desde la suspensión — tiempo suficiente para que reactives tu cuenta sin perder
+              nada, o para pedirnos una copia de tus datos antes de que se eliminen. Pasado ese mes sin
+              reactivación, los eliminamos de forma permanente.
             </p>
           </section>
 

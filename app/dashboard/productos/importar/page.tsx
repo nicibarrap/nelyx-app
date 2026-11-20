@@ -6,6 +6,13 @@ import { ImportarProductosClient } from "@/components/productos/importar-product
 
 export const metadata: Metadata = { title: "Importar productos" }
 export const dynamic = "force-dynamic"
+// importarProductosMasivo (acciones.ts) procesa hasta 2000 filas en un for
+// secuencial (un db.producto.create + un registrarMovimientoStock por fila
+// con stock inicial) — con un archivo grande, el límite por defecto de una
+// función serverless se queda corto. Mismo valor ya usado en venta/page.tsx
+// para el mismo tipo de problema (una Server Action que puede tardar más
+// de lo normal).
+export const maxDuration = 100
 
 export default async function ImportarProductosPage() {
   const session = await auth()

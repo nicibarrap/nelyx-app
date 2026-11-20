@@ -132,6 +132,10 @@ export function RestablecerForm({ token }: { token: string }) {
             <a href="/legal/privacidad" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">
               Política de Privacidad
             </a>{" "}
+            y los{" "}
+            <a href="/legal/terminos" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">
+              Términos y Condiciones
+            </a>{" "}
             de Nelyx.
           </span>
         </label>

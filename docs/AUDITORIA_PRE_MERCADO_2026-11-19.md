@@ -127,18 +127,25 @@ circuit-breaker correctos).
 
 ## Resumen de acción
 
-| # | Hallazgo | Severidad | Tipo |
-|---|---|---|---|
-| 1 | Import masivo sin `maxDuration` | Medio-alto | Código |
-| 2 | Política de Privacidad incompleta (faltan 3 de 5 proveedores) | Medio | Legal |
-| 3 | Sin Términos y Condiciones | Medio | Legal |
-| 4 | Sin rate-limit en conexión de pagos | Medio | Código |
-| 5 | `BLOB_READ_WRITE_TOKEN` mal clasificada en Vercel | Medio | Config |
-| 6 | IDOR en `proveedorId` de movimientos de stock | Medio | Código |
-| 7 | Invitación de empleado sin aviso de fallo de email | Medio | Código |
-| 8 | `CRON_SECRET` sin documentar/sin señal si falta | Medio | Código/Docs |
-| 9 | Confirmar pooler de Postgres en `DATABASE_URL` | Sin confirmar | Config |
-| 10 | Función `calcularValorInventario` sin usar (código muerto) | Bajo | Código |
-| 11 | `ProductoWizard` sin `createPortal` | Bajo | Código |
-| 12 | Cobertura E2E débil en `productos`/`aprende` | Bajo | Tests |
-| 13 | `.env.example` incompleto | Bajo | Docs |
+| # | Hallazgo | Severidad | Tipo | Estado |
+|---|---|---|---|---|
+| 1 | Import masivo sin `maxDuration` | Medio-alto | Código | ✅ Resuelto |
+| 2 | Política de Privacidad incompleta (faltan 3 de 5 proveedores) | Medio | Legal | ✅ Resuelto |
+| 3 | Sin Términos y Condiciones | Medio | Legal | ✅ Resuelto (`/legal/terminos`) |
+| 4 | Sin rate-limit en conexión de pagos | Medio | Código | ✅ Resuelto (en memoria, por usuario) |
+| 5 | `BLOB_READ_WRITE_TOKEN` mal clasificada en Vercel | Medio | Config | ✅ Resuelto |
+| 6 | IDOR en `proveedorId` de movimientos de stock | Medio | Código | ✅ Resuelto |
+| 7 | Invitación de cliente nuevo sin aviso de fallo de email (`enviarInvitacionCliente`, panel admin) | Medio | Código | ✅ Resuelto |
+| 8 | `CRON_SECRET` sin documentar/sin señal si falta | Medio | Código/Docs | Pendiente |
+| 9 | Confirmar pooler de Postgres en `DATABASE_URL` | Sin confirmar | Config | Pendiente — ver nota abajo |
+| 10 | Función `calcularValorInventario` sin usar (código muerto) | Bajo | Código | Pendiente |
+| 11 | `ProductoWizard` sin `createPortal` | Bajo | Código | Pendiente |
+| 12 | Cobertura E2E débil en `productos`/`aprende` | Bajo | Tests | Pendiente |
+| 13 | `.env.example` incompleto | Bajo | Docs | Pendiente |
+
+Nota sobre el punto 9: `DATABASE_URL` es tipo "Sensitive" en Vercel —
+irrecuperable incluso con autorización explícita, ni por la API ni desde el
+dashboard. Pendiente que el dueño confirme directamente en Supabase →
+Settings → Database si la URL configurada usa el "Transaction pooler"
+(puerto 6543) y, si no está seguro, que la vuelva a copiar y reemplazar en
+Vercel (sin costo aunque ya estuviera bien).

@@ -171,12 +171,20 @@ export async function registrarMovimientoStock(params: RegistrarMovimientoParams
 
     await tx.producto.update({ where: { id: productoId }, data: dataUpdate })
 
+    // Se valida que el proveedor exista y sea del mismo dueño — mismo
+    // criterio que ya se aplica a proveedorId en acciones.ts (Deudas,
+    // Movimientos) — sin esto, un proveedorId ajeno podía quedar guardado
+    // en el Kardex sin que nada lo filtrara al crearlo.
+    const proveedorValido = proveedorId
+      ? (await tx.proveedor.findFirst({ where: { id: proveedorId, userId }, select: { id: true } }))?.id ?? null
+      : null
+
     const movimiento = await tx.movimientoStock.create({
       data: {
         productoId, userId, tipo, cantidad: cantidadReal,
         stockAnterior, stockPosterior,
         observacion: observacion ?? null,
-        proveedorId: proveedorId ?? null,
+        proveedorId: proveedorValido,
         movimientoId: movimientoId ?? null,
         costoUnitario: costoUnitario ?? null,
         costoTotal: costoUnitario != null ? Math.round(Math.abs(cantidadReal) * costoUnitario) : null,
