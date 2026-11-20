@@ -36,9 +36,10 @@ export default function TerminosPage() {
           <section>
             <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--c-text)" }}>2. Suscripción y pago</h2>
             <p>
-              El uso de Nelyx requiere una suscripción de monto fijo, con periodicidad mensual, semestral o
-              anual según el plan que elijas. El monto y la periodicidad se te informan antes de confirmar la
-              suscripción y no cambian durante el periodo ya pagado.
+              El uso de Nelyx requiere una suscripción de monto fijo. La periodicidad del pago (mensual,
+              cada dos o tres meses, semestral, anual, u otra que se acuerde contigo) se define caso a caso
+              según lo que convenga a tu negocio. El monto y la periodicidad acordados se te informan antes
+              de confirmar la suscripción y no cambian durante el periodo ya pagado.
             </p>
           </section>
 
