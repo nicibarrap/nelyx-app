@@ -1725,7 +1725,10 @@ export async function eliminarDeuda(id: string): Promise<{ ok: boolean; error?: 
 
 
 // ── COSTOS FIJOS RECURRENTES ───────────────────────────────
-export async function crearCostoUnico(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario sobre el enmascarado de errores de Next.js en producción.
+export async function crearCostoUnico(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1753,6 +1756,10 @@ export async function crearCostoUnico(formData: FormData) {
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el costo." }
+ }
 }
 
 const FRECUENCIAS_VALIDAS: FrecuenciaCosto[] = ["mensual", "trimestral", "anual"]
@@ -1763,7 +1770,8 @@ function leerFrecuencia(formData: FormData): FrecuenciaCosto {
   return "mensual"
 }
 
-export async function crearCostoRecurrente(formData: FormData) {
+export async function crearCostoRecurrente(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1792,9 +1800,14 @@ export async function crearCostoRecurrente(formData: FormData) {
   })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el costo recurrente." }
+ }
 }
 
-export async function editarCostoRecurrente(id: string, formData: FormData) {
+export async function editarCostoRecurrente(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1827,9 +1840,14 @@ export async function editarCostoRecurrente(id: string, formData: FormData) {
   if (count === 0) throw new Error("Costo fijo no encontrado")
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el costo recurrente." }
+ }
 }
 
-export async function actualizarEstadoCosto(id: string, estado: "activo" | "pausado" | "finalizado") {
+export async function actualizarEstadoCosto(id: string, estado: "activo" | "pausado" | "finalizado"): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.updateMany({
     where: { id, userId: session.user.id },
@@ -1837,13 +1855,22 @@ export async function actualizarEstadoCosto(id: string, estado: "activo" | "paus
   })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el estado." }
+ }
 }
 
-export async function eliminarCostoRecurrente(id: string) {
+export async function eliminarCostoRecurrente(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el costo." }
+ }
 }
 
 export async function generarCostosDelMes(userId: string, mes: number, anio: number): Promise<number> {
@@ -1912,7 +1939,8 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
   return generados
 }
 
-export async function marcarCostoPagado(generacionId: string, formData: FormData) {
+export async function marcarCostoPagado(generacionId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const generacion = await db.generacionCosto.findUnique({
     where: { id: generacionId },
@@ -1960,16 +1988,20 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
       })
     })
   } catch (err: any) {
-    if (!err?.code) throw err
+    if (!err?.code) return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
     console.error("Error en marcarCostoPagado:", err)
     Sentry.captureException(err)
-    throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
+    return { ok: false, error: "No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos." }
   }
 
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/alertas")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
+ }
 }
 
 
