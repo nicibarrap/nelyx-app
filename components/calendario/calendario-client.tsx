@@ -494,15 +494,22 @@ function FormEvento({defaultDate,editingEv,proyectos,onClose}:{defaultDate:strin
         fd.set("frecuencia",frecuencia)
         diasSemana.forEach(d=>fd.append("diasSemana",String(d)))
         if(fechaFinSerie)fd.set("fechaFinSerie",fechaFinSerie)
-        if(isEdit&&editingEv?.id){await actualizarEventoCalendario(editingEv.id,fd);toast.success("✅ Evento actualizado")}
-        else{await crearEventoCalendario(fd);toast.success(frecuencia==="ninguna"?"✅ Evento creado":"✅ Tarea recurrente creada")}
+        const resultado=isEdit&&editingEv?.id?await actualizarEventoCalendario(editingEv.id,fd):await crearEventoCalendario(fd)
+        if(!resultado.ok){toast.error(resultado.error??"Error");return}
+        toast.success(isEdit?"✅ Evento actualizado":(frecuencia==="ninguna"?"✅ Evento creado":"✅ Tarea recurrente creada"))
         onClose()
       }catch(err:any){toast.error(err?.message??"Error")}
     })
   }
   function handleDel(){
     if(!editingEv?.id||!confirm("¿Eliminar este evento?"))return
-    start(async()=>{try{await eliminarEventoCalendario(editingEv.id);toast.success("Eliminado");onClose()}catch{toast.error("Error")}})
+    start(async()=>{
+      try{
+        const resultado=await eliminarEventoCalendario(editingEv.id)
+        if(!resultado.ok){toast.error(resultado.error??"Error");return}
+        toast.success("Eliminado");onClose()
+      }catch{toast.error("Error")}
+    })
   }
 
   return(
@@ -742,7 +749,12 @@ export function CalendarioClient({data}:{data:CalData}){
 
   function handleToggleTarea(id:string,estado:string){
     const nuevoEstado=estado==="completada"?"pendiente":"completada"
-    start(async()=>{try{await actualizarEstadoEventoCalendario(id,nuevoEstado)}catch{toast.error("Error")}})
+    start(async()=>{
+      try{
+        const resultado=await actualizarEstadoEventoCalendario(id,nuevoEstado)
+        if(!resultado.ok)toast.error(resultado.error??"Error")
+      }catch{toast.error("Error")}
+    })
   }
 
   // Drag & drop: mover una tarea/recordatorio de un día a otro, reutilizando
@@ -779,7 +791,13 @@ export function CalendarioClient({data}:{data:CalData}){
     if(!st||st.pointerId!==e.pointerId)return
     if(st.dragging&&hoverDayKey&&hoverDayKey!==st.origen){
       const id=st.id,dest=hoverDayKey
-      start(async()=>{try{await moverEventoCalendario(id,dest);toast.success("Tarea movida")}catch{toast.error("No se pudo mover")}})
+      start(async()=>{
+        try{
+          const resultado=await moverEventoCalendario(id,dest)
+          if(!resultado.ok){toast.error(resultado.error??"No se pudo mover");return}
+          toast.success("Tarea movida")
+        }catch{toast.error("No se pudo mover")}
+      })
     }
     dragInfo.current=null
     setDragVisual(null)
@@ -1223,7 +1241,13 @@ export function CalendarioClient({data}:{data:CalData}){
           onEdit={()=>{setEditingEv(detalleEv);setDetalleEv(null)}}
           onDelete={()=>{
             if(!confirm("¿Eliminar este evento?"))return
-            start(async()=>{try{await eliminarEventoCalendario(detalleEv.id);toast.success("Eliminado")}catch{toast.error("Error")}})
+            start(async()=>{
+              try{
+                const resultado=await eliminarEventoCalendario(detalleEv.id)
+                if(!resultado.ok){toast.error(resultado.error??"Error");return}
+                toast.success("Eliminado")
+              }catch{toast.error("Error")}
+            })
             setDetalleEv(null)
           }}
         />

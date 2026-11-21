@@ -119,7 +119,12 @@ export function ProyectosTareaClient({ proyectos: proyectosIniciales }: { proyec
   function handleToggleTarea(id: string, estado: string) {
     const nuevoEstado = estado === "completada" ? "pendiente" : "completada"
     setProyectos(prev => prev.map(p => ({ ...p, tareas: p.tareas.map(t => t.id === id ? { ...t, estado: nuevoEstado } : t) })))
-    start(async () => { try { await actualizarEstadoEventoCalendario(id, nuevoEstado) } catch { toast.error("Error") } })
+    start(async () => {
+      try {
+        const resultado = await actualizarEstadoEventoCalendario(id, nuevoEstado)
+        if (!resultado.ok) toast.error(resultado.error ?? "Error")
+      } catch { toast.error("Error") }
+    })
   }
 
   function handleEliminar(p: Proyecto) {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
 import { crearProyectoTarea, editarProyectoTarea, eliminarProyectoTarea, obtenerProyectosTarea, crearEventoCalendario } from "@/app/actions/acciones"
+import { claveSoloLectura } from "@/lib/permisos"
 
 // Mismos stubs que calendario-repeticion.test.ts / caja.test.ts.
 let sesionActual: { user: { id: string; esEmpleado?: boolean; name: string; modulosPermitidos?: string[] | null; empleadoId?: string } } | null = null
@@ -104,5 +105,23 @@ describe("obtenerProyectosTarea — ver las tareas se refresca igual que cualqui
     const salud = proyectos.find(p => p.nombre === "Salud")
     expect(salud?.tareas).toHaveLength(1)
     expect(salud?.tareas[0].titulo).toBe("Control médico")
+  })
+})
+
+// Regresión: un empleado de solo lectura en Calendario reportó que, al
+// intentar crear una tarea, la app mostraba el mensaje genérico de Next.js
+// ("An error occurred in the Server Components render...") en vez de "Tu
+// acceso a este módulo es solo de lectura". Causa raíz: crearEventoCalendario
+// (y el resto de las acciones de Calendario) dejaban que el throw de
+// getSessionEscritura cruzara crudo el límite de la Server Action — Next.js
+// enmascara en producción cualquier Error no capturado ahí dentro. El fix
+// (igual que registrarVenta) es que la acción devuelva {ok,error} en vez de
+// lanzar, así el mensaje real llega siempre, enmascarado o no.
+describe("crearEventoCalendario — mensaje de solo lectura no se pierde", () => {
+  it("un empleado de solo lectura en 'calendario' recibe {ok:false} con el mensaje real, no una excepción", async () => {
+    const dueno = await crearDueno()
+    await comoEmpleado(dueno.id, "Ana", [claveSoloLectura("calendario")])
+    const resultado = await crearEventoCalendario(formData({ titulo: "Control médico", fecha: "2026-12-01", tipo: "tarea" }))
+    expect(resultado).toEqual({ ok: false, error: "Tu acceso a este módulo es solo de lectura" })
   })
 })
