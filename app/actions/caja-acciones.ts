@@ -99,8 +99,12 @@ export async function obtenerCajaActual() {
 // una Server Action pierde su mensaje en producción (Next.js lo reemplaza
 // por uno genérico al cruzar al cliente — protocolo de React Flight), así
 // que un dato de retorno normal es la única forma confiable de que el
-// mensaje real llegue a la pantalla.
+// mensaje real llegue a la pantalla. Ese mismo motivo cubría solo las
+// validaciones de negocio de acá abajo — el throw de getSessionEscritura()
+// (sin acceso al módulo, o solo lectura) quedaba sin cubrir, así que ahora
+// todo el cuerpo de ambas funciones queda envuelto en try/catch.
 export async function abrirCaja(montoInicial: number): Promise<{ error: string } | undefined> {
+ try {
   const session = await getSessionEscritura()
   if (isNaN(montoInicial) || montoInicial < 0) return { error: "Monto inválido" }
 
@@ -121,9 +125,13 @@ export async function abrirCaja(montoInicial: number): Promise<{ error: string }
   })
   if (error) return { error }
   revalidatePath("/dashboard/caja")
+ } catch (err) {
+  return { error: err instanceof Error ? err.message : "No se pudo abrir la caja." }
+ }
 }
 
 export async function cerrarCaja(montoContado: number, observacion?: string): Promise<{ error: string } | undefined> {
+ try {
   const session = await getSessionEscritura()
   if (isNaN(montoContado) || montoContado < 0) return { error: "Monto inválido" }
 
@@ -157,6 +165,9 @@ export async function cerrarCaja(montoContado: number, observacion?: string): Pr
   })
   if (error) return { error }
   revalidatePath("/dashboard/caja")
+ } catch (err) {
+  return { error: err instanceof Error ? err.message : "No se pudo cerrar la caja." }
+ }
 }
 
 export async function obtenerHistorialCajas(limite: number = 30) {

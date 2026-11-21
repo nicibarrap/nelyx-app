@@ -246,7 +246,8 @@ describe("permisos — módulo \"caja\"", () => {
     const actual = await obtenerCajaActual()
     expect(actual.puedeEscribir).toBe(false)
     expect(actual.abierta).toBeNull()
-    await expect(abrirCaja(1000)).rejects.toThrow(/no tienes acceso/i)
+    const resultado = await abrirCaja(1000)
+    expect(resultado?.error).toMatch(/no tienes acceso/i)
   })
 
   it("un empleado con \"caja:ro\" ve el estado pero no puede abrir ni cerrar", async () => {
@@ -258,6 +259,7 @@ describe("permisos — módulo \"caja\"", () => {
     const actual = await obtenerCajaActual()
     expect(actual.abierta).not.toBeNull()
     expect(actual.puedeEscribir).toBe(false)
-    await expect(cerrarCaja(10000)).rejects.toThrow(/solo de lectura/i)
+    const resultado = await cerrarCaja(10000)
+    expect(resultado?.error).toMatch(/solo de lectura/i)
   })
 })
