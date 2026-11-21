@@ -60,7 +60,8 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
     if (!terminalElegida) return
     startTransition(async () => {
       try {
-        await conectarMercadoPago(accessToken.trim(), terminalElegida)
+        const resultado = await conectarMercadoPago(accessToken.trim(), terminalElegida)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al conectar"); return }
         toast.success("✅ Máquina conectada")
         setConexiones(prev => [...prev.filter(c => c.proveedor !== "mercadopago"), { id: "temp", proveedor: "mercadopago", terminalId: terminalElegida, activo: true, ultimaConexionOk: new Date().toISOString() }])
         setMarcaAbierta(null)
@@ -89,7 +90,8 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
     if (!deviceTuu.trim()) { toast.error("Ingresa el número de serie del terminal"); return }
     startTransition(async () => {
       try {
-        await conectarTuu(apiKeyTuu.trim(), deviceTuu.trim())
+        const resultado = await conectarTuu(apiKeyTuu.trim(), deviceTuu.trim())
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al conectar"); return }
         toast.success("✅ Máquina conectada")
         setConexiones(prev => [...prev.filter(c => c.proveedor !== "tuu"), { id: "temp", proveedor: "tuu", terminalId: deviceTuu.trim(), activo: true, ultimaConexionOk: new Date().toISOString() }])
         setMarcaAbierta(null)
@@ -121,7 +123,8 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
     if (!lectorElegidoSumup) return
     startTransition(async () => {
       try {
-        await conectarSumup(apiKeySumup.trim(), merchantCodeSumup.trim(), lectorElegidoSumup)
+        const resultado = await conectarSumup(apiKeySumup.trim(), merchantCodeSumup.trim(), lectorElegidoSumup)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al conectar"); return }
         toast.success("✅ Máquina conectada")
         setConexiones(prev => [...prev.filter(c => c.proveedor !== "sumup"), { id: "temp", proveedor: "sumup", terminalId: lectorElegidoSumup, activo: true, ultimaConexionOk: new Date().toISOString() }])
         setMarcaAbierta(null)
@@ -170,7 +173,8 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
     if (!puertoElegidoTransbank) return
     startTransition(async () => {
       try {
-        await conectarTransbank(puertoElegidoTransbank)
+        const resultado = await conectarTransbank(puertoElegidoTransbank)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al conectar"); return }
         toast.success("✅ Máquina conectada")
         setConexiones(prev => [...prev.filter(c => c.proveedor !== "transbank"), { id: "temp", proveedor: "transbank", terminalId: puertoElegidoTransbank, activo: true, ultimaConexionOk: new Date().toISOString() }])
         setMarcaAbierta(null)
@@ -190,7 +194,8 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
     if (!appIdBci.trim() || !appSecretBci.trim() || !codigoBci.trim()) { toast.error("Completa el APP ID, el APP Secret y el código de vinculación"); return }
     startTransition(async () => {
       try {
-        await conectarBciPagos(appIdBci.trim(), appSecretBci.trim(), codigoBci.trim())
+        const resultado = await conectarBciPagos(appIdBci.trim(), appSecretBci.trim(), codigoBci.trim())
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al conectar"); return }
         toast.success("✅ Máquina conectada")
         setConexiones(prev => [...prev.filter(c => c.proveedor !== "bcipagos"), { id: "temp", proveedor: "bcipagos", terminalId: null, activo: true, ultimaConexionOk: new Date().toISOString() }])
         setMarcaAbierta(null)
@@ -206,7 +211,8 @@ export function ConexionMaquinaPagoClient({ conexiones: conexionesIniciales }: {
   function handleDesconectar(proveedor: string) {
     startTransition(async () => {
       try {
-        await desconectarPago(proveedor)
+        const resultado = await desconectarPago(proveedor)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
         setConexiones(prev => prev.filter(c => c.proveedor !== proveedor))
         toast.success("Desconectado")
       } catch (err: any) {
