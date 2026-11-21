@@ -93,8 +93,8 @@ describe("permisos de un empleado ya logueado se refrescan sin que tenga que vol
 
     await db.user.update({ where: { id: empleado.id }, data: { modulosPermitidos: ["venta"] } })
 
-    await expect(ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" })))
-      .rejects.toThrow("No tienes acceso a este módulo")
+    const resultado = await ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" }))
+    expect(resultado).toEqual({ ok: false, error: "No tienes acceso a este módulo" })
   })
 })
 
@@ -109,8 +109,8 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
     const dueno = await crearDueno()
     await comoEmpleado(dueno.id, "Ana", ["venta"]) // "movimientos" nunca se le habilitó
 
-    await expect(ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" })))
-      .rejects.toThrow("No tienes acceso a este módulo")
+    const resultado = await ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" }))
+    expect(resultado).toEqual({ ok: false, error: "No tienes acceso a este módulo" })
 
     const movimientos = await db.movimiento.findMany({ where: { userId: dueno.id } })
     expect(movimientos).toHaveLength(0)
@@ -130,8 +130,8 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
     const dueno = await crearDueno()
     await comoEmpleado(dueno.id, "Ana", ["movimientos:ro"])
 
-    await expect(ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" })))
-      .rejects.toThrow("Tu acceso a este módulo es solo de lectura")
+    const resultado = await ingresarMovimiento(formData({ tipo: "GASTO", monto: "5000", fecha: "2026-11-05", categoria: "Insumos" }))
+    expect(resultado).toEqual({ ok: false, error: "Tu acceso a este módulo es solo de lectura" })
   })
 
   it("el mismo chequeo aplica en otro módulo (productos), no solo en movimientos", async () => {
@@ -283,6 +283,8 @@ describe("eliminarMovimiento — permiso aparte para eliminar + bitácora", () =
     // llegara así, esSoloLectura debe seguir ganando.
     await comoEmpleado(dueno.id, "Ana", ["movimientos:ro", "movimientos:eliminar"])
 
-    await expect(eliminarMovimiento(mov.id)).rejects.toThrow(/solo de lectura/i)
+    const resultado = await eliminarMovimiento(mov.id)
+    expect(resultado.ok).toBe(false)
+    expect(resultado.error).toMatch(/solo de lectura/i)
   })
 })

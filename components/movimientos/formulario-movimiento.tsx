@@ -86,7 +86,8 @@ export function FormularioMovimiento({ categoriasPersonalizadas = { GASTO: [], C
     startTransition(async () => {
       try {
         if (tipo === "GASTO" && proveedorId) fd.append("proveedorId", proveedorId)
-        await ingresarMovimiento(fd)
+        const resultado = await ingresarMovimiento(fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo guardar"); return }
         toast.success("¡Movimiento registrado!")
         form.reset()
         if (tipoRef.current === tipoEnviado) { setTipo(null); setCategoria("") }

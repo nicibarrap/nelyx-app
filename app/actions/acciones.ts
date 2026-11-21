@@ -110,9 +110,14 @@ function validarNumerosProducto(campos: { precio: number | null; costo: number |
 }
 
 // ── MOVIMIENTOS ──────────────────────────────────────────────
-export async function ingresarMovimiento(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — mismo motivo que registrarVenta más
+// abajo: un throw crudo fuera de la Server Action se enmascara en
+// producción. Antes esta función ya distinguía errores propios de errores
+// de infraestructura, pero igual los relanzaba (throw) en ambos casos.
+export async function ingresarMovimiento(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   try {
     await ingresarMovimientoInterno(formData)
+    return { ok: true }
   } catch (err: any) {
     // Los errores propios (validaciones: "Stock insuficiente...", "Datos
     // inválidos", etc.) son un new Error() plano, sin .code — esos se
@@ -120,10 +125,10 @@ export async function ingresarMovimiento(formData: FormData) {
     // viene de Prisma/la DB (constraint, timeout, conexión) — antes esto
     // llegaba crudo al usuario; ahora se registra en el servidor para
     // poder diagnosticarlo y se muestra un mensaje claro en su lugar.
-    if (!err?.code) throw err
+    if (!err?.code) return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el movimiento." }
     console.error("Error en ingresarMovimiento:", err)
     Sentry.captureException(err)
-    throw new Error("No se pudo registrar el movimiento. Intenta de nuevo — si el problema persiste, contáctanos.")
+    return { ok: false, error: "No se pudo registrar el movimiento. Intenta de nuevo — si el problema persiste, contáctanos." }
   }
 }
 
@@ -281,18 +286,19 @@ async function ingresarMovimientoInterno(formData: FormData) {
   if (clienteId) revalidatePath("/dashboard/clientes")
 }
 
-export async function eliminarMovimiento(id: string): Promise<{ error: string } | undefined> {
+// Devuelve {ok,error} en vez de lanzar — ya se hacía a medias acá (ver nota
+// vieja más abajo) solo para el permiso "eliminar" aparte; ahora cubre
+// también getSessionEscritura y el resto de validaciones de esta función,
+// mismo criterio que crearEventoCalendario/crearProducto más arriba.
+export async function eliminarMovimiento(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("movimientos")
   // Además del acceso normal de escritura a "movimientos" (ya exigido por
   // getSessionEscritura arriba), eliminar requiere el permiso aparte
   // "movimientos:eliminar" — el dueño decide caso por caso si confía esto a
   // un empleado, independiente de si puede registrar movimientos nuevos.
-  // Se devuelve como dato ({ error }) en vez de lanzarse: un throw desde una
-  // Server Action pierde su mensaje en producción (Next.js lo reemplaza por
-  // uno genérico al cruzar al cliente, protocolo de React Flight), así que
-  // esta es la única forma confiable de que este mensaje llegue tal cual.
   if (session.user.esEmpleado && !puedeEliminar(session.user.modulosPermitidos, "movimientos")) {
-    return { error: "No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios." }
+    return { ok: false, error: "No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios." }
   }
   const mov = await db.movimiento.findFirst({ where: { id, userId: session.user.id } })
   if (!mov) throw new Error("No encontrado")
@@ -343,6 +349,10 @@ export async function eliminarMovimiento(id: string): Promise<{ error: string } 
   if (mov.tipo === "COSTO_FIJO") revalidatePath("/dashboard/costos-fijos")
   if (mov.proveedorId) revalidatePath("/dashboard/proveedores")
   if (mov.clienteId) revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el movimiento." }
+ }
 }
 
 /** Arma el CSV de Historial de movimientos respetando exactamente los
