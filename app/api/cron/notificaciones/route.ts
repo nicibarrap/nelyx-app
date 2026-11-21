@@ -12,7 +12,18 @@ export const maxDuration = 60
 
 function autorizado(req: Request): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return false
+  if (!secret) {
+    // Sin CRON_SECRET configurado, este endpoint queda permanentemente
+    // inactivo (siempre 401) sin que nada lo note — las alertas de stock,
+    // recordatorios de cobranza/calendario/cumpleaños y la limpieza de
+    // adjuntos simplemente dejan de correr, en silencio. Esto es distinto
+    // de un intento con el secret equivocado (abajo, que no se loguea a
+    // propósito): acá el problema es de configuración de la plataforma,
+    // no un intento de acceso — vale la pena que alguien se entere.
+    console.error("[cron/notificaciones] CRON_SECRET no está configurado — el cron queda inactivo")
+    Sentry.captureMessage("CRON_SECRET no configurado — cron de notificaciones inactivo", { level: "error" })
+    return false
+  }
   const header = req.headers.get("authorization")
   if (header === `Bearer ${secret}`) return true
   const url = new URL(req.url)

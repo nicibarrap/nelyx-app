@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   costoPromedioPonderado, calcularUtilidadVenta, calcularMargenPorcentual,
-  calcularValorInventario, clasificarMargenVenta, MARGEN_BAJO_UMBRAL,
+  clasificarMargenVenta, MARGEN_BAJO_UMBRAL,
 } from "@/lib/financial-engine"
 
 // "Única fuente oficial de cálculos financieros de NELYX" (comentario del
@@ -70,30 +70,6 @@ describe("calcularMargenPorcentual", () => {
     const r = calcularMargenPorcentual(500, 0)
     expect(r?.ganancia).toBe(500)
     expect(r?.margen).toBe(100)
-  })
-})
-
-describe("calcularValorInventario", () => {
-  it("suma costo y venta potencial de todos los items", () => {
-    const r = calcularValorInventario([
-      { stock: 10, costo: 100, precio: 150 },
-      { stock: 5, costo: 200, precio: 300 },
-    ])
-    expect(r.valorCosto).toBe(10 * 100 + 5 * 200)
-    expect(r.valorVentaPotencial).toBe(10 * 150 + 5 * 300)
-    expect(r.utilidadPotencial).toBe(r.valorVentaPotencial - r.valorCosto)
-  })
-
-  it("items sin costo/precio cargado cuentan como 0, no rompen el cálculo", () => {
-    const r = calcularValorInventario([{ stock: 10, costo: null, precio: null }])
-    expect(r.valorCosto).toBe(0)
-    expect(r.valorVentaPotencial).toBe(0)
-    expect(r.margenPotencial).toBeNull()
-  })
-
-  it("inventario vacío no divide por cero", () => {
-    const r = calcularValorInventario([])
-    expect(r.margenPotencial).toBeNull()
   })
 })
 

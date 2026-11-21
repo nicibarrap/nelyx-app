@@ -136,16 +136,16 @@ circuit-breaker correctos).
 | 5 | `BLOB_READ_WRITE_TOKEN` mal clasificada en Vercel | Medio | Config | ✅ Resuelto |
 | 6 | IDOR en `proveedorId` de movimientos de stock | Medio | Código | ✅ Resuelto |
 | 7 | Invitación de cliente nuevo sin aviso de fallo de email (`enviarInvitacionCliente`, panel admin) | Medio | Código | ✅ Resuelto |
-| 8 | `CRON_SECRET` sin documentar/sin señal si falta | Medio | Código/Docs | Pendiente |
-| 9 | Confirmar pooler de Postgres en `DATABASE_URL` | Sin confirmar | Config | Pendiente — ver nota abajo |
-| 10 | Función `calcularValorInventario` sin usar (código muerto) | Bajo | Código | Pendiente |
-| 11 | `ProductoWizard` sin `createPortal` | Bajo | Código | Pendiente |
-| 12 | Cobertura E2E débil en `productos`/`aprende` | Bajo | Tests | Pendiente |
-| 13 | `.env.example` incompleto | Bajo | Docs | Pendiente |
+| 8 | `CRON_SECRET` sin documentar/sin señal si falta | Medio | Código/Docs | ✅ Resuelto |
+| 9 | Confirmar pooler de Postgres en `DATABASE_URL` | Sin confirmar | Config | ✅ Resuelto (reemplazada por la URL del Transaction pooler, verificado sin errores en producción) |
+| 10 | Función `calcularValorInventario` sin usar (código muerto) | Bajo | Código | ✅ Resuelto (eliminada — nunca se usó, y no era intercambiable con el cálculo real de `productos-client.tsx`, que sí maneja conversión de unidades) |
+| 11 | `ProductoWizard` sin `createPortal` | Bajo | Código | ✅ Resuelto |
+| 12 | Cobertura E2E débil en `productos`/`aprende` | Bajo | Tests | Parcial — se agregó `aprende` al smoke test; sigue faltando un flujo E2E completo de `productos` (crear → ajustar stock → vender), fuera de alcance de esta pasada |
+| 13 | `.env.example` incompleto | Bajo | Docs | ✅ Resuelto |
 
-Nota sobre el punto 9: `DATABASE_URL` es tipo "Sensitive" en Vercel —
+Nota sobre el punto 9: `DATABASE_URL` era tipo "Sensitive" en Vercel —
 irrecuperable incluso con autorización explícita, ni por la API ni desde el
-dashboard. Pendiente que el dueño confirme directamente en Supabase →
-Settings → Database si la URL configurada usa el "Transaction pooler"
-(puerto 6543) y, si no está seguro, que la vuelva a copiar y reemplazar en
-Vercel (sin costo aunque ya estuviera bien).
+dashboard — así que no se pudo confirmar cuál estaba configurada antes del
+cambio. El dueño reemplazó el valor directo por la URL del "Transaction
+pooler" de Supabase (puerto 6543, `?pgbouncer=true`) y se confirmó, tras
+redeploy, que la app sigue funcionando sin errores de runtime.
