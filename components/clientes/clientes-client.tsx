@@ -80,8 +80,9 @@ function FormCliente({ cliente, onClose, onSuccess }: { cliente?: Cliente | null
     const fd = new FormData(e.currentTarget)
     start(async () => {
       try {
-        if (isEdit) { await actualizarCliente(cliente!.id, fd); toast.success("Cliente actualizado") }
-        else { await crearCliente(fd); toast.success("Cliente creado ✅") }
+        const resultado = isEdit ? await actualizarCliente(cliente!.id, fd) : await crearCliente(fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        toast.success(isEdit ? "Cliente actualizado" : "Cliente creado ✅")
         onSuccess()
       } catch (err: any) { toast.error(err?.message ?? "Error") }
     })
@@ -199,7 +200,11 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
   function handleNota() {
     if (!nota.trim()) return
     start(async () => {
-      try { await crearNotaCliente(cliente.id, nota); setNota(""); toast.success("Nota agregada") }
+      try {
+        const resultado = await crearNotaCliente(cliente.id, nota)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al agregar nota"); return }
+        setNota(""); toast.success("Nota agregada")
+      }
       catch (err: any) { toast.error(err?.message ?? "Error al agregar nota") }
     })
   }
@@ -207,7 +212,8 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
   function handleToggleActivo() {
     start(async () => {
       try {
-        await toggleActivoCliente(cliente.id, !cliente.activo)
+        const resultado = await toggleActivoCliente(cliente.id, !cliente.activo)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
         toast.success(cliente.activo ? "Cliente desactivado" : "Cliente reactivado")
         onClose()
       } catch (err: any) { toast.error(err?.message ?? "Error") }
@@ -218,7 +224,8 @@ function ClientePanel({ cliente, onClose, onEdit, nombreNegocio, usuarioEnvia, p
   function handleEliminar() {
     start(async () => {
       try {
-        await eliminarCliente(cliente.id)
+        const resultado = await eliminarCliente(cliente.id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); setConfirmarEliminar(false); return }
         toast.success("Cliente eliminado — su historial de ventas se conserva")
         setConfirmarEliminar(false)
         onClose()

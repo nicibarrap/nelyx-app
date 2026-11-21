@@ -99,7 +99,8 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     setEliminandoCliente(true)
     startTransition(async () => {
       try {
-        await eliminarCliente(clienteSeleccionado.id)
+        const resultado = await eliminarCliente(clienteSeleccionado.id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); return }
         toast.success("Cliente eliminado — su historial de ventas se conserva")
         setClienteId("")
         setConfirmarEliminarCliente(false)

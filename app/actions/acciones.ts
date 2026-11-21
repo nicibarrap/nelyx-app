@@ -1962,7 +1962,11 @@ function leerManualTriEstado(formData: FormData, name: string): boolean | null {
   return null
 }
 
-export async function crearCliente(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar en las 6 funciones de este bloque —
+// ver el comentario de crearEventoCalendario sobre el enmascarado de
+// errores de Next.js en producción.
+export async function crearCliente(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("El nombre es requerido")
@@ -1990,9 +1994,14 @@ export async function crearCliente(formData: FormData) {
     }
   })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el cliente." }
+ }
 }
 
-export async function actualizarCliente(id: string, formData: FormData) {
+export async function actualizarCliente(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const cl = await db.cliente.findFirst({ where: { id, userId: session.user.id } })
   if (!cl) throw new Error("Cliente no encontrado")
@@ -2030,9 +2039,14 @@ export async function actualizarCliente(id: string, formData: FormData) {
     }
   })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el cliente." }
+ }
 }
 
-export async function eliminarCliente(id: string) {
+export async function eliminarCliente(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   // No se permite eliminar si tiene una cuenta por cobrar todavía
   // pendiente — borrarlo ahí perdería de vista a quién cobrarle. Su
@@ -2058,28 +2072,47 @@ export async function eliminarCliente(id: string) {
   await db.cliente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/clientes")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el cliente." }
+ }
 }
 
-export async function toggleActivoCliente(id: string, activo: boolean) {
+export async function toggleActivoCliente(id: string, activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   await db.cliente.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el estado del cliente." }
+ }
 }
 
-export async function crearNotaCliente(clienteId: string, texto: string) {
+export async function crearNotaCliente(clienteId: string, texto: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const cl = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id } })
   if (!cl) throw new Error("Cliente no encontrado")
   await db.notaCliente.create({ data: { clienteId, texto: texto.trim() } })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo guardar la nota." }
+ }
 }
 
-export async function eliminarNotaCliente(id: string) {
+export async function eliminarNotaCliente(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const nota = await db.notaCliente.findFirst({ where: { id }, include: { cliente: { select: { userId: true } } } })
   if (!nota || nota.cliente.userId !== session.user.id) throw new Error("Sin acceso")
   await db.notaCliente.delete({ where: { id } })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la nota." }
+ }
 }
 
 
