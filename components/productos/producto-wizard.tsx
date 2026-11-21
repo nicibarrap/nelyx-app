@@ -1,5 +1,6 @@
 "use client"
 import { useState, useTransition } from "react"
+import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearProducto, crearCategoriaPersonalizada } from "@/app/actions/acciones"
 import { formatCLP } from "@/lib/utils"
@@ -238,7 +239,14 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
     })
   }
 
-  return (
+  if (typeof document === "undefined") return null
+  // createPortal a document.body — mismo patrón que ConfirmarEliminarModal
+  // (costos-fijos-client.tsx): un overlay fixed inset-0 anidado dentro de
+  // un ancestro con transform (ej. una animación de entrada) queda
+  // posicionado relativo a ESE ancestro, no al viewport. No reproduce hoy
+  // en el árbol de montaje real de este wizard, pero es el único modal del
+  // proyecto sin este resguardo — ver docs/AUDITORIA_CHECKLIST.md.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" style={{ background: "rgba(0,0,0,0.75)" }}>
       <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden animate-scale-in">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--c-border)] flex-shrink-0">
@@ -615,6 +623,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
           onCerrar={() => setMostrarEscaner(false)}
         />
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

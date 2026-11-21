@@ -20,6 +20,7 @@ const MODULOS: { ruta: string; tituloEsperado: string }[] = [
   { ruta: "/dashboard/productos", tituloEsperado: "Productos" },
   { ruta: "/dashboard/clientes", tituloEsperado: "Clientes" },
   { ruta: "/dashboard/proveedores", tituloEsperado: "Proveedores" },
+  { ruta: "/dashboard/aprende", tituloEsperado: "Centro de Aprendizaje" },
 ]
 
 test.beforeEach(async ({ page }) => {

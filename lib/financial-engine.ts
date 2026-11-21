@@ -51,22 +51,6 @@ export function calcularMargenPorcentual(precio: number | null, costo: number | 
   return { ganancia, margen }
 }
 
-export type ValorInventarioItem = { stock: number; costo: number | null; precio: number | null }
-
-/** Valorización total del inventario: costo real invertido vs. precio
- * potencial de venta y la utilidad que representa venderlo todo. */
-export function calcularValorInventario(items: ValorInventarioItem[]) {
-  let valorCosto = 0
-  let valorVentaPotencial = 0
-  for (const it of items) {
-    valorCosto += it.stock * (it.costo ?? 0)
-    valorVentaPotencial += it.stock * (it.precio ?? 0)
-  }
-  const utilidadPotencial = valorVentaPotencial - valorCosto
-  const margenPotencial = valorVentaPotencial > 0 ? (utilidadPotencial / valorVentaPotencial) * 100 : null
-  return { valorCosto, valorVentaPotencial, utilidadPotencial, margenPotencial }
-}
-
 /** Umbral por debajo del cual una venta se considera de "margen muy bajo"
  * para efectos de alertas automáticas (sección 13 del Sprint 4). */
 export const MARGEN_BAJO_UMBRAL = 10 // %
