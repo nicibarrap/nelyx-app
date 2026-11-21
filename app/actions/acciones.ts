@@ -2139,7 +2139,11 @@ export async function eliminarNotaCliente(id: string): Promise<{ ok: boolean; er
 
 
 // ── PROVEEDORES ──────────────────────────────────────────────
-export async function crearProveedor(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar en las 7 funciones de este bloque —
+// ver el comentario de crearEventoCalendario sobre el enmascarado de
+// errores de Next.js en producción.
+export async function crearProveedor(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("El nombre es requerido")
@@ -2159,9 +2163,14 @@ export async function crearProveedor(formData: FormData) {
     }
   })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el proveedor." }
+ }
 }
 
-export async function actualizarProveedor(id: string, formData: FormData) {
+export async function actualizarProveedor(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const prov = await db.proveedor.findFirst({ where: { id, userId: session.user.id } })
   if (!prov) throw new Error("Proveedor no encontrado")
@@ -2188,21 +2197,36 @@ export async function actualizarProveedor(id: string, formData: FormData) {
     }
   })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el proveedor." }
+ }
 }
 
-export async function toggleActivoProveedor(id: string, activo: boolean) {
+export async function toggleActivoProveedor(id: string, activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   await db.proveedor.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el estado del proveedor." }
+ }
 }
 
-export async function toggleFavoritoProveedor(id: string, esFavorito: boolean) {
+export async function toggleFavoritoProveedor(id: string, esFavorito: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   await db.proveedor.updateMany({ where: { id, userId: session.user.id }, data: { esFavorito } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el favorito." }
+ }
 }
 
-export async function eliminarProveedor(id: string) {
+export async function eliminarProveedor(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   // Sin este chequeo, borrar un proveedor con compras registradas fallaba
   // con el error crudo de la restricción de llave foránea de Postgres (no
@@ -2230,22 +2254,36 @@ export async function eliminarProveedor(id: string) {
   })
   await db.proveedor.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el proveedor." }
+ }
 }
 
-export async function crearNotaProveedor(proveedorId: string, texto: string) {
+export async function crearNotaProveedor(proveedorId: string, texto: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const prov = await db.proveedor.findFirst({ where: { id: proveedorId, userId: session.user.id } })
   if (!prov) throw new Error("Proveedor no encontrado")
   await db.notaProveedor.create({ data: { proveedorId, texto: texto.trim() } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo guardar la nota." }
+ }
 }
 
-export async function eliminarNotaProveedor(id: string) {
+export async function eliminarNotaProveedor(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const nota = await db.notaProveedor.findFirst({ where: { id }, include: { proveedor: { select: { userId: true } } } })
   if (!nota || nota.proveedor.userId !== session.user.id) throw new Error("Sin acceso")
   await db.notaProveedor.delete({ where: { id } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la nota." }
+ }
 }
 
 

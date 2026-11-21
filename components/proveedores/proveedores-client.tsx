@@ -54,8 +54,9 @@ function FormProveedor({ proveedor, onClose, onSuccess }: { proveedor?: Proveedo
     const fd = new FormData(e.currentTarget)
     start(async () => {
       try {
-        if (isEdit) { await actualizarProveedor(proveedor!.id, fd); toast.success("Proveedor actualizado") }
-        else { await crearProveedor(fd); toast.success("Proveedor creado ✅") }
+        const resultado = isEdit ? await actualizarProveedor(proveedor!.id, fd) : await crearProveedor(fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        toast.success(isEdit ? "Proveedor actualizado" : "Proveedor creado ✅")
         onSuccess()
       } catch (err: any) { toast.error(err?.message ?? "Error") }
     })
@@ -113,21 +114,33 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
   function handleNota() {
     if (!nota.trim()) return
     start(async () => {
-      try { await crearNotaProveedor(prov.id, nota); setNota(""); toast.success("Nota agregada") }
+      try {
+        const resultado = await crearNotaProveedor(prov.id, nota)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        setNota(""); toast.success("Nota agregada")
+      }
       catch { toast.error("Error") }
     })
   }
 
   function handleToggleActivo() {
     start(async () => {
-      try { await toggleActivoProveedor(prov.id, !prov.activo); toast.success(prov.activo ? "Proveedor desactivado" : "Proveedor reactivado"); onClose() }
+      try {
+        const resultado = await toggleActivoProveedor(prov.id, !prov.activo)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        toast.success(prov.activo ? "Proveedor desactivado" : "Proveedor reactivado"); onClose()
+      }
       catch { toast.error("Error") }
     })
   }
 
   function handleToggleFav() {
     start(async () => {
-      try { await toggleFavoritoProveedor(prov.id, !prov.esFavorito); toast.success(prov.esFavorito ? "Removido de favoritos" : "Marcado como favorito") }
+      try {
+        const resultado = await toggleFavoritoProveedor(prov.id, !prov.esFavorito)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        toast.success(prov.esFavorito ? "Removido de favoritos" : "Marcado como favorito")
+      }
       catch { toast.error("Error") }
     })
   }
@@ -135,7 +148,8 @@ function ProveedorPanel({ prov, onClose, onEdit }: { prov: Proveedor; onClose: (
   function handleEliminar() {
     start(async () => {
       try {
-        await eliminarProveedor(prov.id)
+        const resultado = await eliminarProveedor(prov.id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); setConfirmarEliminar(false); return }
         toast.success("Proveedor eliminado")
         setConfirmarEliminar(false)
         onClose()
