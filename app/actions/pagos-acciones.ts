@@ -24,6 +24,30 @@ async function getSession() {
   return session
 }
 
+// Freno contra fuerza bruta en los pasos de "probar" credenciales de pago
+// (probarConexionTuu, listarTerminalesParaConectar,
+// listarLectoresParaConectarSumup) — a diferencia del login, estas Server
+// Actions ya requieren una sesión Nelyx válida, pero eso no evita que esa
+// misma cuenta se use como proxy para probar credenciales de pago robadas
+// contra la API de Mercado Pago/SumUp/TUU. En memoria (no en la DB, para no
+// necesitar una migración de esquema solo para esto) — defensa razonable
+// contra un intento de fuerza bruta sencillo dentro de una misma instancia
+// serverless tibia; no es un rate-limit distribuido perfecto entre
+// instancias, pero sí sube el costo de intentarlo mucho más de lo que hay
+// hoy (nada). Mismos umbrales que demasiadosIntentosDesdeIp en lib/auth.ts.
+const VENTANA_INTENTOS_PAGO_MIN = 15
+const MAX_INTENTOS_PAGO = 10
+const intentosConexionPago = new Map<string, number[]>()
+function demasiadosIntentosConexionPago(userId: string): boolean {
+  const ahora = Date.now()
+  const ventanaMs = VENTANA_INTENTOS_PAGO_MIN * 60 * 1000
+  const anteriores = (intentosConexionPago.get(userId) ?? []).filter(t => ahora - t < ventanaMs)
+  if (anteriores.length >= MAX_INTENTOS_PAGO) return true
+  anteriores.push(ahora)
+  intentosConexionPago.set(userId, anteriores)
+  return false
+}
+
 /** Igual que getSession(), pero rechaza a un empleado sin acceso a ese
  * módulo, o al que se le dejó en "solo lectura" — mismo patrón que
  * getSessionEscritura en app/actions/acciones.ts (ver su comentario sobre
@@ -51,7 +75,8 @@ export async function obtenerConexionesPago() {
  * terminales de la cuenta para que el dueño elija — sin guardar nada
  * todavía, así puede confirmar antes de comprometerse. */
 export async function listarTerminalesParaConectar(accessToken: string): Promise<TerminalMP[]> {
-  await getSession()
+  const session = await getSession()
+  if (demasiadosIntentosConexionPago(session.user.id)) throw new Error("Demasiados intentos — espera unos minutos antes de volver a intentar.")
   return listarTerminalesMercadoPago(accessToken)
 }
 
@@ -82,7 +107,8 @@ export async function desconectarPago(proveedor: string) {
  * número de serie del terminal lo escribe el dueño a mano (viene impreso
  * atrás de la máquina). */
 export async function probarConexionTuu(apiKey: string) {
-  await getSession()
+  const session = await getSession()
+  if (demasiadosIntentosConexionPago(session.user.id)) throw new Error("Demasiados intentos — espera unos minutos antes de volver a intentar.")
   return validarApiKeyTuu(apiKey)
 }
 
@@ -104,7 +130,8 @@ export async function conectarTuu(apiKey: string, device: string) {
  * los lectores emparejados a la cuenta para que el dueño elija — sin
  * guardar nada todavía. */
 export async function listarLectoresParaConectarSumup(apiKey: string, merchantCode: string): Promise<LectorSumup[]> {
-  await getSession()
+  const session = await getSession()
+  if (demasiadosIntentosConexionPago(session.user.id)) throw new Error("Demasiados intentos — espera unos minutos antes de volver a intentar.")
   return listarLectoresSumup(apiKey, merchantCode)
 }
 

@@ -164,7 +164,14 @@ export async function enviarInvitacionCliente(userId: string): Promise<{ ok: boo
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
   const link = `${baseUrl}/auth/restablecer?token=${tokenPlano}`
   const { text, html } = correoInvitacion({ nombre: user.nombre, link, diasValidez: EXPIRA_INVITACION_DIAS })
-  await enviarEmail({ to: user.email, subject: "Bienvenido a Nelyx — activa tu cuenta", text, html })
+  // A diferencia de solicitarResetPassword (donde no se avisa si el email
+  // existe o no, a propósito), acá SÍ hay que propagar si el correo
+  // realmente salió — quien llama a esta acción es el admin de Nelyx
+  // viendo su propia pantalla, invitando a un cliente nuevo: si el correo
+  // nunca llega (Resend caído, dominio no verificado), antes no había
+  // ninguna señal de eso — el toast de éxito salía igual, como si el
+  // cliente ya tuviera el link en su bandeja.
+  const enviado = await enviarEmail({ to: user.email, subject: "Bienvenido a Nelyx — activa tu cuenta", text, html })
 
-  return { ok: true }
+  return { ok: enviado }
 }

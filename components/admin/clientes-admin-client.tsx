@@ -219,9 +219,13 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
     setInvitando(true)
     start(async () => {
       try {
-        await enviarInvitacionCliente(creado.id)
-        setInvitada(true)
-        toast.success("Invitación enviada")
+        const { ok } = await enviarInvitacionCliente(creado.id)
+        if (ok) {
+          setInvitada(true)
+          toast.success("Invitación enviada")
+        } else {
+          toast.error("El correo de invitación no se pudo enviar — intenta de nuevo o reenvíala más tarde")
+        }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "No se pudo enviar la invitación")
       } finally {
@@ -355,8 +359,12 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
   function invitar() {
     start(async () => {
       try {
-        await enviarInvitacionCliente(c.id)
-        toast.success("Invitación enviada por correo")
+        const { ok } = await enviarInvitacionCliente(c.id)
+        if (ok) {
+          toast.success("Invitación enviada por correo")
+        } else {
+          toast.error("El correo de invitación no se pudo enviar — intenta de nuevo o reenvíala más tarde")
+        }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "No se pudo enviar la invitación")
       }
