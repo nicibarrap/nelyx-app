@@ -1448,7 +1448,10 @@ export async function eliminarProducto(id: string): Promise<{ ok: boolean; error
 }
 
 // ── DEUDAS ─────────────────────────────────────────────────
-export async function crearDeuda(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario sobre el enmascarado de errores de Next.js en producción.
+export async function crearDeuda(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   const acreedor = (formData.get("acreedor") as string)?.trim()
   if (!acreedor) throw new Error("El acreedor es requerido")
@@ -1516,6 +1519,10 @@ export async function crearDeuda(formData: FormData) {
   // quedar mostrando una versión vieja de la página hasta la próxima
   // revalidación natural.
   revalidatePath("/dashboard/alertas")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear la deuda." }
+ }
 }
 
 function calcularValorCuota(monto: number, interesMensual: number, cuotas: number): number {
@@ -1524,7 +1531,8 @@ function calcularValorCuota(monto: number, interesMensual: number, cuotas: numbe
   return (monto * r * Math.pow(1 + r, cuotas)) / (Math.pow(1 + r, cuotas) - 1)
 }
 
-export async function registrarPago(deudaId: string, formData: FormData) {
+export async function registrarPago(deudaId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   const montoPago = parseFloat(formData.get("monto") as string)
   const fecha = new Date(formData.get("fecha") as string)
@@ -1614,9 +1622,14 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   // → al día, o completar la deuda y que desaparezca de ahí).
   revalidatePath("/dashboard/alertas")
   if (pagadaCompleta) await cancelarNotificacionesPorPrefijo(`deuda:${deudaId}:`)
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
+ }
 }
 
-export async function editarDeuda(id: string, formData: FormData) {
+export async function editarDeuda(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   const deuda = await db.deuda.findFirst({ where: { id, userId: session.user.id } })
   if (!deuda) throw new Error("Deuda no encontrada")
@@ -1687,9 +1700,14 @@ export async function editarDeuda(id: string, formData: FormData) {
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar la deuda." }
+ }
 }
 
-export async function eliminarDeuda(id: string) {
+export async function eliminarDeuda(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   await db.deuda.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`deuda:${id}:`)
@@ -1699,6 +1717,10 @@ export async function eliminarDeuda(id: string) {
   // un proveedor, y su ficha también muestra deudas pendientes.
   revalidatePath("/dashboard/proveedores")
   revalidatePath("/dashboard/alertas")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la deuda." }
+ }
 }
 
 
@@ -2261,7 +2283,11 @@ async function verificarLimiteCredito(clienteId: string, userId: string, montoNu
   }
 }
 
-export async function crearCuentaPorCobrar(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar en las 3 funciones de este bloque —
+// ver el comentario de crearEventoCalendario sobre el enmascarado de
+// errores de Next.js en producción.
+export async function crearCuentaPorCobrar(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("cuentas-cobrar")
   const clienteId = formData.get("clienteId") as string
   if (!clienteId) throw new Error("Cliente requerido")
@@ -2295,9 +2321,14 @@ export async function crearCuentaPorCobrar(formData: FormData) {
   })
   revalidatePath("/dashboard/cuentas-cobrar")
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear la cuenta por cobrar." }
+ }
 }
 
-export async function registrarPagoCuenta(cuentaId: string, formData: FormData) {
+export async function registrarPagoCuenta(cuentaId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("cuentas-cobrar")
   const monto = parseFloat(formData.get("monto") as string)
   if (!monto || monto <= 0) throw new Error("Monto inválido")
@@ -2371,9 +2402,14 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
     accionUrl: "/dashboard/cuentas-cobrar",
     claveUnica: `cxc:${cuentaId}:pago:${Date.now()}`,
   })
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
+ }
 }
 
-export async function eliminarCuentaPorCobrar(id: string) {
+export async function eliminarCuentaPorCobrar(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("cuentas-cobrar")
   await db.cuentaPorCobrar.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`cxc:${id}:`)
@@ -2381,6 +2417,10 @@ export async function eliminarCuentaPorCobrar(id: string) {
   // La cuenta eliminada puede estar vinculada a un cliente — mismo motivo
   // que crearCuentaPorCobrar/registrarPagoCuenta ya revalidan esta ruta.
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la cuenta por cobrar." }
+ }
 }
 
 

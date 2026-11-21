@@ -44,11 +44,12 @@ describe("crearDeuda — respaldo de monto cuando 'Monto original' queda vacío"
 
   it("rechaza la deuda si ni el monto ni la cuota alcanzan para calcular un total", async () => {
     await crearUsuario()
-    await expect(crearDeuda(formData({
+    const resultado = await crearDeuda(formData({
       acreedor: "Banco Falso", tipo: "Otros",
       monto: "0", cuotaManual: "0", cuotas: "0",
       fechaDeuda: new Date().toISOString(),
-    }))).rejects.toThrow()
+    }))
+    expect(resultado.ok).toBe(false)
   })
 })
 
@@ -81,7 +82,9 @@ describe("registrarPago", () => {
       data: { acreedor: "Deuda en cero", tipo: "Otros", monto: 0, cuotas: 2, valorCuota: 50000, fechaDeuda: new Date(), userId: sesionActual!.user.id },
     })
 
-    await expect(registrarPago(deuda.id, formData({ monto: "50000", fecha: new Date().toISOString() }))).rejects.toThrow(/saldo pendiente/)
+    const resultado = await registrarPago(deuda.id, formData({ monto: "50000", fecha: new Date().toISOString() }))
+    expect(resultado.ok).toBe(false)
+    expect(resultado.error).toMatch(/saldo pendiente/)
     const pagos = await db.pagoDeuda.findMany({ where: { deudaId: deuda.id } })
     expect(pagos).toHaveLength(0)
   })
@@ -152,11 +155,13 @@ describe("editarDeuda", () => {
       data: { acreedor: "Proveedor Y", tipo: "Otros", monto: 100000, montoPagado: 60000, cuotas: 2, valorCuota: 50000, fechaDeuda: new Date(), userId: sesionActual!.user.id },
     })
 
-    await expect(editarDeuda(deuda.id, formData({
+    const resultado = await editarDeuda(deuda.id, formData({
       acreedor: "Proveedor Y", tipo: "Otros",
       monto: "40000", cuotaManual: "20000", cuotas: "2",
       fechaDeuda: new Date().toISOString(),
-    }))).rejects.toThrow(/ya pagado/)
+    }))
+    expect(resultado.ok).toBe(false)
+    expect(resultado.error).toMatch(/ya pagado/)
   })
 
   it("recalcula 'pagada' si el nuevo total ya no coincide con lo pagado", async () => {

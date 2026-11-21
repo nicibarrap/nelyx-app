@@ -113,7 +113,8 @@ function FormCuenta({ clientes, productos, onClose, onSuccess }: { clientes: Cli
           )
           if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar la venta."); return }
         } else {
-          await crearCuentaPorCobrar(fd)
+          const resultadoCuenta = await crearCuentaPorCobrar(fd)
+          if (!resultadoCuenta.ok) { toast.error(resultadoCuenta.error ?? "No se pudo crear la cuenta"); return }
         }
         toast.success("Cuenta creada ✅"); onSuccess()
       }
@@ -234,7 +235,11 @@ function FormPago({ cuenta, onClose, onSuccess }: { cuenta: Cuenta; onClose: () 
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     start(async () => {
-      try { await conTimeout(registrarPagoCuenta(cuenta.id, fd)); toast.success("Pago registrado ✅"); onSuccess() }
+      try {
+        const resultado = await conTimeout(registrarPagoCuenta(cuenta.id, fd))
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar el pago", { duration: 8000 }); return }
+        toast.success("Pago registrado ✅"); onSuccess()
+      }
       catch (err) { toast.error(mensajeErrorAccion(err, "el pago se registró"), { duration: 8000 }) }
     })
   }
