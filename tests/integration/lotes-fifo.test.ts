@@ -251,7 +251,9 @@ describe("Ajustar stock: dirección válida por motivo y FIFO en reducciones", (
         costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
       },
     })
-    await expect(ajustarStock(producto.id, 1, "agregar", "merma")).rejects.toThrow(/no admite agregar/)
+    const resultado = await ajustarStock(producto.id, 1, "agregar", "merma")
+    expect(resultado.ok).toBe(false)
+    expect(resultado.error).toMatch(/no admite agregar/)
   })
 
   it("rechaza reducir stock con el motivo Compra", async () => {
@@ -262,7 +264,9 @@ describe("Ajustar stock: dirección válida por motivo y FIFO en reducciones", (
         costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
       },
     })
-    await expect(ajustarStock(producto.id, 1, "reducir", "reposicion")).rejects.toThrow(/no admite reducir/)
+    const resultado = await ajustarStock(producto.id, 1, "reducir", "reposicion")
+    expect(resultado.ok).toBe(false)
+    expect(resultado.error).toMatch(/no admite reducir/)
   })
 
   it("una merma sobre un producto con lotes descuenta FIFO del lote que vence primero, no queda sin lote", async () => {
@@ -376,8 +380,12 @@ describe("Ajustar stock: Gasto automático por pérdida reconocida de inventario
         costo: 500, precio: 900, unidadMedida: "unidad", formaVenta: "unidad",
       },
     })
-    await expect(ajustarStock(producto.id, 1, "agregar", "devolucion_proveedor")).rejects.toThrow(/no admite agregar/)
-    await expect(ajustarStock(producto.id, 1, "reducir", "devolucion_cliente")).rejects.toThrow(/no admite reducir/)
+    const rechazo1 = await ajustarStock(producto.id, 1, "agregar", "devolucion_proveedor")
+    expect(rechazo1.ok).toBe(false)
+    expect(rechazo1.error).toMatch(/no admite agregar/)
+    const rechazo2 = await ajustarStock(producto.id, 1, "reducir", "devolucion_cliente")
+    expect(rechazo2.ok).toBe(false)
+    expect(rechazo2.error).toMatch(/no admite reducir/)
 
     await ajustarStock(producto.id, 2, "reducir", "devolucion_proveedor")
     await ajustarStock(producto.id, 1, "agregar", "devolucion_cliente")
@@ -397,7 +405,11 @@ describe("Ajustar stock: Gasto automático por pérdida reconocida de inventario
         unidadMedida: "unidad", formaVenta: "unidad",
       },
     })
-    await expect(ajustarStock(producto.id, 1, "agregar", "devolucion")).rejects.toThrow(/no admite agregar/)
-    await expect(ajustarStock(producto.id, 1, "reducir", "devolucion")).rejects.toThrow(/no admite reducir/)
+    const rechazo1 = await ajustarStock(producto.id, 1, "agregar", "devolucion")
+    expect(rechazo1.ok).toBe(false)
+    expect(rechazo1.error).toMatch(/no admite agregar/)
+    const rechazo2 = await ajustarStock(producto.id, 1, "reducir", "devolucion")
+    expect(rechazo2.ok).toBe(false)
+    expect(rechazo2.error).toMatch(/no admite reducir/)
   })
 })

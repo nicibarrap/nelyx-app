@@ -27,7 +27,8 @@ export function AvisoCambioCostoModal({ aviso, onCerrar }: { aviso: AvisoCosto; 
     if (!aviso.precioSugerido) { onCerrar(); return }
     start(async () => {
       try {
-        await actualizarPrecioProducto(aviso.productoId, aviso.precioSugerido!)
+        const resultado = await actualizarPrecioProducto(aviso.productoId, aviso.precioSugerido!)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo actualizar el precio"); onCerrar(); return }
         toast.success(`Precio de "${aviso.productoNombre}" actualizado a ${formatCLP(aviso.precioSugerido!)}`)
         onCerrar()
       } catch { toast.error("No se pudo actualizar el precio"); onCerrar() }

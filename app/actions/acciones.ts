@@ -957,7 +957,10 @@ export async function renombrarCategoriaPersonalizada(id: string, nuevoNombre: s
 }
 
 // ── PRODUCTOS ──────────────────────────────────────────────
-export async function crearProducto(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario sobre el enmascarado de errores de Next.js en producción.
+export async function crearProducto(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1057,6 +1060,10 @@ export async function crearProducto(formData: FormData) {
 
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el producto." }
+ }
 }
 
 /**
@@ -1078,7 +1085,8 @@ export async function importarProductosMasivo(productos: {
   stockMinimo: number
   descripcion: string | null
   fechaVencimiento?: string | null
-}[]) {
+}[]): Promise<{ ok: boolean; error?: string; exitosos: number; total: number; errores: string[] }> {
+ try {
   const session = await getSessionEscritura("productos")
   if (!productos || productos.length === 0) throw new Error("No hay productos para importar")
   // Tope defensivo — un catálogo real cabe muy por debajo de esto. Sin
@@ -1146,10 +1154,14 @@ export async function importarProductosMasivo(productos: {
 
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
-  return { exitosos, total: productos.length, errores }
+  return { ok: true, exitosos, total: productos.length, errores }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo importar.", exitosos: 0, total: productos?.length ?? 0, errores: [] }
+ }
 }
 
-export async function actualizarProducto(id: string, formData: FormData) {
+export async function actualizarProducto(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
@@ -1249,15 +1261,28 @@ export async function actualizarProducto(id: string, formData: FormData) {
   if (categoriaEditada) await asegurarCategoriaPersonalizada(session.user.id, categoriaEditada)
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el producto." }
+ }
 }
 
+// Devuelve {ok,error} en vez de lanzar — mismo motivo que crearEventoCalendario
+// más arriba: un throw crudo fuera de una Server Action se enmascara en
+// producción. avisoCosto/gastoRegistrado van siempre presentes (null si no
+// aplica o si falló) para que el cliente no tenga que angostar el tipo antes
+// de leerlos.
 export async function ajustarStock(
   id: string,
   cantidadUnidadDisplay: number,
   tipo: "agregar" | "reducir",
   motivo: TipoMovimientoStock = "ajuste_manual",
   opciones?: { observacion?: string; costoUnitario?: number; proveedorId?: string; fechaVencimiento?: string }
-) {
+): Promise<{
+  ok: boolean; error?: string; gastoRegistrado: number | null
+  avisoCosto: { productoId: string; productoNombre: string; costoAnterior: number; costoNuevo: number; precioActual: number | null; precioSugerido: number | null; margenActual: number | null } | null
+}> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
@@ -1362,6 +1387,7 @@ export async function ajustarStock(
         const precioSugerido = Math.round(costoNuevo / (1 - margenActual))
         if (precioSugerido !== precioActual) {
           return {
+            ok: true,
             avisoCosto: {
               productoId: id, productoNombre: prod.nombre,
               costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo),
@@ -1374,18 +1400,27 @@ export async function ajustarStock(
     }
     // No hay precio de referencia (o el margen no da para calcular) — igual
     // dejamos un aviso simple, sin precio sugerido, para que el dueño lo note.
-    return { avisoCosto: { productoId: id, productoNombre: prod.nombre, costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo), precioActual: null, precioSugerido: null, margenActual: null }, gastoRegistrado }
+    return { ok: true, avisoCosto: { productoId: id, productoNombre: prod.nombre, costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo), precioActual: null, precioSugerido: null, margenActual: null }, gastoRegistrado }
   }
-  return { avisoCosto: null, gastoRegistrado }
+  return { ok: true, avisoCosto: null, gastoRegistrado }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo ajustar el stock.", avisoCosto: null, gastoRegistrado: null }
+ }
 }
 
-export async function toggleProducto(id: string, activo: boolean) {
+export async function toggleProducto(id: string, activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   await db.producto.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/productos")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el estado del producto." }
+ }
 }
 
-export async function eliminarProducto(id: string) {
+export async function eliminarProducto(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("No encontrado")
@@ -1396,6 +1431,10 @@ export async function eliminarProducto(id: string) {
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el producto." }
+ }
 }
 
 // ── DEUDAS ─────────────────────────────────────────────────
@@ -2658,13 +2697,18 @@ export async function actualizarEstadoEventoCalendario(id: string, estado: strin
  * Acepta la sugerencia de precio tras un cambio de costo — el dueño la
  * confirmó explícitamente, así que se actualiza el precio de venta.
  */
-export async function actualizarPrecioProducto(productoId: string, nuevoPrecio: number) {
+export async function actualizarPrecioProducto(productoId: string, nuevoPrecio: number): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id: productoId, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
   await db.producto.update({ where: { id: productoId }, data: { precio: nuevoPrecio } })
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el precio." }
+ }
 }
 
 /**

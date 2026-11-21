@@ -199,11 +199,11 @@ function FormProducto({ inventarioActivo, producto, dbCategorias = [], dbUnidade
     const form = e.currentTarget
     start(async () => {
       try {
+        const resultado = producto ? await actualizarProducto(producto.id, fd) : await crearProducto(fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al guardar"); return }
         if (producto) {
-          await actualizarProducto(producto.id, fd)
           toast.success("Producto actualizado")
         } else {
-          await crearProducto(fd)
           toast.success("Producto agregado")
           form.reset()
         }
@@ -562,6 +562,7 @@ function ProductoDetalle({ producto, inventarioActivo, onEdit, onClose, onDelete
           costoUnitario: typeof costoAjuste === "number" ? costoAjuste : undefined,
           fechaVencimiento: fechaVencimientoAjuste || undefined,
         }))
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo ajustar el stock", { duration: 8000 }); return }
         // Un solo toast (no dos seguidos) — disparar dos toasts.* en el mismo
         // tick en que además se desmonta el panel de ajuste (setAjustando
         // abajo) le da al navegador más superficie para una condición de
@@ -791,7 +792,8 @@ function ToggleActivoBtn({ producto }: { producto: Producto }) {
   function handle() {
     start(async () => {
       try {
-        await toggleProducto(producto.id, !producto.activo)
+        const resultado = await toggleProducto(producto.id, !producto.activo)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
         toast.success(producto.activo ? "Producto desactivado" : "Producto activado")
       } catch (err: any) { toast.error(err?.message ?? "Error") }
     })
@@ -820,7 +822,8 @@ function EliminarProductoBtn({ producto, onDeleted }: { producto: Producto; onDe
   function handleEliminar() {
     start(async () => {
       try {
-        await eliminarProducto(producto.id)
+        const resultado = await eliminarProducto(producto.id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); return }
         toast.success("Producto eliminado permanentemente")
         onDeleted()
       } catch (err: any) { toast.error(err?.message ?? "No se pudo eliminar") }

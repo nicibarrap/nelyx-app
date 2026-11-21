@@ -138,8 +138,8 @@ describe("getSessionEscritura — un empleado no puede escribir fuera de sus mó
     const dueno = await crearDueno()
     await comoEmpleado(dueno.id, "Ana", ["venta"]) // "productos" nunca se le habilitó
 
-    await expect(crearProducto(formData({ nombre: "Mani", precio: "1000", costo: "500" })))
-      .rejects.toThrow("No tienes acceso a este módulo")
+    const resultado = await crearProducto(formData({ nombre: "Mani", precio: "1000", costo: "500" }))
+    expect(resultado).toEqual({ ok: false, error: "No tienes acceso a este módulo" })
 
     const productos = await db.producto.findMany({ where: { userId: dueno.id } })
     expect(productos).toHaveLength(0)
