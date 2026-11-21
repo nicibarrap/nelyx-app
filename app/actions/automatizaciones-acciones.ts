@@ -41,11 +41,19 @@ export async function obtenerAutomatizacionesCliente() {
   return { cumpleanos: user?.recordatoriosCumpleanosAutoActivo ?? false }
 }
 
-export async function actualizarAutomatizacionCumpleanos(activo: boolean) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario (app/actions/acciones.ts) sobre el enmascarado de
+// errores de Next.js en producción.
+export async function actualizarAutomatizacionCumpleanos(activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura()
   await db.user.update({
     where: { id: session.user.id },
     data: { recordatoriosCumpleanosAutoActivo: activo },
   })
   revalidatePath("/dashboard/configuracion")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo guardar" }
+ }
 }
