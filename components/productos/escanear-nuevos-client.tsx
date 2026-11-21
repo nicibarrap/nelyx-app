@@ -20,9 +20,16 @@ type ItemLista = ItemEscaneado & {
   id: string
   origen: "openfoodfacts" | "manual"
   editando: boolean
-  // Respaldo por IA cuando el nombre no calza con ninguna palabra clave
-  // local (getEmojiProducto cae al 📦 genérico) — se pide una sola vez por
-  // producto y se guarda acá para no repetir la llamada en cada render.
+  // Emoji que ya vino resuelto desde la propia etiqueta de Open Food/Beauty/
+  // Products Facts (ver MAPEO_CLASIFICACION en openfoodfacts-acciones.ts) —
+  // más confiable que adivinar por palabras del nombre, porque viene de la
+  // clasificación real del producto. Cuando está presente, gana sobre
+  // cualquier otra fuente (incluida la IA) y nunca se le pide IA.
+  emojiOFF?: string | null
+  // Respaldo por IA cuando no hubo emojiOFF y el nombre tampoco calza con
+  // ninguna palabra clave local (getEmojiProducto cae al 📦 genérico) — se
+  // pide una sola vez por producto y se guarda acá para no repetir la
+  // llamada en cada render.
   emojiIA?: string | null
 }
 
@@ -62,17 +69,20 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
   // "yogurt", etc. en el nombre) nunca generan esta llamada, así que el
   // costo real es bajo. "Fire and forget": no bloquea la UI ni el flujo de
   // escaneo siguiente, el emoji aparece solo cuando la respuesta llega.
-  async function pedirEmojiIASiHaceFalta(id: string, nombre: string, categoria: string | null) {
+  async function pedirEmojiIASiHaceFalta(id: string, nombre: string, categoria: string | null, emojiOFF?: string | null) {
+    if (emojiOFF) return // ya vino resuelto gratis desde Open Food/Beauty/Products Facts
     if (getEmojiProducto(nombre, categoria) !== "📦") return
     const sugerido = await obtenerEmojiSugeridoIA(nombre).catch(() => null)
     if (!sugerido) return
     setItems(prev => prev.map(it => it.id === id ? { ...it, emojiIA: sugerido } : it))
   }
 
-  // El match local (si existe) siempre gana sobre una sugerencia de IA
-  // previa que pueda haber quedado desactualizada tras una edición — es
-  // instantáneo, gratis y determinístico.
+  // Orden de confianza: el emoji de la propia etiqueta de Open Food/Beauty/
+  // Products Facts (si vino) > el match local por palabras clave > la
+  // sugerencia de IA previa que pueda haber quedado desactualizada tras una
+  // edición — las dos primeras son instantáneas, gratis y determinísticas.
   function emojiVisible(it: ItemLista): string {
+    if (it.emojiOFF) return it.emojiOFF
     const local = getEmojiProducto(it.nombre, it.categoria)
     return local !== "📦" ? local : (it.emojiIA ?? local)
   }
@@ -103,12 +113,12 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
       const categoria = resultado.categoria ?? sugerirCategoria(resultado.nombre).categoria
       const nuevo: ItemLista = {
         id: crypto.randomUUID(), codigoBarras: codigo,
-        nombre: resultado.nombre, categoria,
+        nombre: resultado.nombre, categoria, emojiOFF: resultado.emoji,
         origen: "openfoodfacts", editando: false,
       }
       setItems(prev => [...prev, nuevo])
       toast.success(`✨ ${resultado.nombre}`, { description: "Reconocido automáticamente" })
-      pedirEmojiIASiHaceFalta(nuevo.id, nuevo.nombre, nuevo.categoria)
+      pedirEmojiIASiHaceFalta(nuevo.id, nuevo.nombre, nuevo.categoria, nuevo.emojiOFF)
       if (viaCamara) reabrirEscaner(); else reenfocarInputPistola()
     } else {
       // No lo encontró — pide el nombre antes de seguir, sin excepción.
@@ -148,7 +158,7 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
     setItems(prev => prev.map(it => it.id === id ? { ...it, editando: !it.editando } : it))
     // item?.editando === true acá significa que se estaba editando y se
     // acaba de cerrar — reintenta el emoji IA por si el nombre cambió.
-    if (item?.editando) pedirEmojiIASiHaceFalta(id, item.nombre, item.categoria)
+    if (item?.editando) pedirEmojiIASiHaceFalta(id, item.nombre, item.categoria, item.emojiOFF)
   }
 
   function actualizarItem(id: string, cambios: Partial<ItemLista>) {
@@ -217,7 +227,12 @@ export function EscanearNuevosClient({ productosExistentes }: { productosExisten
 
                 {it.editando && (
                   <div className="mt-3 pl-8 space-y-2.5">
-                    <input value={it.nombre} onChange={e => actualizarItem(it.id, { nombre: e.target.value })} placeholder="Nombre" className={`${inp} h-9 text-xs`} />
+                    {/* Si cambia el nombre a mano, el emoji ya resuelto desde
+                        Open Food/Beauty/Products Facts puede dejar de
+                        calzar — se descarta para que vuelva a resolverse
+                        por palabras clave (y, si hace falta, por IA) a
+                        partir del nombre nuevo. */}
+                    <input value={it.nombre} onChange={e => actualizarItem(it.id, { nombre: e.target.value, emojiOFF: null })} placeholder="Nombre" className={`${inp} h-9 text-xs`} />
                     <div className="flex flex-wrap gap-1.5">
                       {CATEGORIAS_RAPIDAS.map(c => (
                         <button key={c} type="button" onClick={() => actualizarItem(it.id, { categoria: it.categoria === c ? null : c })}
