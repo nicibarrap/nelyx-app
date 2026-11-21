@@ -110,6 +110,7 @@ export function ReponerInventarioClient({ productos, proveedores }: { productos:
           })),
           proveedorId || undefined
         )
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo confirmar la reposición"); return }
         if (resultado.errores.length > 0) {
           toast.error(`${resultado.exitosos} de ${resultado.total} productos actualizados`, {
             description: resultado.errores.join(" · "),

@@ -99,7 +99,8 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     setEliminandoCliente(true)
     startTransition(async () => {
       try {
-        await eliminarCliente(clienteSeleccionado.id)
+        const resultado = await eliminarCliente(clienteSeleccionado.id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); return }
         toast.success("Cliente eliminado — su historial de ventas se conserva")
         setClienteId("")
         setConfirmarEliminarCliente(false)
@@ -378,7 +379,9 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     startTransition(async () => {
       try {
         const ticket = `nelyx-${Date.now()}`
-        const { aprobado, mensaje } = await iniciarCobroBciPagos(montoACobrar, ticket)
+        const resultado = await iniciarCobroBciPagos(montoACobrar, ticket)
+        if (!resultado.ok) { setCobroMaquina({ estado: "error", mensaje: resultado.error ?? "No se pudo cobrar con BCI Pagos" }); return }
+        const { aprobado, mensaje } = resultado
         if (aprobado) {
           setCobroMaquina({ estado: "aprobado" })
           await confirmarVentaTrasPago("Tarjeta (BCI Pagos)")
@@ -405,7 +408,9 @@ export function VentaClient({ productos, clientes, proveedorPagoActivo, terminal
     startTransition(async () => {
       try {
         const referencia = `nelyx-${Date.now()}`
-        const { orderId } = await iniciarCobroMaquina(montoACobrar, referencia)
+        const resultado = await iniciarCobroMaquina(montoACobrar, referencia)
+        if (!resultado.ok || !resultado.orderId) { setCobroMaquina({ estado: "error", mensaje: resultado.error ?? "No se pudo iniciar el cobro" }); return }
+        const { orderId } = resultado
 
         let intentos = 0
         const maxIntentos = 45 // ~90 segundos, consultando cada 2s

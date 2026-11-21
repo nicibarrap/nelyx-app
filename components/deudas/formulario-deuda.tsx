@@ -96,8 +96,9 @@ export function FormularioDeuda({ deudaEditar, onClose, proveedores = [] }: Prop
 
     start(async () => {
       try {
-        if (deudaEditar) { await editarDeuda(deudaEditar.id, fd); toast.success("Deuda actualizada ✅") }
-        else { await crearDeuda(fd); toast.success("Deuda registrada ✅") }
+        const resultado = deudaEditar ? await editarDeuda(deudaEditar.id, fd) : await crearDeuda(fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al guardar"); return }
+        toast.success(deudaEditar ? "Deuda actualizada ✅" : "Deuda registrada ✅")
         handleClose()
       } catch (err: any) { toast.error(err?.message ?? "Error al guardar") }
     })

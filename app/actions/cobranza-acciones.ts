@@ -44,7 +44,11 @@ export async function obtenerPlantillasCobranza() {
   } as Record<NivelCobranza, string>
 }
 
-export async function actualizarPlantillaCobranza(nivel: NivelCobranza, mensaje: string) {
+// Devuelven {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario (app/actions/acciones.ts) sobre el enmascarado de
+// errores de Next.js en producción.
+export async function actualizarPlantillaCobranza(nivel: NivelCobranza, mensaje: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura()
   if (!mensaje.trim()) throw new Error("El mensaje no puede estar vacío")
   await db.plantillaCobranza.upsert({
@@ -54,18 +58,27 @@ export async function actualizarPlantillaCobranza(nivel: NivelCobranza, mensaje:
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/cuentas-cobrar")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo guardar" }
+ }
 }
 
-export async function restaurarPlantillaCobranza(nivel: NivelCobranza) {
+export async function restaurarPlantillaCobranza(nivel: NivelCobranza): Promise<{ ok: boolean; error?: string; mensaje: string | null }> {
+ try {
   const session = await getSessionEscritura()
   await db.plantillaCobranza.deleteMany({ where: { userId: session.user.id, nivel } })
   revalidatePath("/dashboard/configuracion")
-  return PLANTILLAS_DEFAULT[nivel]
+  return { ok: true, mensaje: PLANTILLAS_DEFAULT[nivel] }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo restaurar", mensaje: null }
+ }
 }
 
 /** Registra que se contactó al cliente por un canal — es lo que permite
  * saber "cuándo fue el último contacto" sin tener que preguntarlo. */
-export async function registrarContactoCobranza(cuentaId: string, canal: "whatsapp" | "email", nivel: NivelCobranza, mensaje: string) {
+export async function registrarContactoCobranza(cuentaId: string, canal: "whatsapp" | "email", nivel: NivelCobranza, mensaje: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura()
   const cuenta = await db.cuentaPorCobrar.findFirst({ where: { id: cuentaId, userId: session.user.id } })
   if (!cuenta) throw new Error("Cuenta no encontrada")
@@ -75,6 +88,10 @@ export async function registrarContactoCobranza(cuentaId: string, canal: "whatsa
   })
   revalidatePath("/dashboard/cuentas-cobrar")
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el contacto" }
+ }
 }
 
 export async function obtenerHistorialContactos(cuentaId: string) {

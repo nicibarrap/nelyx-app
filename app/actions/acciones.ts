@@ -110,9 +110,14 @@ function validarNumerosProducto(campos: { precio: number | null; costo: number |
 }
 
 // ── MOVIMIENTOS ──────────────────────────────────────────────
-export async function ingresarMovimiento(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — mismo motivo que registrarVenta más
+// abajo: un throw crudo fuera de la Server Action se enmascara en
+// producción. Antes esta función ya distinguía errores propios de errores
+// de infraestructura, pero igual los relanzaba (throw) en ambos casos.
+export async function ingresarMovimiento(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   try {
     await ingresarMovimientoInterno(formData)
+    return { ok: true }
   } catch (err: any) {
     // Los errores propios (validaciones: "Stock insuficiente...", "Datos
     // inválidos", etc.) son un new Error() plano, sin .code — esos se
@@ -120,10 +125,10 @@ export async function ingresarMovimiento(formData: FormData) {
     // viene de Prisma/la DB (constraint, timeout, conexión) — antes esto
     // llegaba crudo al usuario; ahora se registra en el servidor para
     // poder diagnosticarlo y se muestra un mensaje claro en su lugar.
-    if (!err?.code) throw err
+    if (!err?.code) return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el movimiento." }
     console.error("Error en ingresarMovimiento:", err)
     Sentry.captureException(err)
-    throw new Error("No se pudo registrar el movimiento. Intenta de nuevo — si el problema persiste, contáctanos.")
+    return { ok: false, error: "No se pudo registrar el movimiento. Intenta de nuevo — si el problema persiste, contáctanos." }
   }
 }
 
@@ -281,18 +286,19 @@ async function ingresarMovimientoInterno(formData: FormData) {
   if (clienteId) revalidatePath("/dashboard/clientes")
 }
 
-export async function eliminarMovimiento(id: string): Promise<{ error: string } | undefined> {
+// Devuelve {ok,error} en vez de lanzar — ya se hacía a medias acá (ver nota
+// vieja más abajo) solo para el permiso "eliminar" aparte; ahora cubre
+// también getSessionEscritura y el resto de validaciones de esta función,
+// mismo criterio que crearEventoCalendario/crearProducto más arriba.
+export async function eliminarMovimiento(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("movimientos")
   // Además del acceso normal de escritura a "movimientos" (ya exigido por
   // getSessionEscritura arriba), eliminar requiere el permiso aparte
   // "movimientos:eliminar" — el dueño decide caso por caso si confía esto a
   // un empleado, independiente de si puede registrar movimientos nuevos.
-  // Se devuelve como dato ({ error }) en vez de lanzarse: un throw desde una
-  // Server Action pierde su mensaje en producción (Next.js lo reemplaza por
-  // uno genérico al cruzar al cliente, protocolo de React Flight), así que
-  // esta es la única forma confiable de que este mensaje llegue tal cual.
   if (session.user.esEmpleado && !puedeEliminar(session.user.modulosPermitidos, "movimientos")) {
-    return { error: "No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios." }
+    return { ok: false, error: "No tienes permiso para eliminar movimientos. Pídele al dueño que te habilite esta opción en Usuarios." }
   }
   const mov = await db.movimiento.findFirst({ where: { id, userId: session.user.id } })
   if (!mov) throw new Error("No encontrado")
@@ -343,6 +349,10 @@ export async function eliminarMovimiento(id: string): Promise<{ error: string } 
   if (mov.tipo === "COSTO_FIJO") revalidatePath("/dashboard/costos-fijos")
   if (mov.proveedorId) revalidatePath("/dashboard/proveedores")
   if (mov.clienteId) revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el movimiento." }
+ }
 }
 
 /** Arma el CSV de Historial de movimientos respetando exactamente los
@@ -957,7 +967,10 @@ export async function renombrarCategoriaPersonalizada(id: string, nuevoNombre: s
 }
 
 // ── PRODUCTOS ──────────────────────────────────────────────
-export async function crearProducto(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario sobre el enmascarado de errores de Next.js en producción.
+export async function crearProducto(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1057,6 +1070,10 @@ export async function crearProducto(formData: FormData) {
 
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el producto." }
+ }
 }
 
 /**
@@ -1078,7 +1095,8 @@ export async function importarProductosMasivo(productos: {
   stockMinimo: number
   descripcion: string | null
   fechaVencimiento?: string | null
-}[]) {
+}[]): Promise<{ ok: boolean; error?: string; exitosos: number; total: number; errores: string[] }> {
+ try {
   const session = await getSessionEscritura("productos")
   if (!productos || productos.length === 0) throw new Error("No hay productos para importar")
   // Tope defensivo — un catálogo real cabe muy por debajo de esto. Sin
@@ -1146,10 +1164,14 @@ export async function importarProductosMasivo(productos: {
 
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
-  return { exitosos, total: productos.length, errores }
+  return { ok: true, exitosos, total: productos.length, errores }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo importar.", exitosos: 0, total: productos?.length ?? 0, errores: [] }
+ }
 }
 
-export async function actualizarProducto(id: string, formData: FormData) {
+export async function actualizarProducto(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
@@ -1249,15 +1271,28 @@ export async function actualizarProducto(id: string, formData: FormData) {
   if (categoriaEditada) await asegurarCategoriaPersonalizada(session.user.id, categoriaEditada)
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el producto." }
+ }
 }
 
+// Devuelve {ok,error} en vez de lanzar — mismo motivo que crearEventoCalendario
+// más arriba: un throw crudo fuera de una Server Action se enmascara en
+// producción. avisoCosto/gastoRegistrado van siempre presentes (null si no
+// aplica o si falló) para que el cliente no tenga que angostar el tipo antes
+// de leerlos.
 export async function ajustarStock(
   id: string,
   cantidadUnidadDisplay: number,
   tipo: "agregar" | "reducir",
   motivo: TipoMovimientoStock = "ajuste_manual",
   opciones?: { observacion?: string; costoUnitario?: number; proveedorId?: string; fechaVencimiento?: string }
-) {
+): Promise<{
+  ok: boolean; error?: string; gastoRegistrado: number | null
+  avisoCosto: { productoId: string; productoNombre: string; costoAnterior: number; costoNuevo: number; precioActual: number | null; precioSugerido: number | null; margenActual: number | null } | null
+}> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
@@ -1362,6 +1397,7 @@ export async function ajustarStock(
         const precioSugerido = Math.round(costoNuevo / (1 - margenActual))
         if (precioSugerido !== precioActual) {
           return {
+            ok: true,
             avisoCosto: {
               productoId: id, productoNombre: prod.nombre,
               costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo),
@@ -1374,18 +1410,27 @@ export async function ajustarStock(
     }
     // No hay precio de referencia (o el margen no da para calcular) — igual
     // dejamos un aviso simple, sin precio sugerido, para que el dueño lo note.
-    return { avisoCosto: { productoId: id, productoNombre: prod.nombre, costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo), precioActual: null, precioSugerido: null, margenActual: null }, gastoRegistrado }
+    return { ok: true, avisoCosto: { productoId: id, productoNombre: prod.nombre, costoAnterior: Math.round(costoAnterior), costoNuevo: Math.round(costoNuevo), precioActual: null, precioSugerido: null, margenActual: null }, gastoRegistrado }
   }
-  return { avisoCosto: null, gastoRegistrado }
+  return { ok: true, avisoCosto: null, gastoRegistrado }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo ajustar el stock.", avisoCosto: null, gastoRegistrado: null }
+ }
 }
 
-export async function toggleProducto(id: string, activo: boolean) {
+export async function toggleProducto(id: string, activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   await db.producto.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/productos")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el estado del producto." }
+ }
 }
 
-export async function eliminarProducto(id: string) {
+export async function eliminarProducto(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id, userId: session.user.id } })
   if (!prod) throw new Error("No encontrado")
@@ -1396,10 +1441,17 @@ export async function eliminarProducto(id: string) {
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el producto." }
+ }
 }
 
 // ── DEUDAS ─────────────────────────────────────────────────
-export async function crearDeuda(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario sobre el enmascarado de errores de Next.js en producción.
+export async function crearDeuda(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   const acreedor = (formData.get("acreedor") as string)?.trim()
   if (!acreedor) throw new Error("El acreedor es requerido")
@@ -1467,6 +1519,10 @@ export async function crearDeuda(formData: FormData) {
   // quedar mostrando una versión vieja de la página hasta la próxima
   // revalidación natural.
   revalidatePath("/dashboard/alertas")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear la deuda." }
+ }
 }
 
 function calcularValorCuota(monto: number, interesMensual: number, cuotas: number): number {
@@ -1475,7 +1531,8 @@ function calcularValorCuota(monto: number, interesMensual: number, cuotas: numbe
   return (monto * r * Math.pow(1 + r, cuotas)) / (Math.pow(1 + r, cuotas) - 1)
 }
 
-export async function registrarPago(deudaId: string, formData: FormData) {
+export async function registrarPago(deudaId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   const montoPago = parseFloat(formData.get("monto") as string)
   const fecha = new Date(formData.get("fecha") as string)
@@ -1565,9 +1622,14 @@ export async function registrarPago(deudaId: string, formData: FormData) {
   // → al día, o completar la deuda y que desaparezca de ahí).
   revalidatePath("/dashboard/alertas")
   if (pagadaCompleta) await cancelarNotificacionesPorPrefijo(`deuda:${deudaId}:`)
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
+ }
 }
 
-export async function editarDeuda(id: string, formData: FormData) {
+export async function editarDeuda(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   const deuda = await db.deuda.findFirst({ where: { id, userId: session.user.id } })
   if (!deuda) throw new Error("Deuda no encontrada")
@@ -1638,9 +1700,14 @@ export async function editarDeuda(id: string, formData: FormData) {
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/alertas")
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar la deuda." }
+ }
 }
 
-export async function eliminarDeuda(id: string) {
+export async function eliminarDeuda(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("deudas")
   await db.deuda.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`deuda:${id}:`)
@@ -1650,11 +1717,18 @@ export async function eliminarDeuda(id: string) {
   // un proveedor, y su ficha también muestra deudas pendientes.
   revalidatePath("/dashboard/proveedores")
   revalidatePath("/dashboard/alertas")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la deuda." }
+ }
 }
 
 
 // ── COSTOS FIJOS RECURRENTES ───────────────────────────────
-export async function crearCostoUnico(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario sobre el enmascarado de errores de Next.js en producción.
+export async function crearCostoUnico(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1682,6 +1756,10 @@ export async function crearCostoUnico(formData: FormData) {
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el costo." }
+ }
 }
 
 const FRECUENCIAS_VALIDAS: FrecuenciaCosto[] = ["mensual", "trimestral", "anual"]
@@ -1692,7 +1770,8 @@ function leerFrecuencia(formData: FormData): FrecuenciaCosto {
   return "mensual"
 }
 
-export async function crearCostoRecurrente(formData: FormData) {
+export async function crearCostoRecurrente(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1721,9 +1800,14 @@ export async function crearCostoRecurrente(formData: FormData) {
   })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el costo recurrente." }
+ }
 }
 
-export async function editarCostoRecurrente(id: string, formData: FormData) {
+export async function editarCostoRecurrente(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("Nombre requerido")
@@ -1756,9 +1840,14 @@ export async function editarCostoRecurrente(id: string, formData: FormData) {
   if (count === 0) throw new Error("Costo fijo no encontrado")
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el costo recurrente." }
+ }
 }
 
-export async function actualizarEstadoCosto(id: string, estado: "activo" | "pausado" | "finalizado") {
+export async function actualizarEstadoCosto(id: string, estado: "activo" | "pausado" | "finalizado"): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.updateMany({
     where: { id, userId: session.user.id },
@@ -1766,13 +1855,22 @@ export async function actualizarEstadoCosto(id: string, estado: "activo" | "paus
   })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el estado." }
+ }
 }
 
-export async function eliminarCostoRecurrente(id: string) {
+export async function eliminarCostoRecurrente(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   await db.costoFijoRecurrente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el costo." }
+ }
 }
 
 export async function generarCostosDelMes(userId: string, mes: number, anio: number): Promise<number> {
@@ -1841,7 +1939,8 @@ export async function generarCostosDelMes(userId: string, mes: number, anio: num
   return generados
 }
 
-export async function marcarCostoPagado(generacionId: string, formData: FormData) {
+export async function marcarCostoPagado(generacionId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("costos-fijos")
   const generacion = await db.generacionCosto.findUnique({
     where: { id: generacionId },
@@ -1889,16 +1988,20 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
       })
     })
   } catch (err: any) {
-    if (!err?.code) throw err
+    if (!err?.code) return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
     console.error("Error en marcarCostoPagado:", err)
     Sentry.captureException(err)
-    throw new Error("No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos.")
+    return { ok: false, error: "No se pudo registrar el pago. Intenta de nuevo — si el problema persiste, contáctanos." }
   }
 
   revalidatePath("/dashboard/costos-fijos")
   revalidatePath("/dashboard/resumen")
   revalidatePath("/dashboard/movimientos")
   revalidatePath("/dashboard/alertas")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
+ }
 }
 
 
@@ -1913,7 +2016,11 @@ function leerManualTriEstado(formData: FormData, name: string): boolean | null {
   return null
 }
 
-export async function crearCliente(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar en las 6 funciones de este bloque —
+// ver el comentario de crearEventoCalendario sobre el enmascarado de
+// errores de Next.js en producción.
+export async function crearCliente(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("El nombre es requerido")
@@ -1941,9 +2048,14 @@ export async function crearCliente(formData: FormData) {
     }
   })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el cliente." }
+ }
 }
 
-export async function actualizarCliente(id: string, formData: FormData) {
+export async function actualizarCliente(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const cl = await db.cliente.findFirst({ where: { id, userId: session.user.id } })
   if (!cl) throw new Error("Cliente no encontrado")
@@ -1981,9 +2093,14 @@ export async function actualizarCliente(id: string, formData: FormData) {
     }
   })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el cliente." }
+ }
 }
 
-export async function eliminarCliente(id: string) {
+export async function eliminarCliente(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   // No se permite eliminar si tiene una cuenta por cobrar todavía
   // pendiente — borrarlo ahí perdería de vista a quién cobrarle. Su
@@ -2009,33 +2126,56 @@ export async function eliminarCliente(id: string) {
   await db.cliente.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/clientes")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el cliente." }
+ }
 }
 
-export async function toggleActivoCliente(id: string, activo: boolean) {
+export async function toggleActivoCliente(id: string, activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   await db.cliente.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el estado del cliente." }
+ }
 }
 
-export async function crearNotaCliente(clienteId: string, texto: string) {
+export async function crearNotaCliente(clienteId: string, texto: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const cl = await db.cliente.findFirst({ where: { id: clienteId, userId: session.user.id } })
   if (!cl) throw new Error("Cliente no encontrado")
   await db.notaCliente.create({ data: { clienteId, texto: texto.trim() } })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo guardar la nota." }
+ }
 }
 
-export async function eliminarNotaCliente(id: string) {
+export async function eliminarNotaCliente(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("clientes")
   const nota = await db.notaCliente.findFirst({ where: { id }, include: { cliente: { select: { userId: true } } } })
   if (!nota || nota.cliente.userId !== session.user.id) throw new Error("Sin acceso")
   await db.notaCliente.delete({ where: { id } })
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la nota." }
+ }
 }
 
 
 // ── PROVEEDORES ──────────────────────────────────────────────
-export async function crearProveedor(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar en las 7 funciones de este bloque —
+// ver el comentario de crearEventoCalendario sobre el enmascarado de
+// errores de Next.js en producción.
+export async function crearProveedor(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const nombre = (formData.get("nombre") as string)?.trim()
   if (!nombre) throw new Error("El nombre es requerido")
@@ -2055,9 +2195,14 @@ export async function crearProveedor(formData: FormData) {
     }
   })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear el proveedor." }
+ }
 }
 
-export async function actualizarProveedor(id: string, formData: FormData) {
+export async function actualizarProveedor(id: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const prov = await db.proveedor.findFirst({ where: { id, userId: session.user.id } })
   if (!prov) throw new Error("Proveedor no encontrado")
@@ -2084,21 +2229,36 @@ export async function actualizarProveedor(id: string, formData: FormData) {
     }
   })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el proveedor." }
+ }
 }
 
-export async function toggleActivoProveedor(id: string, activo: boolean) {
+export async function toggleActivoProveedor(id: string, activo: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   await db.proveedor.updateMany({ where: { id, userId: session.user.id }, data: { activo } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el estado del proveedor." }
+ }
 }
 
-export async function toggleFavoritoProveedor(id: string, esFavorito: boolean) {
+export async function toggleFavoritoProveedor(id: string, esFavorito: boolean): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   await db.proveedor.updateMany({ where: { id, userId: session.user.id }, data: { esFavorito } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cambiar el favorito." }
+ }
 }
 
-export async function eliminarProveedor(id: string) {
+export async function eliminarProveedor(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   // Sin este chequeo, borrar un proveedor con compras registradas fallaba
   // con el error crudo de la restricción de llave foránea de Postgres (no
@@ -2126,22 +2286,36 @@ export async function eliminarProveedor(id: string) {
   })
   await db.proveedor.deleteMany({ where: { id, userId: session.user.id } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar el proveedor." }
+ }
 }
 
-export async function crearNotaProveedor(proveedorId: string, texto: string) {
+export async function crearNotaProveedor(proveedorId: string, texto: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const prov = await db.proveedor.findFirst({ where: { id: proveedorId, userId: session.user.id } })
   if (!prov) throw new Error("Proveedor no encontrado")
   await db.notaProveedor.create({ data: { proveedorId, texto: texto.trim() } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo guardar la nota." }
+ }
 }
 
-export async function eliminarNotaProveedor(id: string) {
+export async function eliminarNotaProveedor(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("proveedores")
   const nota = await db.notaProveedor.findFirst({ where: { id }, include: { proveedor: { select: { userId: true } } } })
   if (!nota || nota.proveedor.userId !== session.user.id) throw new Error("Sin acceso")
   await db.notaProveedor.delete({ where: { id } })
   revalidatePath("/dashboard/proveedores")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la nota." }
+ }
 }
 
 
@@ -2179,7 +2353,11 @@ async function verificarLimiteCredito(clienteId: string, userId: string, montoNu
   }
 }
 
-export async function crearCuentaPorCobrar(formData: FormData) {
+// Devuelve {ok,error} en vez de lanzar en las 3 funciones de este bloque —
+// ver el comentario de crearEventoCalendario sobre el enmascarado de
+// errores de Next.js en producción.
+export async function crearCuentaPorCobrar(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("cuentas-cobrar")
   const clienteId = formData.get("clienteId") as string
   if (!clienteId) throw new Error("Cliente requerido")
@@ -2213,9 +2391,14 @@ export async function crearCuentaPorCobrar(formData: FormData) {
   })
   revalidatePath("/dashboard/cuentas-cobrar")
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo crear la cuenta por cobrar." }
+ }
 }
 
-export async function registrarPagoCuenta(cuentaId: string, formData: FormData) {
+export async function registrarPagoCuenta(cuentaId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("cuentas-cobrar")
   const monto = parseFloat(formData.get("monto") as string)
   if (!monto || monto <= 0) throw new Error("Monto inválido")
@@ -2289,9 +2472,14 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData) 
     accionUrl: "/dashboard/cuentas-cobrar",
     claveUnica: `cxc:${cuentaId}:pago:${Date.now()}`,
   })
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo registrar el pago." }
+ }
 }
 
-export async function eliminarCuentaPorCobrar(id: string) {
+export async function eliminarCuentaPorCobrar(id: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("cuentas-cobrar")
   await db.cuentaPorCobrar.deleteMany({ where: { id, userId: session.user.id } })
   await cancelarNotificacionesPorPrefijo(`cxc:${id}:`)
@@ -2299,6 +2487,10 @@ export async function eliminarCuentaPorCobrar(id: string) {
   // La cuenta eliminada puede estar vinculada a un cliente — mismo motivo
   // que crearCuentaPorCobrar/registrarPagoCuenta ya revalidan esta ruta.
   revalidatePath("/dashboard/clientes")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo eliminar la cuenta por cobrar." }
+ }
 }
 
 
@@ -2658,13 +2850,18 @@ export async function actualizarEstadoEventoCalendario(id: string, estado: strin
  * Acepta la sugerencia de precio tras un cambio de costo — el dueño la
  * confirmó explícitamente, así que se actualiza el precio de venta.
  */
-export async function actualizarPrecioProducto(productoId: string, nuevoPrecio: number) {
+export async function actualizarPrecioProducto(productoId: string, nuevoPrecio: number): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("productos")
   const prod = await db.producto.findFirst({ where: { id: productoId, userId: session.user.id } })
   if (!prod) throw new Error("Producto no encontrado")
   await db.producto.update({ where: { id: productoId }, data: { precio: nuevoPrecio } })
   revalidatePath("/dashboard/productos")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo actualizar el precio." }
+ }
 }
 
 /**

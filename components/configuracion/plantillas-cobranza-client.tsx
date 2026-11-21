@@ -12,7 +12,8 @@ export function PlantillasCobranzaClient({ plantillas }: { plantillas: Record<Ni
   function guardar(nivel: NivelCobranza) {
     startTransition(async () => {
       try {
-        await actualizarPlantillaCobranza(nivel, textos[nivel])
+        const resultado = await actualizarPlantillaCobranza(nivel, textos[nivel])
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo guardar"); return }
         toast.success("Plantilla guardada")
         setEditandoNivel(null)
       } catch (err: any) { toast.error(err?.message ?? "No se pudo guardar") }
@@ -22,8 +23,9 @@ export function PlantillasCobranzaClient({ plantillas }: { plantillas: Record<Ni
   function restaurar(nivel: NivelCobranza) {
     startTransition(async () => {
       try {
-        const original = await restaurarPlantillaCobranza(nivel)
-        setTextos(prev => ({ ...prev, [nivel]: original }))
+        const resultado = await restaurarPlantillaCobranza(nivel)
+        if (!resultado.ok || resultado.mensaje === null) { toast.error(resultado.error ?? "No se pudo restaurar"); return }
+        setTextos(prev => ({ ...prev, [nivel]: resultado.mensaje as string }))
         toast.success("Plantilla restaurada al mensaje original")
       } catch { toast.error("No se pudo restaurar") }
     })

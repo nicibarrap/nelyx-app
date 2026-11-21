@@ -47,6 +47,7 @@ export function ImportarProductosClient({ productosExistentes }: Props) {
     startTransition(async () => {
       try {
         const res = await importarProductosMasivo(productos)
+        if (!res.ok) { toast.error(res.error ?? "Error al importar"); return }
         setResultado(res)
         setFilas(null)
         if (res.errores.length === 0) toast.success(`✅ ${res.exitosos} producto${res.exitosos === 1 ? "" : "s"} importado${res.exitosos === 1 ? "" : "s"}`)

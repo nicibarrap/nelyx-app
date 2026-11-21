@@ -83,7 +83,11 @@ export async function listarTerminalesParaConectar(accessToken: string): Promise
 /** Paso 2: guarda la conexión ya con la terminal elegida. El access token se
  * cifra antes de guardarlo (ver lib/crypto-pagos.ts) — nunca se guarda en
  * texto plano, ni aquí ni en ningún otro punto de entrada. */
-export async function conectarMercadoPago(accessToken: string, terminalId: string) {
+// Devuelve {ok,error} en vez de lanzar — ver el comentario de
+// crearEventoCalendario (app/actions/acciones.ts) sobre el enmascarado de
+// errores de Next.js en producción.
+export async function conectarMercadoPago(accessToken: string, terminalId: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("configuracion")
   const accessTokenCifrado = cifrarToken(accessToken)
   await db.conexionPago.upsert({
@@ -93,13 +97,22 @@ export async function conectarMercadoPago(accessToken: string, terminalId: strin
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo conectar Mercado Pago." }
+ }
 }
 
-export async function desconectarPago(proveedor: string) {
+export async function desconectarPago(proveedor: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("configuracion")
   await db.conexionPago.deleteMany({ where: { userId: session.user.id, proveedor } })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo desconectar." }
+ }
 }
 
 /** Paso 1 al conectar TUU: no hay forma de listar terminales como en
@@ -114,7 +127,8 @@ export async function probarConexionTuu(apiKey: string) {
 
 /** Paso 2: guarda la conexión con el terminal que el dueño escribió. La
  * API Key se cifra igual que el Access Token de Mercado Pago. */
-export async function conectarTuu(apiKey: string, device: string) {
+export async function conectarTuu(apiKey: string, device: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("configuracion")
   const apiKeyCifrada = cifrarToken(apiKey)
   await db.conexionPago.upsert({
@@ -124,6 +138,10 @@ export async function conectarTuu(apiKey: string, device: string) {
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo conectar TUU." }
+ }
 }
 
 /** Paso 1 al conectar SumUp: con la API Key y el código de comercio, trae
@@ -139,7 +157,8 @@ export async function listarLectoresParaConectarSumup(apiKey: string, merchantCo
  * la API Key como el código de comercio en cada llamada (a diferencia de
  * Mercado Pago/TUU, que solo necesitan un token) — van juntos, cifrados,
  * dentro de accessToken; terminalId guarda el id del lector. */
-export async function conectarSumup(apiKey: string, merchantCode: string, readerId: string) {
+export async function conectarSumup(apiKey: string, merchantCode: string, readerId: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("configuracion")
   const credencialesCifradas = cifrarToken(JSON.stringify({ apiKey, merchantCode }))
   await db.conexionPago.upsert({
@@ -149,6 +168,10 @@ export async function conectarSumup(apiKey: string, merchantCode: string, reader
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo conectar SumUp." }
+ }
 }
 
 /** Transbank no tiene credenciales que validar en el servidor (el POS se
@@ -156,7 +179,8 @@ export async function conectarSumup(apiKey: string, merchantCode: string, reader
  * nube) — este paso solo guarda qué puerto quedó probado como referencia,
  * ver lib/pagos/transbank-cliente.ts. accessToken queda cifrado vacío
  * porque la columna es obligatoria y acá no hay ningún token que guardar. */
-export async function conectarTransbank(puerto: string) {
+export async function conectarTransbank(puerto: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("configuracion")
   await db.conexionPago.upsert({
     where: { userId_proveedor: { userId: session.user.id, proveedor: "transbank" } },
@@ -165,6 +189,10 @@ export async function conectarTransbank(puerto: string) {
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo conectar Transbank." }
+ }
 }
 
 /** Paso único para conectar BCI Pagos: a diferencia de los demás, no hay
@@ -172,7 +200,8 @@ export async function conectarTransbank(puerto: string) {
  * (pantalla "Bind New EPOS") solo dura ~5 minutos, así que se consume de
  * una vez. appId/appSecret se guardan cifrados junto, igual que SumUp;
  * terminalId guarda el número de serie que devuelve la vinculación. */
-export async function conectarBciPagos(appId: string, appSecret: string, codigo: string) {
+export async function conectarBciPagos(appId: string, appSecret: string, codigo: string): Promise<{ ok: boolean; error?: string }> {
+ try {
   const session = await getSessionEscritura("configuracion")
   const { serialNumber } = await vincularTerminalBciPagos(appId, appSecret, codigo)
   const credencialesCifradas = cifrarToken(JSON.stringify({ appId, appSecret }))
@@ -183,6 +212,10 @@ export async function conectarBciPagos(appId: string, appSecret: string, codigo:
   })
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/dashboard/venta")
+  return { ok: true }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo conectar BCI Pagos." }
+ }
 }
 
 /** BCI Pagos no tiene ningún endpoint para consultar un cobro después —
@@ -191,12 +224,21 @@ export async function conectarBciPagos(appId: string, appSecret: string, codigo:
  * diferencia de iniciarCobroMaquina/consultarCobroMaquina, que crean una
  * orden y la consultan después). Por eso esto vive en una acción aparte
  * en vez de sumarse a PROVEEDORES_MAQUINA. */
-export async function iniciarCobroBciPagos(monto: number, ticket: string) {
+// Devuelve {ok,error,...} en vez de lanzar — ver el comentario de
+// crearEventoCalendario (app/actions/acciones.ts) sobre el enmascarado de
+// errores de Next.js en producción. aprobado/mensaje quedan en null del
+// lado del error para no obligar a angostar el tipo antes de leerlos.
+export async function iniciarCobroBciPagos(monto: number, ticket: string): Promise<{ ok: boolean; error?: string; aprobado: boolean | null; mensaje: string | null }> {
+ try {
   const session = await getSessionEscritura("venta")
   const conexion = await db.conexionPago.findFirst({ where: { userId: session.user.id, proveedor: "bcipagos", activo: true } })
   if (!conexion || !conexion.terminalId) throw new Error("No tienes BCI Pagos conectado. Ve a Configuración para conectarlo.")
   const { appId, appSecret } = JSON.parse(descifrarToken(conexion.accessToken)) as { appId: string; appSecret: string }
-  return cobrarBciPagos(appId, appSecret, conexion.terminalId, monto, ticket)
+  const { aprobado, mensaje } = await cobrarBciPagos(appId, appSecret, conexion.terminalId, monto, ticket)
+  return { ok: true, aprobado, mensaje }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo cobrar con BCI Pagos.", aprobado: null, mensaje: null }
+ }
 }
 
 // Un local solo debería tener una máquina conectada a la vez, pero como
@@ -209,7 +251,10 @@ const PROVEEDORES_MAQUINA = ["mercadopago", "sumup", "tuu"] as const
 /** Se llama desde Venta al elegir "Cobrar con máquina conectada" — le pide
  * a la terminal que cobre el monto exacto, sea cual sea el proveedor que
  * el local tenga conectado. */
-export async function iniciarCobroMaquina(monto: number, referenciaVenta: string) {
+// Devuelve {ok,error,...} en vez de lanzar — mismo motivo que
+// iniciarCobroBciPagos más arriba.
+export async function iniciarCobroMaquina(monto: number, referenciaVenta: string): Promise<{ ok: boolean; error?: string; orderId: string | null }> {
+ try {
   const session = await getSessionEscritura("venta")
   const conexion = await db.conexionPago.findFirst({
     where: { userId: session.user.id, proveedor: { in: [...PROVEEDORES_MAQUINA] }, activo: true },
@@ -219,7 +264,7 @@ export async function iniciarCobroMaquina(monto: number, referenciaVenta: string
 
   if (conexion.proveedor === "tuu") {
     const { paymentRequestId } = await crearSolicitudPagoTuu(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
-    return { orderId: String(paymentRequestId) }
+    return { ok: true, orderId: String(paymentRequestId) }
   }
   if (conexion.proveedor === "sumup") {
     // SumUp no tiene un endpoint de consulta — el resultado llega por
@@ -240,10 +285,13 @@ export async function iniciarCobroMaquina(monto: number, referenciaVenta: string
     const cobro = await db.cobroSumup.create({
       data: { userId: session.user.id, clientTransactionId, webhookToken, merchantCode, estado: "pendiente" },
     })
-    return { orderId: cobro.id }
+    return { ok: true, orderId: cobro.id }
   }
   const { orderId } = await crearOrdenMercadoPago(descifrarToken(conexion.accessToken), conexion.terminalId, monto, referenciaVenta)
-  return { orderId }
+  return { ok: true, orderId }
+ } catch (err) {
+  return { ok: false, error: err instanceof Error ? err.message : "No se pudo iniciar el cobro con la máquina.", orderId: null }
+ }
 }
 
 /** Se consulta repetido cada 2-3 segundos desde el frontend mientras se

@@ -14,7 +14,12 @@ export function AutomatizacionesClienteClient({ valores: valoresIniciales }: { v
     setValores({ cumpleanos: nuevo })
     start(async () => {
       try {
-        await actualizarAutomatizacionCumpleanos(nuevo)
+        const resultado = await actualizarAutomatizacionCumpleanos(nuevo)
+        if (!resultado.ok) {
+          setValores({ cumpleanos: !nuevo })
+          toast.error(resultado.error ?? "No se pudo guardar")
+          return
+        }
         toast.success(nuevo ? "Automatización activada" : "Automatización desactivada")
       } catch (err: any) {
         setValores({ cumpleanos: !nuevo })

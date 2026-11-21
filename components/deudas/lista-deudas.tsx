@@ -131,7 +131,8 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
     if (!confirm("¿Eliminar esta deuda?")) return
     startTransition(async () => {
       try {
-        await eliminarDeuda(id)
+        const resultado = await eliminarDeuda(id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); return }
         toast.success("Deuda eliminada")
         if (deudaDetalle?.id === id) seleccionarDeuda(null)
       } catch { toast.error("No se pudo eliminar") }
@@ -142,7 +143,8 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
     if (!deudaDetalle || !pagoWarning) return
     startTransition(async () => {
       try {
-        await conTimeout(registrarPago(deudaDetalle.id, pagoWarning.fd))
+        const resultado = await conTimeout(registrarPago(deudaDetalle.id, pagoWarning.fd))
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar el pago", { duration: 8000 }); return }
         toast.success("Pago registrado correctamente")
         setPagoWarning(null)
         setShowPago(false)
@@ -178,7 +180,8 @@ export function ListaDeudas({ deudas, filtroActual, conteos, proveedores }: Prop
     const form2 = form
     startTransition(async () => {
       try {
-        await conTimeout(registrarPago(deudaDetalle.id, fd))
+        const resultado = await conTimeout(registrarPago(deudaDetalle.id, fd))
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar el pago", { duration: 8000 }); return }
         toast.success("Pago registrado correctamente")
         form2.reset()
         setShowPago(false)

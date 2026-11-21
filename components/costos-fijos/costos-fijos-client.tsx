@@ -161,24 +161,28 @@ function FormCostoDrawer({ mode, costoExistente, dbCategorias, onClose, onSucces
 
     start(async () => {
       try {
+        let resultado: { ok: boolean; error?: string }
+        let mensaje: string
         if (mode === "editar" && costoExistente) {
           fd.set("fechaInicio", fechaInicio)
           fd.set("frecuencia", frecuencia)
           if (fechaTermino) fd.set("fechaTermino", fechaTermino)
-          await editarCostoRecurrente(costoExistente.id, fd)
-          toast.success("✅ Costo fijo actualizado")
+          resultado = await editarCostoRecurrente(costoExistente.id, fd)
+          mensaje = "✅ Costo fijo actualizado"
         } else if (esRecurrente) {
           fd.set("fechaInicio", fechaInicio)
           fd.set("frecuencia", frecuencia)
           if (fechaTermino) fd.set("fechaTermino", fechaTermino)
-          await crearCostoRecurrente(fd)
-          toast.success("✅ Costo fijo recurrente creado")
+          resultado = await crearCostoRecurrente(fd)
+          mensaje = "✅ Costo fijo recurrente creado"
         } else {
           fd.set("fecha", fechaUnico)
           fd.set("metodoPago", metodoPagoUnico)
-          await crearCostoUnico(fd)
-          toast.success("✅ Costo único registrado")
+          resultado = await crearCostoUnico(fd)
+          mensaje = "✅ Costo único registrado"
         }
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        toast.success(mensaje)
         onSuccess()
       } catch (err: any) { toast.error(err?.message ?? "Error") }
     })
@@ -333,7 +337,8 @@ function FormMarcarPagado({ costo, onClose, onSuccess }: { costo: Costo; onClose
     fd.set("monto", montoDisplay.replace(/\./g, ""))
     start(async () => {
       try {
-        await marcarCostoPagado(costo.generacionId!, fd)
+        const resultado = await marcarCostoPagado(costo.generacionId!, fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
         toast.success("✅ Pago registrado correctamente")
         onSuccess()
       } catch (err: any) { toast.error(err?.message ?? "Error") }
@@ -506,7 +511,11 @@ export function CostosFijosClient({ costosData, totalMes, activosAplicablesCount
 
   function handleEstado(id: string, estado: "activo" | "pausado" | "finalizado") {
     start(async () => {
-      try { await actualizarEstadoCosto(id, estado); toast.success("Estado actualizado"); router.refresh() }
+      try {
+        const resultado = await actualizarEstadoCosto(id, estado)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
+        toast.success("Estado actualizado"); router.refresh()
+      }
       catch (err: any) { toast.error(err?.message ?? "Error") }
     })
   }
@@ -516,7 +525,8 @@ export function CostosFijosClient({ costosData, totalMes, activosAplicablesCount
     const { id } = eliminando
     start(async () => {
       try {
-        await eliminarCostoRecurrente(id)
+        const resultado = await eliminarCostoRecurrente(id)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error"); return }
         toast.success("Eliminado")
         setEliminando(null)
         if (selectedId === id) setSelectedId(null)

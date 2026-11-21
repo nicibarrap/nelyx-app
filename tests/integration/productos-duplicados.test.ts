@@ -26,8 +26,8 @@ describe("crearProducto — nombre duplicado", () => {
     const user = await crearUsuario()
     await crearProducto(formData({ nombre: "Mani", precio: "1000", costo: "500" }))
 
-    await expect(crearProducto(formData({ nombre: "MANI", precio: "1200", costo: "600" })))
-      .rejects.toThrow(/ya tienes un producto llamado/i)
+    const resultado = await crearProducto(formData({ nombre: "MANI", precio: "1200", costo: "600" }))
+    expect(resultado).toEqual({ ok: false, error: expect.stringMatching(/ya tienes un producto llamado/i) })
 
     const productos = await db.producto.findMany({ where: { userId: user.id } })
     expect(productos).toHaveLength(1)
@@ -39,7 +39,7 @@ describe("crearProducto — nombre duplicado", () => {
     const original = await db.producto.findFirstOrThrow({ where: { nombre: "Mani" } })
     await toggleProducto(original.id, false) // lo desactiva
 
-    await expect(crearProducto(formData({ nombre: "Mani", precio: "1100", costo: "550" }))).resolves.toBeUndefined()
+    await expect(crearProducto(formData({ nombre: "Mani", precio: "1100", costo: "550" }))).resolves.toEqual({ ok: true })
     const activos = await db.producto.findMany({ where: { userId: original.userId, activo: true } })
     expect(activos).toHaveLength(1)
   })
@@ -52,8 +52,8 @@ describe("actualizarProducto — nombre duplicado", () => {
     await crearProducto(formData({ nombre: "Galleta", precio: "800", costo: "400" }))
     const galleta = await db.producto.findFirstOrThrow({ where: { nombre: "Galleta" } })
 
-    await expect(actualizarProducto(galleta.id, formData({ nombre: "mani", precio: "800", costo: "400" })))
-      .rejects.toThrow(/ya tienes un producto llamado/i)
+    const resultado = await actualizarProducto(galleta.id, formData({ nombre: "mani", precio: "800", costo: "400" }))
+    expect(resultado).toEqual({ ok: false, error: expect.stringMatching(/ya tienes un producto llamado/i) })
   })
 
   it("deja guardar un producto sin tocarle el nombre (no choca consigo mismo)", async () => {
@@ -61,7 +61,7 @@ describe("actualizarProducto — nombre duplicado", () => {
     await crearProducto(formData({ nombre: "Mani", precio: "1000", costo: "500" }))
     const mani = await db.producto.findFirstOrThrow({ where: { nombre: "Mani" } })
 
-    await expect(actualizarProducto(mani.id, formData({ nombre: "Mani", precio: "1200", costo: "500" }))).resolves.toBeUndefined()
+    await expect(actualizarProducto(mani.id, formData({ nombre: "Mani", precio: "1200", costo: "500" }))).resolves.toEqual({ ok: true })
     const actualizado = await db.producto.findUniqueOrThrow({ where: { id: mani.id } })
     expect(Number(actualizado.precio)).toBe(1200)
   })

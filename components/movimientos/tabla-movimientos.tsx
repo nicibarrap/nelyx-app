@@ -57,7 +57,7 @@ export function TablaMovimientos({ movimientos }: { movimientos: any[] }) {
     startTransition(async () => {
       try {
         const resultado = await eliminarMovimiento(id)
-        if (resultado?.error) { toast.error(resultado.error); return }
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo eliminar"); return }
         toast.success("Eliminado")
       }
       catch { toast.error("No se pudo eliminar") }

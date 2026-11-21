@@ -52,11 +52,13 @@ describe("editarCostoRecurrente", () => {
     }))
     const costo = await db.costoFijoRecurrente.findFirstOrThrow({ where: { userId: sesionActual!.user.id } })
 
-    await expect(editarCostoRecurrente(costo.id, formData({
+    const resultado = await editarCostoRecurrente(costo.id, formData({
       nombre: "Internet", monto: "20000",
       fechaInicio: new Date(2026, 5, 1).toISOString(),
       fechaTermino: new Date(2026, 0, 1).toISOString(),
-    }))).rejects.toThrow(/no puede ser antes/)
+    }))
+    expect(resultado.ok).toBe(false)
+    expect(resultado.error).toMatch(/no puede ser antes/)
   })
 
   it("rechaza monto inválido (cero o negativo)", async () => {
@@ -66,9 +68,10 @@ describe("editarCostoRecurrente", () => {
     }))
     const costo = await db.costoFijoRecurrente.findFirstOrThrow({ where: { userId: sesionActual!.user.id } })
 
-    await expect(editarCostoRecurrente(costo.id, formData({
+    const resultado = await editarCostoRecurrente(costo.id, formData({
       nombre: "Software", monto: "0", fechaInicio: new Date(2026, 0, 1).toISOString(),
-    }))).rejects.toThrow("Monto inválido")
+    }))
+    expect(resultado).toEqual({ ok: false, error: "Monto inválido" })
   })
 
   it("un usuario no puede editar el costo fijo de otro (IDOR)", async () => {
@@ -80,9 +83,10 @@ describe("editarCostoRecurrente", () => {
 
     // Cambia de sesión a un segundo usuario distinto.
     await crearUsuario()
-    await expect(editarCostoRecurrente(costoDeOtro.id, formData({
+    const resultado = await editarCostoRecurrente(costoDeOtro.id, formData({
       nombre: "Hackeado", monto: "1", fechaInicio: new Date(2026, 0, 1).toISOString(),
-    }))).rejects.toThrow("Costo fijo no encontrado")
+    }))
+    expect(resultado).toEqual({ ok: false, error: "Costo fijo no encontrado" })
 
     const sinCambios = await db.costoFijoRecurrente.findUniqueOrThrow({ where: { id: costoDeOtro.id } })
     expect(sinCambios.nombre).toBe("Arriendo")

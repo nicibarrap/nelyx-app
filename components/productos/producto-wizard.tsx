@@ -229,7 +229,8 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
           fd.set("unidadVentaCantidad", String(pesoPresNum))
           fd.set("unidadVentaTipo", unidadVentaTipo)
         }
-        await crearProducto(fd)
+        const resultado = await crearProducto(fd)
+        if (!resultado.ok) { toast.error(resultado.error ?? "Error al guardar el producto"); return }
         toast.success("✅ Producto creado con éxito")
         onSuccess()
         onClose()

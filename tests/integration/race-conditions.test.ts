@@ -80,7 +80,11 @@ describe("marcarCostoPagado bajo concurrencia real", () => {
       marcarCostoPagado(generacion.id, formData({ monto: "100000", fecha: new Date().toISOString() })),
     ])
 
-    const exitosos = resultados.filter(r => r.status === "fulfilled")
+    // marcarCostoPagado ya no lanza para este caso — devuelve {ok:false,error}
+    // como dato (ver comentario en acciones.ts), así que las dos promesas
+    // siempre quedan "fulfilled"; lo que importa es cuál de ellas de verdad
+    // ganó la carrera (ok:true).
+    const exitosos = resultados.filter(r => r.status === "fulfilled" && r.value.ok)
     expect(exitosos.length).toBe(1)
 
     const movimientos = await db.movimiento.findMany({ where: { userId: user.id, tipo: "COSTO_FIJO" } })

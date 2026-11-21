@@ -84,7 +84,8 @@ export function CentroCobranza({ cuenta, plantillas, nombreNegocio, usuarioEnvia
     if (!plantillaEditada.trim()) { toast.error("El mensaje no puede estar vacío"); return }
     startSaving(async () => {
       try {
-        await actualizarPlantillaCobranza(nivel, plantillaEditada)
+        const resultado = await actualizarPlantillaCobranza(nivel, plantillaEditada)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo guardar"); return }
         setPlantillasLocal(prev => ({ ...prev, [nivel]: plantillaEditada }))
         setEditando(false)
         toast.success("Mensaje guardado como predeterminado para este nivel")
@@ -96,7 +97,8 @@ export function CentroCobranza({ cuenta, plantillas, nombreNegocio, usuarioEnvia
     window.open(url, "_blank")
     startTransition(async () => {
       try {
-        await registrarContactoCobranza(cuenta.id, canal, nivel, mensaje)
+        const resultado = await registrarContactoCobranza(cuenta.id, canal, nivel, mensaje)
+        if (!resultado.ok) { toast.error(resultado.error ?? "No se pudo registrar el contacto"); return }
         setHistorial(prev => [{ id: crypto.randomUUID(), canal, nivel, createdAt: new Date().toISOString() }, ...prev])
       } catch { toast.error("No se pudo registrar el contacto") }
     })
