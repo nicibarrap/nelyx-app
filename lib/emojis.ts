@@ -10,6 +10,21 @@
 const REGLAS_EMOJI: [string[], string][] = [
   [["leche", "yogurt", "yoghurt", "mantequilla", "margarina", "crema", "manjar", "manjarblanco"], "🥛"],
   [["queso"], "🧀"],
+  // Una palabra de producto explícita (acá y en las demás reglas de este
+  // bloque) siempre va ANTES que cualquier regla basada solo en el nombre
+  // de una marca — una marca láctea también puede vender jalea (ej. Colun),
+  // así que "jalea"/"mermelada" tienen que ganarle a "colun" si ambas
+  // calzan en el mismo nombre.
+  [["jalea", "mermelada", "confitura"], "🫙"],
+  // Marcas chilenas de almacén cuyo nombre de producto no suele decir
+  // "leche"/"yogurt" explícitamente (ej. "Soprole Gold Lúcuma y Nueces")
+  // — son hechos públicos (a qué rubro pertenece cada marca), no datos
+  // extraídos de ningún sitio de terceros. Lista acotada a propósito:
+  // cuando el producto viene de un código escaneado, el emoji ya se
+  // resuelve mejor con la propia clasificación de Open Food Facts (ver
+  // lib/clasificacion-openfoodfacts.ts) — esto es solo el respaldo para
+  // cuando no hay código (creación manual o planilla sin código de barras).
+  [["soprole", "loncoleche", "quillayes", "surlat", "chamyto"], "🥛"],
   [["huevo"], "🥚"],
   [["pan ", "pan,", "hallulla", "marraqueta", "baguette", "pan integral", "pan molde", "pan de molde", "amasado", "coliza"], "🍞"],
   [["torta", "queque", "kuchen", "pastel", "bizcocho", "tarta"], "🍰"],
@@ -52,13 +67,15 @@ const REGLAS_EMOJI: [string[], string][] = [
   [["arroz"], "🍚"],
   [["fideo", "tallarin", "tallarín", "pasta", "spaghetti", "espagueti"], "🍝"],
   [["porotos", "poroto", "lenteja", "garbanzo", "legumbre"], "🫘"],
-  [["mani", "maní", "cacahuate", "cacahuete", "nuez", "nueces", "almendra", "avellana", "castaña", "pistacho", "maravilla", "pipas", "semillas"], "🥜"],
   [["harina"], "🌾"],
   [["azucar", "azúcar"], "🧂"],
   [["sal "], "🧂"],
   [["aceite"], "🫒"],
   [["chocolate"], "🍫"],
-  [["galleta"], "🍪"],
+  [["galleta", "wafer", "oblea"], "🍪"],
+  // Mismo criterio que las marcas lácteas de más arriba (ej. "Marco Polo
+  // Carioca" no dice "galleta" en ningún lado).
+  [["carioca", "chiky", "triton", "tritón"], "🍪"],
   [["dulce", "caramelo", "confite", "bombon", "bombón"], "🍬"],
   [["chicle"], "🍬"],
   [["helado"], "🍦"],
@@ -97,6 +114,15 @@ const EMOJI_POR_CATEGORIA: Record<string, string> = {
   "Accesorios": "🧰", "Otros": "📦",
 }
 
+// Palabras que describen más un sabor o ingrediente secundario que el
+// producto en sí — "Yogurt Gold Lúcuma y Nueces" no es un snack de frutos
+// secos. Por eso se consultan recién DESPUÉS de la categoría (nunca antes):
+// si ya sabemos que es lácteo, eso manda; "nueces" solo decide cuando no
+// hay ninguna otra pista (ej. un producto realmente a base de frutos secos).
+const REGLAS_EMOJI_SABOR: [string[], string][] = [
+  [["mani", "maní", "cacahuate", "cacahuete", "nuez", "nueces", "almendra", "avellana", "castaña", "pistacho", "maravilla", "pipas", "semillas"], "🥜"],
+]
+
 // Exige que la palabra clave empiece en un borde de palabra (justo después
 // de un espacio) — un simple "texto.includes(clave)" hacía calzar "te "
 // dentro de "desodora[te ]" (emoji de té para un desodorante) o "sal "
@@ -120,5 +146,8 @@ export function getEmojiProducto(nombre: string, categoriaFallback?: string | nu
     if (palabras.some(p => contieneComoPalabra(texto, p.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))) return emoji
   }
   if (categoriaFallback && EMOJI_POR_CATEGORIA[categoriaFallback]) return EMOJI_POR_CATEGORIA[categoriaFallback]
+  for (const [palabras, emoji] of REGLAS_EMOJI_SABOR) {
+    if (palabras.some(p => contieneComoPalabra(texto, p.normalize("NFD").replace(/[̀-ͯ]/g, "")))) return emoji
+  }
   return "📦"
 }

@@ -11,6 +11,7 @@
 // ══════════════════════════════════════════════════════════════════════
 import { auth } from "@/lib/auth"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
+import { clasificarDesdeTags } from "@/lib/clasificacion-openfoodfacts"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 
 const USER_AGENT = "Nelyx - Plataforma de gestion para almacenes chilenos - https://nelyx.vercel.app"
@@ -21,35 +22,9 @@ const FUENTES = [
   "https://world.openproductsfacts.org",
 ]
 
-// Cada proyecto clasifica los productos con sus propias etiquetas (en
-// inglés, ej. "en:dairies") — mucho más confiable que adivinar la
-// categoría solo por palabras del nombre, porque conocen el producto real
-// aunque el nombre no diga explícitamente "yogurt" (ej. "Gold Lúcuma y
-// Nueces" de Soprole — el nombre no lo dice, pero la etiqueta sí sabe que
-// es lácteo).
-const MAPEO_CATEGORIA: [string[], string][] = [
-  [["dairies", "yogurts", "fermented-milk-products", "cheeses", "milks", "creams", "butters"], "Lácteos"],
-  [["meats", "beef", "porks", "chickens", "sausages", "cold-cuts", "poultries"], "Carnes"],
-  [["fishes", "seafood", "shellfish"], "Carnes"],
-  [["fresh-fruits", "fruits", "canned-fruits"], "Frutas"],
-  [["fresh-vegetables", "vegetables", "canned-vegetables"], "Verduras"],
-  [["breads", "bakery-products", "pastries", "viennoiseries"], "Panadería"],
-  [["beverages", "sodas", "waters", "juices", "plant-based-beverages", "energy-drinks", "beers", "wines"], "Bebidas"],
-  [["cleaning-products", "detergents", "dishwashing-products", "soaps", "shampoos", "cosmetics", "perfumes", "hair-care", "skin-care"], "Limpieza"],
-]
-
-function categoriaDesdeTags(categoriesTags: string[] | undefined): string | null {
-  if (!categoriesTags?.length) return null
-  const tags = categoriesTags.map(t => t.replace(/^\w+:/, "").toLowerCase())
-  for (const [claves, categoria] of MAPEO_CATEGORIA) {
-    if (tags.some(t => claves.includes(t))) return categoria
-  }
-  return null
-}
-
 const normalizar = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
 
-export type ProductoEncontrado = { nombre: string; categoria: string | null }
+export type ProductoEncontrado = { nombre: string; categoria: string | null; emoji: string | null }
 
 async function buscarEnFuente(base: string, codigo: string): Promise<ProductoEncontrado | null> {
   try {
@@ -74,12 +49,15 @@ async function buscarEnFuente(base: string, codigo: string): Promise<ProductoEnc
       ? `${primeraMarca} ${nombreCrudo.trim()}`
       : nombreCrudo.trim()
 
-    // 1° intento: la clasificación real de la fuente. 2° intento (respaldo):
-    // nuestro propio sistema de palabras clave sobre el nombre, para cuando
-    // no trae una categoría que reconozcamos.
-    const categoria = categoriaDesdeTags(data.product.categories_tags) ?? sugerirCategoria(nombre).categoria
+    // 1° intento: la clasificación real de la fuente (trae también el
+    // emoji, ver MAPEO_CLASIFICACION). 2° intento (respaldo): nuestro propio
+    // sistema de palabras clave sobre el nombre, para cuando no trae una
+    // categoría que reconozcamos — ahí no hay emoji todavía, lo resuelve
+    // getEmojiProducto() en el cliente a partir del nombre/categoría.
+    const clasificacion = clasificarDesdeTags(data.product.categories_tags)
+    const categoria = clasificacion.categoria ?? sugerirCategoria(nombre).categoria
 
-    return { nombre, categoria }
+    return { nombre, categoria, emoji: clasificacion.emoji }
   } catch {
     return null // timeout, sin internet, o código no encontrado — todos se tratan igual: "no se pudo autocompletar"
   }
