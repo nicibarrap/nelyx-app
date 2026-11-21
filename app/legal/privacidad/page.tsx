@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { LOGO_B64 } from "@/lib/logo"
 
 export const metadata: Metadata = { title: "Política de Privacidad — Nelyx" }
 
@@ -14,8 +13,15 @@ export default function PrivacidadPage() {
     <div className="min-h-screen" style={{ background: "var(--c-bg)", color: "var(--c-text)" }}>
       <div className="max-w-[720px] mx-auto px-6 py-10">
         <Link href="/auth/login" className="inline-flex items-center gap-2 mb-8">
+          {/* Dos variantes (clara/oscura) que se alternan por CSS según el tema
+              activo — mismo patrón que el logo del sidebar (app/globals.css:
+              .logo-dark/.logo-light). Un solo PNG claro (como antes, pensado
+              para el fondo oscuro de /auth/login) quedaba casi invisible acá
+              en tema claro, que es el fondo por defecto de esta página. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO_B64} alt="NELYX" style={{ width: "110px", height: "auto", objectFit: "contain" }} />
+          <img src="/logos/sidebar-wordmark-dark.png" alt="NELYX" className="logo-dark" style={{ width: "110px", height: "auto", objectFit: "contain" }} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logos/sidebar-wordmark-light.png" alt="NELYX" className="logo-light" style={{ width: "110px", height: "auto", objectFit: "contain" }} />
         </Link>
 
         <h1 className="text-2xl font-bold mb-1">Política de Privacidad</h1>
