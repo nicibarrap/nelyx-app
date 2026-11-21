@@ -13,6 +13,7 @@ import { esSoloLectura, tieneAcceso, puedeEliminar, type ModuloKey } from "@/lib
 import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
+import { registrarSiProductoQuedaSinEmoji } from "@/lib/catalogo-telemetria"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
 import { ETIQUETAS, calcularDesglosePago, formatCLP, capitalizarSiEsMayuscula } from "@/lib/utils"
 import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
@@ -1050,6 +1051,7 @@ export async function crearProducto(formData: FormData): Promise<{ ok: boolean; 
     throw err
   }
   if (producto.categoria) await asegurarCategoriaPersonalizada(session.user.id, producto.categoria)
+  registrarSiProductoQuedaSinEmoji(producto.nombre, producto.categoria)
 
   if (controlaInventario && stock !== null && stock > 0) {
     const fechaVencVal = formData.get("fechaVencimiento") as string | null
@@ -1149,6 +1151,10 @@ export async function importarProductosMasivo(productos: {
       }
       nombresUsados.add(nombreNormalizado)
       exitosos++
+      // Tope para no gastar de golpe la cuota de eventos de Sentry si se
+      // importa un catálogo grande con muchos productos sin clasificar —
+      // con 20 por archivo ya alcanza para notar el patrón.
+      if (exitosos <= 20) registrarSiProductoQuedaSinEmoji(producto.nombre, producto.categoria)
     } catch (err: any) {
       const motivo = err?.code === "P2002" ? "SKU o código de barras duplicado" : (err?.message ?? "error desconocido")
       errores.push(`Fila "${p.nombre}": ${motivo}`)
