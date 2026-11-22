@@ -1,5 +1,5 @@
 "use client"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { crearProducto, crearCategoriaPersonalizada } from "@/app/actions/acciones"
@@ -12,6 +12,7 @@ const EscanerCodigoBarras = dynamic(() => import("@/components/shared/escaner-co
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { getColorCategoria } from "@/lib/categorias"
 import { sugerirCategoria } from "@/lib/sugerencias-producto"
+import { obtenerClasificacionSugeridaIA } from "@/app/actions/emoji-ia-acciones"
 
 const PASOS = ["Inicio", "Tipo", "Información", "Compra", "Venta", "Mínimo", "Resumen"]
 
@@ -152,6 +153,34 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
       setCategoriaFueSugerida(false)
     }
     setFormaVentaSugerida(sugerencia.formaVenta)
+  }
+
+  // Refs con el valor más reciente de nombre/categoría — la llamada a la IA
+  // (pedirCategoriaIASiHaceFalta) es asíncrona, así que al volver puede que
+  // el usuario ya haya seguido escribiendo o elegido una categoría a mano;
+  // leer el state directo del closure daría un valor viejo.
+  const nombreRef = useRef(nombre)
+  const categoriaRef = useRef(categoria)
+  useEffect(() => { nombreRef.current = nombre }, [nombre])
+  useEffect(() => { categoriaRef.current = categoria }, [categoria])
+
+  // Respaldo con IA para cuando el usuario termina de escribir el nombre
+  // (onBlur) y ni las palabras clave locales (handleNombreChange) ni él
+  // mismo eligieron una categoría — mismo patrón y mismo costo bajo que el
+  // escaneo (ver escanear-nuevos-client.tsx). Nunca pisa una categoría que
+  // ya exista, y se ignora si el nombre cambió o ya se eligió algo mientras
+  // se esperaba la respuesta.
+  async function pedirCategoriaIASiHaceFalta() {
+    const nombreActual = nombre.trim()
+    if (!nombreActual || categoria !== "") return
+    const sugerido = await obtenerClasificacionSugeridaIA(nombreActual).catch(() => null)
+    if (!sugerido) return
+    if (nombreRef.current.trim() !== nombreActual || categoriaRef.current !== "") return
+    if (!todasCategorias.some(c => c.toLowerCase() === sugerido.categoria.toLowerCase())) {
+      setCustomCats(prev => [...prev, sugerido.categoria])
+    }
+    setCategoria(sugerido.categoria)
+    setCategoriaFueSugerida(true)
   }
 
   function agregarCategoria() {
@@ -324,7 +353,7 @@ export function ProductoWizard({ dbCategorias = [], onClose, onSuccess }: { dbCa
 
               <div>
                 <label className="text-[11px] text-[var(--c-text2)] font-medium mb-1 block">Nombre del producto *</label>
-                <input value={nombre} onChange={e => handleNombreChange(e.target.value)} placeholder="Ej: Maní Premium" className={inp} />
+                <input value={nombre} onChange={e => handleNombreChange(e.target.value)} onBlur={pedirCategoriaIASiHaceFalta} placeholder="Ej: Maní Premium" className={inp} />
                 {controlaInventario && tipoProducto === "unidad" && formaVentaSugerida === "peso" && (
                   <div className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/15 rounded-xl px-3 py-2 mt-2">
                     <span className="text-sm flex-shrink-0">⚖️</span>
