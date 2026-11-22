@@ -14,6 +14,7 @@ import { hoyEnChile, TZ_CHILE } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import { registrarSiProductoQuedaSinEmoji } from "@/lib/catalogo-telemetria"
+import { sugerirClasificacionIA } from "@/lib/emoji-ia"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
 import { ETIQUETAS, calcularDesglosePago, formatCLP, capitalizarSiEsMayuscula } from "@/lib/utils"
 import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
@@ -1017,6 +1018,18 @@ export async function crearProducto(formData: FormData): Promise<{ ok: boolean; 
 
   validarNumerosProducto({ precio, costo, stock, stockMinimo, unidadVentaCantidad })
 
+  // Respaldo del lado del servidor para cuando no llegó categoría desde el
+  // formulario (ej. el asistente no alcanzó a terminar su propia sugerencia
+  // por IA antes de que el usuario confirmara, o algún otro llamador de
+  // esta acción) — mismo motivo que en importarProductosMasivo: la
+  // categoría sí queda guardada, a diferencia del emoji, así que mejorarla
+  // acá beneficia cada vez que se muestre este producto, para siempre.
+  let categoriaFinal = (formData.get("categoria") as string)?.trim() || null
+  if (!categoriaFinal) {
+    const sugerido = await sugerirClasificacionIA(nombre).catch(() => null)
+    if (sugerido) categoriaFinal = sugerido.categoria
+  }
+
   let producto
   try {
     producto = await db.producto.create({
@@ -1025,7 +1038,7 @@ export async function crearProducto(formData: FormData): Promise<{ ok: boolean; 
         precio,
         costo,
         descripcion: (formData.get("descripcion") as string)?.trim() || null,
-        categoria: (formData.get("categoria") as string)?.trim() || null,
+        categoria: categoriaFinal,
         sku: (formData.get("sku") as string)?.trim() || null,
         codigoBarras: (formData.get("codigoBarras") as string)?.trim() || null,
         // El stock real se establece después, vía Kardex (tipo "inventario_inicial"),
@@ -1109,6 +1122,15 @@ export async function importarProductosMasivo(productos: {
 
   const errores: string[] = []
   let exitosos = 0
+  // Tope de llamadas a la IA por importación — igual que el tope de avisos
+  // a Sentry más abajo, para no sumarle de golpe 100-200+ llamadas de red
+  // secuenciales a una importación grande (esta Server Action corre con
+  // maxDuration=100s). Con 15 alcanza para cubrir casos sueltos sin
+  // arriesgar que una importación con muchos productos sin categoría se
+  // quede sin tiempo — el resto simplemente sigue sin categoría (como
+  // antes) y queda en el aviso de Sentry para agregarlo al diccionario.
+  const MAX_INTENTOS_IA_IMPORTACION = 15
+  let intentosIA = 0
 
   // Mismo criterio de nombre duplicado que crearProducto, pero resuelto en
   // un solo query antes del loop (no uno por fila — con hasta 2000 filas
@@ -1122,6 +1144,18 @@ export async function importarProductosMasivo(productos: {
       const nombreNormalizado = p.nombre.trim().toLowerCase()
       if (nombresUsados.has(nombreNormalizado)) throw new Error("Ya existe un producto activo con este nombre")
 
+      // Si ni el Excel ni las palabras clave locales (ver
+      // lib/importacion-productos.ts) trajeron una categoría, se intenta
+      // con IA antes de crear el producto — así la categoría (que sí queda
+      // guardada, a diferencia del emoji) sirve para elegir un buen emoji
+      // genérico cada vez que se muestre este producto, para siempre.
+      let categoriaFinal = p.categoria
+      if (!categoriaFinal && intentosIA < MAX_INTENTOS_IA_IMPORTACION) {
+        intentosIA++
+        const sugerido = await sugerirClasificacionIA(p.nombre).catch(() => null)
+        if (sugerido) categoriaFinal = sugerido.categoria
+      }
+
       const unidadMedida = p.formaVenta === "peso" ? "kg" : "unidad"
       const stockInterno = aInterno(p.stock, unidadMedida)
       const producto = await db.producto.create({
@@ -1130,7 +1164,7 @@ export async function importarProductosMasivo(productos: {
           precio: p.precio,
           costo: p.costo,
           descripcion: p.descripcion,
-          categoria: p.categoria,
+          categoria: categoriaFinal,
           sku: p.sku,
           codigoBarras: p.codigoBarras,
           stock: 0, // se establece después vía Kardex, igual que en la creación manual
