@@ -116,8 +116,9 @@ export type OtraCajaAbiertaDTO = ReturnType<typeof serializeOtraAbierta>
  * cerrara ahora mismo (vista previa — el cálculo real y definitivo se
  * vuelve a hacer dentro de cerrarCaja, no esta). "otrasAbiertas" lista las
  * demás cajas abiertas en la cuenta (de otros operadores) — puede haber
- * más de una a la vez (ver resolverCajaParaMovimiento) — para que se
- * puedan ver y, si hace falta, cerrar desde acá mismo. */
+ * más de una a la vez (ver resolverCajaParaMovimiento) — pero SOLO para el
+ * dueño: la visión de conjunto de todas las cajas es suya, un empleado
+ * únicamente ve el estado de la suya propia. */
 export async function obtenerCajaActual() {
   const session = await getSession()
   const tieneModulo = tieneAcceso(session.user.modulosPermitidos, "caja")
@@ -134,7 +135,7 @@ export async function obtenerCajaActual() {
   // dueño). Solo cuando hay más de una abierta y ninguna es la mía quedan
   // todas repartidas en "otrasAbiertas", sin ambigüedad de cuál es "la mía".
   const abierta = todasAbiertas.find(c => c.empleadoId === operador) ?? (todasAbiertas.length === 1 ? todasAbiertas[0] : null)
-  const otrasAbiertas = todasAbiertas.filter(c => c.id !== abierta?.id).map(serializeOtraAbierta)
+  const otrasAbiertas = session.user.esEmpleado ? [] : todasAbiertas.filter(c => c.id !== abierta?.id).map(serializeOtraAbierta)
   if (!abierta) return { ...vacio, otrasAbiertas }
 
   // Ligado directo por cierreCajaId (fijado al crear cada movimiento, ver
@@ -243,11 +244,20 @@ export async function cerrarCaja(montoContado: number, observacion?: string, cie
  }
 }
 
+/** El dueño ve el historial de TODAS las cajas de la cuenta (cualquier
+ * operador) — es la visión de conjunto que le sirve para supervisar. Un
+ * empleado solo ve el historial de las que él mismo abrió/cerró, no el de
+ * sus compañeros ni el del dueño. */
 export async function obtenerHistorialCajas(limite: number = 30) {
   const session = await getSession()
   if (!tieneAcceso(session.user.modulosPermitidos, "caja")) return []
+  const operador = operadorDe(session)
   const cierres = await db.cierreCaja.findMany({
-    where: { userId: session.user.id, fechaCierre: { not: null } },
+    where: {
+      userId: session.user.id,
+      fechaCierre: { not: null },
+      ...(session.user.esEmpleado ? { empleadoId: operador } : {}),
+    },
     orderBy: { fechaApertura: "desc" },
     take: limite,
   })

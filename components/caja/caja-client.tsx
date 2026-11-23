@@ -35,6 +35,30 @@ function formatFechaHora(iso: string) {
   return new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
 }
 
+// Agrupa el historial por día de calendario (local del navegador, igual
+// criterio que formatFechaHora) — con varias cajas concurrentes puede haber
+// varias filas por día (una por operador), y sin agrupar se ve una lista
+// larga sin ningún orden visual.
+function claveDia(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function formatDiaLargo(iso: string) {
+  const texto = new Date(iso).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+function agruparHistorialPorDia(historial: CierreCajaDTO[]) {
+  const grupos: { clave: string; fechaRef: string; items: CierreCajaDTO[] }[] = []
+  for (const c of historial) {
+    const fechaRef = c.fechaCierre ?? c.fechaApertura
+    const clave = claveDia(fechaRef)
+    const grupo = grupos.find(g => g.clave === clave)
+    if (grupo) grupo.items.push(c)
+    else grupos.push({ clave, fechaRef, items: [c] })
+  }
+  return grupos
+}
+
 // Nombres libres (vienen tal cual de Movimiento.metodoPago — "Efectivo",
 // "Tarjeta", "Transferencia", "Débito", "Crédito", "Cheque", "Otro", o
 // "Sin especificar" para movimientos viejos sin método guardado), así que
@@ -292,23 +316,32 @@ export function CajaClient({ actual, historialInicial }: Props) {
         {historial.length === 0 ? (
           <p className="text-xs text-[var(--c-text4)] text-center py-8">Todavía no has cerrado ninguna caja.</p>
         ) : (
-          <div className="divide-y divide-[var(--c-border2)]">
-            {historial.map(c => (
-              <div key={c.id} className="px-5 py-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-xs text-[var(--c-text)]">
-                    {formatFechaHora(c.fechaApertura)} → {c.fechaCierre ? formatFechaHora(c.fechaCierre) : "—"}
-                  </p>
-                  {c.diferencia != null && <TarjetaDiferencia diferencia={c.diferencia} />}
-                </div>
-                <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
-                  Abrió <span className="font-medium text-[var(--c-text3)]">{c.abiertoPorNombre ?? "Tú (dueño)"}</span>
-                  {c.cerradoPorNombre !== c.abiertoPorNombre && c.cerradoPorNombre != null && <> · Cerró <span className="font-medium text-[var(--c-text3)]">{c.cerradoPorNombre}</span></>}
-                  {" · "}Inicial {formatCLP(c.montoApertura)} · Esperado {formatCLP(c.montoEsperado ?? 0)} · Contado {formatCLP(c.montoContado ?? 0)}
+          <div>
+            {agruparHistorialPorDia(historial).map(grupo => (
+              <div key={grupo.clave}>
+                <p className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-[var(--c-text4)] bg-[var(--c-card2)] border-y border-[var(--c-border)]">
+                  {formatDiaLargo(grupo.fechaRef)}
                 </p>
-                {c.ventasPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Ventas del turno: {c.ventasPorMetodoResumen}</p>}
-                {c.gastosPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Gastos del turno: {c.gastosPorMetodoResumen}</p>}
-                {c.observacion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 italic">"{c.observacion}"</p>}
+                <div className="divide-y divide-[var(--c-border2)]">
+                  {grupo.items.map(c => (
+                    <div key={c.id} className="px-5 py-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="text-xs text-[var(--c-text)]">
+                          {formatFechaHora(c.fechaApertura)} → {c.fechaCierre ? formatFechaHora(c.fechaCierre) : "—"}
+                        </p>
+                        {c.diferencia != null && <TarjetaDiferencia diferencia={c.diferencia} />}
+                      </div>
+                      <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
+                        Abrió <span className="font-medium text-[var(--c-text3)]">{c.abiertoPorNombre ?? "Tú (dueño)"}</span>
+                        {c.cerradoPorNombre !== c.abiertoPorNombre && c.cerradoPorNombre != null && <> · Cerró <span className="font-medium text-[var(--c-text3)]">{c.cerradoPorNombre}</span></>}
+                        {" · "}Inicial {formatCLP(c.montoApertura)} · Esperado {formatCLP(c.montoEsperado ?? 0)} · Contado {formatCLP(c.montoContado ?? 0)}
+                      </p>
+                      {c.ventasPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Ventas del turno: {c.ventasPorMetodoResumen}</p>}
+                      {c.gastosPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Gastos del turno: {c.gastosPorMetodoResumen}</p>}
+                      {c.observacion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 italic">"{c.observacion}"</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

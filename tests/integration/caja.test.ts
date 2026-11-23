@@ -234,13 +234,16 @@ describe("cerrarCaja", () => {
     expect(resultado?.error).toMatch(/no hay una caja abierta/i)
   })
 
-  it("registra quién cerró, incluso si fue distinto a quien abrió", async () => {
+  it("registra quién cerró, incluso si fue distinto a quien abrió — visible para el dueño", async () => {
     const dueno = await crearDueno()
     await comoEmpleado(dueno.id, "Ana", ["caja"])
     await abrirCaja(10000)
     await comoEmpleado(dueno.id, "Beto", ["caja"])
     await cerrarCaja(10000)
 
+    // El historial completo (de cualquier operador) solo lo ve el dueño —
+    // ver describe("visibilidad del historial...") más abajo.
+    comoDueno(dueno)
     const historial = await obtenerHistorialCajas()
     expect(historial[0].abiertoPorNombre).toBe("Ana")
     expect(historial[0].cerradoPorNombre).toBe("Beto")
@@ -287,10 +290,11 @@ describe("cajas concurrentes — un operador puede tener la suya sin afectar la 
     await comoEmpleado(dueno.id, "Ana", ["caja"])
     expect(await abrirCaja(5000)).toBeUndefined()
 
+    // Ana ve su propia caja, pero no la visión de conjunto de las demás —
+    // esa es exclusiva del dueño (ver describe de visibilidad más abajo).
     const deAna = await obtenerCajaActual()
     expect(deAna.abierta?.montoApertura).toBe(5000)
-    expect(deAna.otrasAbiertas).toHaveLength(1)
-    expect(deAna.otrasAbiertas[0].montoApertura).toBe(10000)
+    expect(deAna.otrasAbiertas).toHaveLength(0)
 
     comoDueno(dueno)
     const delDueno = await obtenerCajaActual()
@@ -309,9 +313,15 @@ describe("cajas concurrentes — un operador puede tener la suya sin afectar la 
     await comoEmpleado(dueno.id, "Beto", ["caja"])
     expect(await abrirCaja(3000)).toBeUndefined()
 
+    // Beto ve la suya, pero no las ajenas.
     const deBeto = await obtenerCajaActual()
     expect(deBeto.abierta?.montoApertura).toBe(3000)
-    expect(deBeto.otrasAbiertas.map(o => o.montoApertura).sort((a, b) => a - b)).toEqual([5000, 10000])
+    expect(deBeto.otrasAbiertas).toHaveLength(0)
+
+    // El dueño sí ve las tres (la propia no cuenta como "otra").
+    comoDueno(dueno)
+    const delDueno = await obtenerCajaActual()
+    expect(delDueno.otrasAbiertas.map(o => o.montoApertura).sort((a, b) => a - b)).toEqual([3000, 5000])
   })
 
   it("cada caja concurrente cuenta solo el efectivo de su propio operador, sin mezclarse con la de otro", async () => {
@@ -366,5 +376,57 @@ describe("cajas concurrentes — un operador puede tener la suya sin afectar la 
     const cerradaDeAna = historial.find(h => h.id === cajaDeAna.id)
     expect(cerradaDeAna?.abiertoPorNombre).toBe("Ana")
     expect(cerradaDeAna?.montoContado).toBe(5000)
+  })
+})
+
+// La visión de conjunto (cuáles otras cajas están abiertas ahora, y el
+// historial de TODAS las que se han cerrado, sin importar quién) es
+// exclusiva del dueño — sirve para que pueda supervisar todo el negocio.
+// Un empleado solo ve su propio estado y su propio historial.
+describe("visibilidad de conjunto — solo el dueño ve todas las cajas (abiertas e historial)", () => {
+  it("un empleado no ve 'otrasAbiertas' aunque haya otras cajas abiertas en la cuenta", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+    await comoEmpleado(dueno.id, "Ana", ["caja"])
+    // Con la del dueño ya abierta, Ana necesita abrir la suya propia para
+    // que exista una "otra" que podría aparecerle — si no abre la suya,
+    // ve la del dueño como "la" caja compartida (comportamiento de
+    // siempre cuando solo hay una abierta en toda la cuenta).
+    await abrirCaja(5000)
+
+    const actual = await obtenerCajaActual()
+    expect(actual.abierta?.montoApertura).toBe(5000) // la propia de Ana
+    expect(actual.otrasAbiertas).toHaveLength(0) // no ve la del dueño ahí
+  })
+
+  it("un empleado no ve en su historial las cajas que abrió/cerró otro operador", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+    await cerrarCaja(10000)
+
+    await comoEmpleado(dueno.id, "Ana", ["caja"])
+    await abrirCaja(5000)
+    await cerrarCaja(5000)
+
+    const historialDeAna = await obtenerHistorialCajas()
+    expect(historialDeAna).toHaveLength(1)
+    expect(historialDeAna[0].abiertoPorNombre).toBe("Ana")
+  })
+
+  it("el dueño ve en su historial las cajas de todos los operadores", async () => {
+    const dueno = await crearDueno()
+    comoDueno(dueno)
+    await abrirCaja(10000)
+    await cerrarCaja(10000)
+
+    await comoEmpleado(dueno.id, "Ana", ["caja"])
+    await abrirCaja(5000)
+    await cerrarCaja(5000)
+
+    comoDueno(dueno)
+    const historialDelDueno = await obtenerHistorialCajas()
+    expect(historialDelDueno).toHaveLength(2)
   })
 })
