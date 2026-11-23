@@ -234,19 +234,20 @@ describe("cerrarCaja", () => {
     expect(resultado?.error).toMatch(/no hay una caja abierta/i)
   })
 
-  it("registra quién cerró, incluso si fue distinto a quien abrió — visible para el dueño", async () => {
+  it("el dueño registra quién cerró, incluso si fue distinto a quien abrió", async () => {
     const dueno = await crearDueno()
     await comoEmpleado(dueno.id, "Ana", ["caja"])
     await abrirCaja(10000)
-    await comoEmpleado(dueno.id, "Beto", ["caja"])
+
+    // Solo el dueño puede cerrar implícitamente (sin id) la caja de otro
+    // operador cuando es la única abierta — un empleado sin la suya propia
+    // ya no puede (ver describe de seguridad más abajo).
+    comoDueno(dueno)
     await cerrarCaja(10000)
 
-    // El historial completo (de cualquier operador) solo lo ve el dueño —
-    // ver describe("visibilidad del historial...") más abajo.
-    comoDueno(dueno)
     const historial = await obtenerHistorialCajas()
     expect(historial[0].abiertoPorNombre).toBe("Ana")
-    expect(historial[0].cerradoPorNombre).toBe("Beto")
+    expect(historial[0].cerradoPorNombre).toBeNull() // lo cerró el dueño, no un empleado
   })
 })
 
@@ -384,20 +385,25 @@ describe("cajas concurrentes — un operador puede tener la suya sin afectar la 
 // exclusiva del dueño — sirve para que pueda supervisar todo el negocio.
 // Un empleado solo ve su propio estado y su propio historial.
 describe("visibilidad de conjunto — solo el dueño ve todas las cajas (abiertas e historial)", () => {
-  it("un empleado no ve 'otrasAbiertas' aunque haya otras cajas abiertas en la cuenta", async () => {
+  it("un empleado con acceso de escritura NUNCA hereda la caja del dueño (ni para verla ni para cerrarla) — debe abrir la suya propia", async () => {
     const dueno = await crearDueno()
     comoDueno(dueno)
     await abrirCaja(10000)
     await comoEmpleado(dueno.id, "Ana", ["caja"])
-    // Con la del dueño ya abierta, Ana necesita abrir la suya propia para
-    // que exista una "otra" que podría aparecerle — si no abre la suya,
-    // ve la del dueño como "la" caja compartida (comportamiento de
-    // siempre cuando solo hay una abierta en toda la cuenta).
-    await abrirCaja(5000)
 
+    // Regresión de un bug real reportado: Ana tenía acceso de escritura al
+    // módulo "caja", no tenía su propia caja abierta, y aun así veía la del
+    // dueño como si fuera suya — incluyendo el botón para cerrarla.
+    const antesDeAbrirLaSuya = await obtenerCajaActual()
+    expect(antesDeAbrirLaSuya.abierta).toBeNull()
+    expect(antesDeAbrirLaSuya.otrasAbiertas).toHaveLength(0)
+    expect((await cerrarCaja(10000))?.error).toMatch(/no hay una caja abierta/i)
+
+    // Una vez que abre la suya propia, ve esa y nada más.
+    await abrirCaja(5000)
     const actual = await obtenerCajaActual()
-    expect(actual.abierta?.montoApertura).toBe(5000) // la propia de Ana
-    expect(actual.otrasAbiertas).toHaveLength(0) // no ve la del dueño ahí
+    expect(actual.abierta?.montoApertura).toBe(5000)
+    expect(actual.otrasAbiertas).toHaveLength(0) // sigue sin ver la del dueño
   })
 
   it("un empleado no ve en su historial las cajas que abrió/cerró otro operador", async () => {
