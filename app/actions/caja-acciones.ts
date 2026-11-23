@@ -45,6 +45,43 @@ async function conTransaccionSerializable<T>(fn: (tx: Prisma.TransactionClient) 
   throw new Error("No se pudo completar la operación por alta concurrencia, intenta de nuevo")
 }
 
+/** null = el dueño, igual criterio que abiertoPorNombre/realizadoPorNombre
+ * en todo el resto del proyecto. */
+function operadorDe(session: { user: { esEmpleado?: boolean; empleadoId?: string | null } }): string | null {
+  return session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
+}
+
+/** A cuál caja abierta debe quedar ligado un movimiento recién creado, dado
+ * quién lo hizo (empleadoId null = dueño). Se llama UNA SOLA VEZ al crear
+ * el movimiento (ver cada sitio en acciones.ts que llama a
+ * db.movimiento.create/tx.movimiento.create) — el resultado queda grabado
+ * para siempre en Movimiento.cierreCajaId, nunca se recalcula después.
+ *
+ * Regla, en este orden:
+ *  1. Si el operador (dueño o este empleado puntual) tiene su propia caja
+ *     abierta, el movimiento se liga a esa — así cada caja concurrente
+ *     solo recibe lo que su propio operador vendió/gastó, sin mezclarse
+ *     con la de otro.
+ *  2. Si no tiene una propia, pero hay EXACTAMENTE UNA caja abierta en toda
+ *     la cuenta (de cualquier otro operador), se liga a esa — es el caso
+ *     de siempre: una sola caja física compartida, donde cualquiera puede
+ *     vender contra ella aunque no la haya abierto él mismo.
+ *  3. Si no hay ninguna abierta, o hay más de una y ninguna es la suya,
+ *     queda sin caja (null) — no hay forma segura de decidir sola, y el
+ *     movimiento igual se crea con normalidad, solo que no participa de
+ *     ningún cuadre.
+ */
+export async function resolverCajaParaMovimiento(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  empleadoId: string | null,
+): Promise<string | null> {
+  const abiertas = await tx.cierreCaja.findMany({ where: { userId, fechaCierre: null }, select: { id: true, empleadoId: true } })
+  const propia = abiertas.find(c => c.empleadoId === empleadoId)
+  if (propia) return propia.id
+  return abiertas.length === 1 ? abiertas[0].id : null
+}
+
 function serializeCierre(c: {
   id: string; montoApertura: Prisma.Decimal; abiertoPorNombre: string | null; fechaApertura: Date
   montoEsperado: Prisma.Decimal | null; montoContado: Prisma.Decimal | null; diferencia: Prisma.Decimal | null
@@ -67,31 +104,51 @@ function serializeCierre(c: {
   }
 }
 
-/** Estado de la caja para pintar la pantalla: si hay una abierta, incluye
- * cuánto efectivo debería haber EN ESTE INSTANTE si se cerrara ahora mismo
- * (vista previa — el cálculo real y definitivo se vuelve a hacer dentro de
- * cerrarCaja, con la hora exacta de ese momento, no esta). */
+function serializeOtraAbierta(c: { id: string; abiertoPorNombre: string | null; montoApertura: Prisma.Decimal; fechaApertura: Date }) {
+  return { id: c.id, abiertoPorNombre: c.abiertoPorNombre, montoApertura: Number(c.montoApertura), fechaApertura: c.fechaApertura.toISOString() }
+}
+
+export type OtraCajaAbiertaDTO = ReturnType<typeof serializeOtraAbierta>
+
+/** Estado de la caja para pintar la pantalla: si HAY UNA PROPIA abierta
+ * (del mismo operador que está mirando la pantalla — dueño o empleado
+ * puntual), incluye cuánto efectivo debería haber EN ESTE INSTANTE si se
+ * cerrara ahora mismo (vista previa — el cálculo real y definitivo se
+ * vuelve a hacer dentro de cerrarCaja, no esta). "otrasAbiertas" lista las
+ * demás cajas abiertas en la cuenta (de otros operadores) — puede haber
+ * más de una a la vez (ver resolverCajaParaMovimiento) — para que se
+ * puedan ver y, si hace falta, cerrar desde acá mismo. */
 export async function obtenerCajaActual() {
   const session = await getSession()
-  const puedeEscribir = tieneAcceso(session.user.modulosPermitidos, "caja") && !esSoloLectura(session.user.modulosPermitidos, "caja")
-  if (!tieneAcceso(session.user.modulosPermitidos, "caja")) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], gastosPorMetodo: [] as VentaPorMetodo[], puedeEscribir: false }
+  const tieneModulo = tieneAcceso(session.user.modulosPermitidos, "caja")
+  const puedeEscribir = tieneModulo && !esSoloLectura(session.user.modulosPermitidos, "caja")
+  const vacio = { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], gastosPorMetodo: [] as VentaPorMetodo[], otrasAbiertas: [] as OtraCajaAbiertaDTO[], puedeEscribir }
+  if (!tieneModulo) return vacio
 
-  const abierta = await db.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
-  if (!abierta) return { abierta: null, montoEsperadoAhora: null, ventasPorMetodo: [] as VentaPorMetodo[], gastosPorMetodo: [] as VentaPorMetodo[], puedeEscribir }
+  const operador = operadorDe(session)
+  const todasAbiertas = await db.cierreCaja.findMany({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
+  // Mía si tengo una propia; si no, y hay EXACTAMENTE UNA abierta en toda la
+  // cuenta (de cualquier otro operador), se muestra igual como "la" caja —
+  // mismo comportamiento de siempre para el caso de una sola caja física
+  // compartida (ej. un empleado de solo lectura viendo la que abrió el
+  // dueño). Solo cuando hay más de una abierta y ninguna es la mía quedan
+  // todas repartidas en "otrasAbiertas", sin ambigüedad de cuál es "la mía".
+  const abierta = todasAbiertas.find(c => c.empleadoId === operador) ?? (todasAbiertas.length === 1 ? todasAbiertas[0] : null)
+  const otrasAbiertas = todasAbiertas.filter(c => c.id !== abierta?.id).map(serializeOtraAbierta)
+  if (!abierta) return { ...vacio, otrasAbiertas }
 
-  // Sin filtrar por método acá — se trae todo lo del turno de una sola vez
-  // y se calculan ambas cosas en memoria: el cuadre (solo efectivo) y los
-  // desgloses de ventas/gastos por método (todos), que son puramente
-  // informativos — ver agruparGastosPorMetodo en lib/caja.ts.
+  // Ligado directo por cierreCajaId (fijado al crear cada movimiento, ver
+  // resolverCajaParaMovimiento) — ya no hace falta filtrar por rango de
+  // fechas: con esto alcanza, aunque haya otras cajas abiertas en paralelo.
   const movs = await db.movimiento.findMany({
-    where: { userId: session.user.id, createdAt: { gte: abierta.fechaApertura } },
+    where: { cierreCajaId: abierta.id },
     select: { tipo: true, monto: true, metodoPago: true },
   })
   const movsParsed = movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto), metodoPago: m.metodoPago }))
   const montoEsperadoAhora = calcularMontoEsperado(Number(abierta.montoApertura), movsParsed.filter(m => m.metodoPago === METODO_PAGO_EFECTIVO))
   const ventasPorMetodo = agruparVentasPorMetodo(movsParsed)
   const gastosPorMetodo = agruparGastosPorMetodo(movsParsed)
-  return { abierta: serializeCierre(abierta), montoEsperadoAhora, ventasPorMetodo, gastosPorMetodo, puedeEscribir }
+  return { abierta: serializeCierre(abierta), montoEsperadoAhora, ventasPorMetodo, gastosPorMetodo, otrasAbiertas, puedeEscribir }
 }
 
 // Las dos acciones devuelven { error } en vez de lanzar un Error para los
@@ -107,16 +164,18 @@ export async function abrirCaja(montoInicial: number): Promise<{ error: string }
  try {
   const session = await getSessionEscritura()
   if (isNaN(montoInicial) || montoInicial < 0) return { error: "Monto inválido" }
+  const operador = operadorDe(session)
 
   const error = await conTransaccionSerializable(async (tx) => {
     // Releído DENTRO de la transacción — dos clics en "Abrir caja" casi
     // simultáneos (o dos personas) no deben poder crear dos cajas abiertas
-    // a la vez para la misma cuenta.
-    const yaAbierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null } })
+    // a la vez para el mismo operador (dueño, o este mismo empleado).
+    const yaAbierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, empleadoId: operador, fechaCierre: null } })
     if (yaAbierta) return "Ya hay una caja abierta. Cierra esa primero para poder abrir una nueva."
     await tx.cierreCaja.create({
       data: {
         userId: session.user.id,
+        empleadoId: operador,
         montoApertura: montoInicial,
         abiertoPorNombre: session.user.esEmpleado ? session.user.name : null,
       },
@@ -130,18 +189,32 @@ export async function abrirCaja(montoInicial: number): Promise<{ error: string }
  }
 }
 
-export async function cerrarCaja(montoContado: number, observacion?: string): Promise<{ error: string } | undefined> {
+/** cierreCajaId es opcional — sin él, cierra la caja propia del operador
+ * que llama (dueño o este mismo empleado), o si no tiene una propia, la
+ * única caja abierta en la cuenta si hay exactamente una (mismo
+ * comportamiento de siempre, de cuando solo podía existir una a la vez).
+ * Con cierreCajaId, cierra esa caja puntual sin importar quién la abrió —
+ * así cualquiera con acceso de escritura puede cerrar la de otro operador
+ * (ej. el dueño cerrando la de un empleado al final del día). */
+export async function cerrarCaja(montoContado: number, observacion?: string, cierreCajaId?: string): Promise<{ error: string } | undefined> {
  try {
   const session = await getSessionEscritura()
   if (isNaN(montoContado) || montoContado < 0) return { error: "Monto inválido" }
+  const operador = operadorDe(session)
 
   const error = await conTransaccionSerializable(async (tx) => {
-    const abierta = await tx.cierreCaja.findFirst({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
+    let abierta
+    if (cierreCajaId) {
+      abierta = await tx.cierreCaja.findFirst({ where: { id: cierreCajaId, userId: session.user.id, fechaCierre: null } })
+    } else {
+      const todasAbiertas = await tx.cierreCaja.findMany({ where: { userId: session.user.id, fechaCierre: null } })
+      abierta = todasAbiertas.find(c => c.empleadoId === operador) ?? (todasAbiertas.length === 1 ? todasAbiertas[0] : undefined)
+    }
     if (!abierta) return "No hay una caja abierta"
 
     const fechaCierre = new Date()
     const movs = await tx.movimiento.findMany({
-      where: { userId: session.user.id, createdAt: { gte: abierta.fechaApertura, lte: fechaCierre } },
+      where: { cierreCajaId: abierta.id },
       select: { tipo: true, monto: true, metodoPago: true },
     })
     const movsParsed = movs.map(m => ({ tipo: m.tipo, monto: Number(m.monto), metodoPago: m.metodoPago }))
