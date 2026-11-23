@@ -128,13 +128,16 @@ export async function obtenerCajaActual() {
 
   const operador = operadorDe(session)
   const todasAbiertas = await db.cierreCaja.findMany({ where: { userId: session.user.id, fechaCierre: null }, orderBy: { fechaApertura: "desc" } })
-  // Mía si tengo una propia; si no, y hay EXACTAMENTE UNA abierta en toda la
-  // cuenta (de cualquier otro operador), se muestra igual como "la" caja —
-  // mismo comportamiento de siempre para el caso de una sola caja física
-  // compartida (ej. un empleado de solo lectura viendo la que abrió el
-  // dueño). Solo cuando hay más de una abierta y ninguna es la mía quedan
-  // todas repartidas en "otrasAbiertas", sin ambigüedad de cuál es "la mía".
-  const abierta = todasAbiertas.find(c => c.empleadoId === operador) ?? (todasAbiertas.length === 1 ? todasAbiertas[0] : null)
+  const propia = todasAbiertas.find(c => c.empleadoId === operador) ?? null
+  // El "fallback" a la caja única compartida (mostrar la de otro operador
+  // como si fuera "la mía") solo aplica a quien NO tiene forma de abrir la
+  // suya propia: el dueño (que de todos modos tiene visión de conjunto más
+  // abajo) o un empleado de solo lectura. Un empleado CON acceso de
+  // escritura que no tiene la suya propia debe ver "no hay caja abierta" y
+  // poder abrir una — nunca heredar ni poder cerrar la de otro operador sin
+  // que se la hayan mostrado explícitamente (ver "otrasAbiertas").
+  const puedeHeredarCompartida = !session.user.esEmpleado || !puedeEscribir
+  const abierta = propia ?? (puedeHeredarCompartida && todasAbiertas.length === 1 ? todasAbiertas[0] : null)
   const otrasAbiertas = session.user.esEmpleado ? [] : todasAbiertas.filter(c => c.id !== abierta?.id).map(serializeOtraAbierta)
   if (!abierta) return { ...vacio, otrasAbiertas }
 
@@ -191,12 +194,13 @@ export async function abrirCaja(montoInicial: number): Promise<{ error: string }
 }
 
 /** cierreCajaId es opcional — sin él, cierra la caja propia del operador
- * que llama (dueño o este mismo empleado), o si no tiene una propia, la
- * única caja abierta en la cuenta si hay exactamente una (mismo
- * comportamiento de siempre, de cuando solo podía existir una a la vez).
- * Con cierreCajaId, cierra esa caja puntual sin importar quién la abrió —
- * así cualquiera con acceso de escritura puede cerrar la de otro operador
- * (ej. el dueño cerrando la de un empleado al final del día). */
+ * que llama (dueño o este mismo empleado); si no tiene una propia, SOLO el
+ * dueño cae al fallback de "la única caja abierta en la cuenta" (mismo
+ * comportamiento de siempre, de cuando solo podía existir una a la vez) —
+ * un empleado sin caja propia nunca cierra la de otro de forma implícita,
+ * ni siquiera si es la única abierta. Con cierreCajaId, cierra esa caja
+ * puntual sin importar quién la abrió — así el dueño puede cerrar la de un
+ * empleado al final del día, pasándole el id que ve en "otrasAbiertas". */
 export async function cerrarCaja(montoContado: number, observacion?: string, cierreCajaId?: string): Promise<{ error: string } | undefined> {
  try {
   const session = await getSessionEscritura()
@@ -209,7 +213,8 @@ export async function cerrarCaja(montoContado: number, observacion?: string, cie
       abierta = await tx.cierreCaja.findFirst({ where: { id: cierreCajaId, userId: session.user.id, fechaCierre: null } })
     } else {
       const todasAbiertas = await tx.cierreCaja.findMany({ where: { userId: session.user.id, fechaCierre: null } })
-      abierta = todasAbiertas.find(c => c.empleadoId === operador) ?? (todasAbiertas.length === 1 ? todasAbiertas[0] : undefined)
+      const propia = todasAbiertas.find(c => c.empleadoId === operador)
+      abierta = propia ?? (!session.user.esEmpleado && todasAbiertas.length === 1 ? todasAbiertas[0] : undefined)
     }
     if (!abierta) return "No hay una caja abierta"
 
