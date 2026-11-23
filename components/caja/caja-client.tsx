@@ -22,8 +22,10 @@ interface CierreCajaDTO {
 
 interface VentaPorMetodoDTO { metodo: string; monto: number }
 
+interface OtraCajaAbiertaDTO { id: string; abiertoPorNombre: string | null; montoApertura: number; fechaApertura: string }
+
 interface Props {
-  actual: { abierta: CierreCajaDTO | null; montoEsperadoAhora: number | null; ventasPorMetodo: VentaPorMetodoDTO[]; gastosPorMetodo: VentaPorMetodoDTO[]; puedeEscribir: boolean }
+  actual: { abierta: CierreCajaDTO | null; montoEsperadoAhora: number | null; ventasPorMetodo: VentaPorMetodoDTO[]; gastosPorMetodo: VentaPorMetodoDTO[]; otrasAbiertas: OtraCajaAbiertaDTO[]; puedeEscribir: boolean }
   historialInicial: CierreCajaDTO[]
 }
 
@@ -31,6 +33,30 @@ const inp = "w-full h-11 bg-[var(--c-input)] border border-[var(--c-border)] rou
 
 function formatFechaHora(iso: string) {
   return new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+}
+
+// Agrupa el historial por día de calendario (local del navegador, igual
+// criterio que formatFechaHora) — con varias cajas concurrentes puede haber
+// varias filas por día (una por operador), y sin agrupar se ve una lista
+// larga sin ningún orden visual.
+function claveDia(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function formatDiaLargo(iso: string) {
+  const texto = new Date(iso).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+function agruparHistorialPorDia(historial: CierreCajaDTO[]) {
+  const grupos: { clave: string; fechaRef: string; items: CierreCajaDTO[] }[] = []
+  for (const c of historial) {
+    const fechaRef = c.fechaCierre ?? c.fechaApertura
+    const clave = claveDia(fechaRef)
+    const grupo = grupos.find(g => g.clave === clave)
+    if (grupo) grupo.items.push(c)
+    else grupos.push({ clave, fechaRef, items: [c] })
+  }
+  return grupos
 }
 
 // Nombres libres (vienen tal cual de Movimiento.metodoPago — "Efectivo",
@@ -89,7 +115,11 @@ export function CajaClient({ actual, historialInicial }: Props) {
   const [observacion, setObservacion] = useState("")
   const [mostrarCierre, setMostrarCierre] = useState(false)
 
-  const { abierta, montoEsperadoAhora, ventasPorMetodo, gastosPorMetodo, puedeEscribir } = actual
+  const [cerrandoOtraId, setCerrandoOtraId] = useState<string | null>(null)
+  const [montoContadoOtraDisplay, setMontoContadoOtraDisplay] = useState("")
+  const [observacionOtra, setObservacionOtra] = useState("")
+
+  const { abierta, montoEsperadoAhora, ventasPorMetodo, gastosPorMetodo, otrasAbiertas, puedeEscribir } = actual
   // Sin estado propio a propósito: router.refresh() (tras abrir/cerrar)
   // vuelve a pedirle los datos al servidor y pasa un historialInicial
   // nuevo — envolverlo en useState lo habría dejado "pegado" en el valor
@@ -122,6 +152,22 @@ export function CajaClient({ actual, historialInicial }: Props) {
         if (resultado?.error) { toast.error(resultado.error); return }
         toast.success("Caja cerrada")
         setMontoContadoDisplay(""); setObservacion(""); setMostrarCierre(false)
+        router.refresh()
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudo cerrar la caja")
+      }
+    })
+  }
+
+  function handleCerrarOtra(e: React.FormEvent<HTMLFormElement>, id: string) {
+    e.preventDefault()
+    const monto = Number(montoContadoOtraDisplay.replace(/\./g, "")) || 0
+    startTransition(async () => {
+      try {
+        const resultado = await cerrarCaja(monto, observacionOtra || undefined, id)
+        if (resultado?.error) { toast.error(resultado.error); return }
+        toast.success("Caja cerrada")
+        setMontoContadoOtraDisplay(""); setObservacionOtra(""); setCerrandoOtraId(null)
         router.refresh()
       } catch (err: any) {
         toast.error(err?.message ?? "No se pudo cerrar la caja")
@@ -209,6 +255,49 @@ export function CajaClient({ actual, historialInicial }: Props) {
         </div>
       )}
 
+      {otrasAbiertas.length > 0 && (
+        <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6">
+          <p className="text-sm font-bold text-[var(--c-text)] mb-1">▤ Otras cajas abiertas ahora</p>
+          <p className="text-xs text-[var(--c-text3)] mb-4">Cada operador puede tener su propia caja abierta en paralelo — estas son las de los demás en esta cuenta.</p>
+          <div className="space-y-3">
+            {otrasAbiertas.map(o => (
+              <div key={o.id} className="bg-[var(--c-card2)] border border-[var(--c-border)] rounded-xl p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--c-text)]">{o.abiertoPorNombre ?? "Dueño"}</p>
+                    <p className="text-[10px] text-[var(--c-text4)]">Desde {formatFechaHora(o.fechaApertura)} · Fondo inicial {formatCLP(o.montoApertura)}</p>
+                  </div>
+                  {puedeEscribir && cerrandoOtraId !== o.id && (
+                    <button onClick={() => setCerrandoOtraId(o.id)} className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex-shrink-0">Cerrar</button>
+                  )}
+                </div>
+                {cerrandoOtraId === o.id && (
+                  <form onSubmit={e => handleCerrarOtra(e, o.id)} className="space-y-3 mt-3 pt-3 border-t border-[var(--c-border)]">
+                    <div>
+                      <label className="text-[10px] text-[var(--c-text3)] block mb-1">Efectivo contado ahora ($) *</label>
+                      <input type="text" inputMode="numeric" required placeholder="0"
+                        value={montoContadoOtraDisplay}
+                        onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); setMontoContadoOtraDisplay(v ? Number(v).toLocaleString("es-CL") : "") }}
+                        className={`${inp} h-12 text-xl font-bold text-center`} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[var(--c-text3)] block mb-1">Observación (opcional)</label>
+                      <input value={observacionOtra} onChange={e => setObservacionOtra(e.target.value)} placeholder="Ej: faltaron $500 del vuelto de la mañana" className={inp} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setCerrandoOtraId(null)} className="flex-1 h-10 border border-[var(--c-border)] text-[var(--c-text3)] text-xs rounded-xl hover:bg-[var(--c-hover)]">Cancelar</button>
+                      <button type="submit" disabled={isPending} className="flex-1 h-10 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl">
+                        {isPending ? "Cerrando..." : "Confirmar cierre"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {abierta && (
         <>
           <MovimientosPorMetodo
@@ -227,23 +316,32 @@ export function CajaClient({ actual, historialInicial }: Props) {
         {historial.length === 0 ? (
           <p className="text-xs text-[var(--c-text4)] text-center py-8">Todavía no has cerrado ninguna caja.</p>
         ) : (
-          <div className="divide-y divide-[var(--c-border2)]">
-            {historial.map(c => (
-              <div key={c.id} className="px-5 py-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-xs text-[var(--c-text)]">
-                    {formatFechaHora(c.fechaApertura)} → {c.fechaCierre ? formatFechaHora(c.fechaCierre) : "—"}
-                  </p>
-                  {c.diferencia != null && <TarjetaDiferencia diferencia={c.diferencia} />}
-                </div>
-                <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
-                  Abrió <span className="font-medium text-[var(--c-text3)]">{c.abiertoPorNombre ?? "Tú (dueño)"}</span>
-                  {c.cerradoPorNombre !== c.abiertoPorNombre && c.cerradoPorNombre != null && <> · Cerró <span className="font-medium text-[var(--c-text3)]">{c.cerradoPorNombre}</span></>}
-                  {" · "}Inicial {formatCLP(c.montoApertura)} · Esperado {formatCLP(c.montoEsperado ?? 0)} · Contado {formatCLP(c.montoContado ?? 0)}
+          <div>
+            {agruparHistorialPorDia(historial).map(grupo => (
+              <div key={grupo.clave}>
+                <p className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-[var(--c-text4)] bg-[var(--c-card2)] border-y border-[var(--c-border)]">
+                  {formatDiaLargo(grupo.fechaRef)}
                 </p>
-                {c.ventasPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Ventas del turno: {c.ventasPorMetodoResumen}</p>}
-                {c.gastosPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Gastos del turno: {c.gastosPorMetodoResumen}</p>}
-                {c.observacion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 italic">"{c.observacion}"</p>}
+                <div className="divide-y divide-[var(--c-border2)]">
+                  {grupo.items.map(c => (
+                    <div key={c.id} className="px-5 py-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="text-xs text-[var(--c-text)]">
+                          {formatFechaHora(c.fechaApertura)} → {c.fechaCierre ? formatFechaHora(c.fechaCierre) : "—"}
+                        </p>
+                        {c.diferencia != null && <TarjetaDiferencia diferencia={c.diferencia} />}
+                      </div>
+                      <p className="text-[10px] text-[var(--c-text4)] mt-0.5">
+                        Abrió <span className="font-medium text-[var(--c-text3)]">{c.abiertoPorNombre ?? "Tú (dueño)"}</span>
+                        {c.cerradoPorNombre !== c.abiertoPorNombre && c.cerradoPorNombre != null && <> · Cerró <span className="font-medium text-[var(--c-text3)]">{c.cerradoPorNombre}</span></>}
+                        {" · "}Inicial {formatCLP(c.montoApertura)} · Esperado {formatCLP(c.montoEsperado ?? 0)} · Contado {formatCLP(c.montoContado ?? 0)}
+                      </p>
+                      {c.ventasPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Ventas del turno: {c.ventasPorMetodoResumen}</p>}
+                      {c.gastosPorMetodoResumen && <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Gastos del turno: {c.gastosPorMetodoResumen}</p>}
+                      {c.observacion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 italic">"{c.observacion}"</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

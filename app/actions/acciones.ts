@@ -15,6 +15,7 @@ import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/li
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
 import { registrarSiProductoQuedaSinEmoji } from "@/lib/catalogo-telemetria"
 import { sugerirClasificacionIA } from "@/lib/emoji-ia"
+import { resolverCajaParaMovimiento } from "@/app/actions/caja-acciones"
 import type { ResultadoVenta } from "@/lib/tipos-venta"
 import { ETIQUETAS, calcularDesglosePago, formatCLP, capitalizarSiEsMayuscula } from "@/lib/utils"
 import { construirWhereMovimientos } from "@/lib/movimientos-filtro"
@@ -217,6 +218,8 @@ async function ingresarMovimientoInterno(formData: FormData) {
   // Only create movimiento for cash sales - credit sales register income when payment is received
   let movimientoCreado: { id: string } | null = null
   if (tipo !== "VENTA" || tipoPagoCheck !== "credito") {
+    const operadorId = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
+    const cierreCajaId = await resolverCajaParaMovimiento(db, session.user.id, operadorId)
     movimientoCreado = await db.movimiento.create({
       data: {
         tipo: tipo as any,
@@ -237,6 +240,8 @@ async function ingresarMovimientoInterno(formData: FormData) {
         montoNoOperativo: tipo === "RETIRO" ? monto : 0,
         userId: session.user.id,
         realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        realizadoPorEmpleadoId: operadorId,
+        cierreCajaId,
       }
     })
     // Conecta el Kardex (creado arriba) con este Movimiento — antes se
@@ -524,6 +529,8 @@ async function registrarCambioProductoInterno(
     if (resultado?.movimiento) movsStockDevolucion.push(resultado.movimiento)
   }
 
+  const operadorIdCambio = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
+  const cierreCajaIdCambio = await resolverCajaParaMovimiento(db, session.user.id, operadorIdCambio)
   const devolucion = await db.movimiento.create({
     data: {
       tipo: "DEVOLUCION",
@@ -547,6 +554,8 @@ async function registrarCambioProductoInterno(
       metodoPago: origen.metodoPago,
       userId: session.user.id,
       realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+      realizadoPorEmpleadoId: operadorIdCambio,
+      cierreCajaId: cierreCajaIdCambio,
       movimientoVinculadoId: origen.id,
     },
   })
@@ -611,6 +620,8 @@ async function registrarCambioProductoInterno(
         metodoPago: metodoPago || null,
         userId: session.user.id,
         realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+        realizadoPorEmpleadoId: operadorIdCambio,
+        cierreCajaId: cierreCajaIdCambio,
         movimientoVinculadoId: primeraVentaId === null ? devolucion.id : null,
       },
     })
@@ -733,6 +744,11 @@ async function registrarVentaInterno(items: Array<{
 
   let costoTotalCarrito = 0
 
+  // Se resuelve una sola vez antes del loop (no cambia entre items de una
+  // misma venta) — ver resolverCajaParaMovimiento en caja-acciones.ts.
+  const operadorIdVenta = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
+  const cierreCajaIdVenta = await resolverCajaParaMovimiento(db, session.user.id, operadorIdVenta)
+
   // Crear un movimiento por cada producto y descontar stock
   for (const item of items) {
     const montoItem = Math.round(item.precio * item.cantidad * factorDescuento)
@@ -822,6 +838,8 @@ async function registrarVentaInterno(items: Array<{
           metodoPago: metodoPago || null,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+          realizadoPorEmpleadoId: operadorIdVenta,
+          cierreCajaId: cierreCajaIdVenta,
         }
       })
       // Conecta el Kardex (creado arriba — puede ser más de una fila si la
@@ -1412,6 +1430,7 @@ export async function ajustarStock(
       : deInterno(cantidadRealTotal, prod.unidadMedida)
     const montoGasto = Math.round(Number(prod.costo) * cantidadEnUnidadCosto)
     if (montoGasto > 0) {
+      const operadorIdMerma = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
       const movGasto = await db.movimiento.create({
         data: {
           tipo: "GASTO", monto: montoGasto, fecha: new Date(),
@@ -1420,6 +1439,8 @@ export async function ajustarStock(
           productoId: id, costoUnitario: Number(prod.costo),
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+          realizadoPorEmpleadoId: operadorIdMerma,
+          cierreCajaId: await resolverCajaParaMovimiento(db, session.user.id, operadorIdMerma),
         },
       })
       await db.movimientoStock.updateMany({ where: { id: { in: movsStockCreados.map(m => m.id) } }, data: { movimientoId: movGasto.id } })
@@ -1625,6 +1646,7 @@ export async function registrarPago(deudaId: string, formData: FormData): Promis
       const completa = totalReal - nuevoMontoPagado <= 0
       await tx.pagoDeuda.create({ data: { deudaId, monto: montoPago, montoCapital: capital, montoInteres: interes, fecha, descripcion } })
       await tx.deuda.update({ where: { id: deudaId }, data: { montoPagado: nuevoMontoPagado, pagada: completa, cuotasPagadas: { increment: 1 } } })
+      const operadorIdPago = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
       await tx.movimiento.create({
         data: {
           tipo: "GASTO",
@@ -1639,6 +1661,8 @@ export async function registrarPago(deudaId: string, formData: FormData): Promis
           metodoPago,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+          realizadoPorEmpleadoId: operadorIdPago,
+          cierreCajaId: await resolverCajaParaMovimiento(tx, session.user.id, operadorIdPago),
         }
       })
       return completa
@@ -1781,6 +1805,7 @@ export async function crearCostoUnico(formData: FormData): Promise<{ ok: boolean
   // y el cierre de caja (lib/caja.ts) nunca podía contarlo.
   const metodoPago = (formData.get("metodoPago") as string) || "Efectivo"
 
+  const operadorIdCostoUnico = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
   await db.movimiento.create({
     data: {
       tipo: "COSTO_FIJO",
@@ -1791,6 +1816,8 @@ export async function crearCostoUnico(formData: FormData): Promise<{ ok: boolean
       metodoPago,
       userId: session.user.id,
       realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+      realizadoPorEmpleadoId: operadorIdCostoUnico,
+      cierreCajaId: await resolverCajaParaMovimiento(db, session.user.id, operadorIdCostoUnico),
     }
   })
   revalidatePath("/dashboard/costos-fijos")
@@ -2010,6 +2037,7 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
       const fresca = await tx.generacionCosto.findUnique({ where: { id: generacionId } })
       if (!fresca || fresca.pagado) throw new Error("Este costo ya fue marcado como pagado")
 
+      const operadorIdCostoFijo = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
       const movimiento = await tx.movimiento.create({
         data: {
           tipo: "COSTO_FIJO",
@@ -2020,6 +2048,8 @@ export async function marcarCostoPagado(generacionId: string, formData: FormData
           metodoPago,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+          realizadoPorEmpleadoId: operadorIdCostoFijo,
+          cierreCajaId: await resolverCajaParaMovimiento(tx, session.user.id, operadorIdCostoFijo),
         }
       })
       await tx.generacionCosto.update({
@@ -2467,6 +2497,7 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData):
         where: { id: cuentaId },
         data: { saldoPendiente: nuevoSaldo, estado: nuevoEstado }
       })
+      const operadorIdCobro = session.user.esEmpleado ? (session.user.empleadoId ?? null) : null
       await tx.movimiento.create({
         data: {
           tipo: "INGRESO_EXTRA",
@@ -2482,6 +2513,8 @@ export async function registrarPagoCuenta(cuentaId: string, formData: FormData):
           clienteId: cuenta.clienteId,
           userId: session.user.id,
           realizadoPorNombre: session.user.esEmpleado ? session.user.name : null,
+          realizadoPorEmpleadoId: operadorIdCobro,
+          cierreCajaId: await resolverCajaParaMovimiento(tx, session.user.id, operadorIdCobro),
         }
       })
       return { nuevoEstado, clienteId: cuenta.clienteId }

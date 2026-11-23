@@ -79,33 +79,50 @@ enum Rol {
 }
 
 model Movimiento {
-  id                    String            @id @default(cuid())
-  tipo                  TipoMovimiento
-  monto                 Decimal           @db.Decimal(12, 2)
-  fecha                 DateTime
-  descripcion           String?
-  categoria             String?
-  productoId            String?
-  producto              Producto?         @relation(fields: [productoId], references: [id], onDelete: SetNull)
-  clienteId             String?
+  id                     String            @id @default(cuid())
+  tipo                   TipoMovimiento
+  monto                  Decimal           @db.Decimal(12, 2)
+  fecha                  DateTime
+  descripcion            String?
+  categoria              String?
+  productoId             String?
+  producto               Producto?         @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  clienteId              String?
   // SetNull, no Cascade — si se elimina un cliente, sus ventas y
   // movimientos pasados deben seguir existiendo en el historial (solo
   // pierden la referencia al cliente, no se borran).
-  cliente               Cliente?          @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  proveedorId           String?
-  proveedor             Proveedor?        @relation(fields: [proveedorId], references: [id])
-  userId                String
-  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt             DateTime          @default(now())
-  movimientosStock      MovimientoStock[]
-  costoUnitario         Decimal?          @db.Decimal(12, 2)
-  utilidad              Decimal?          @db.Decimal(12, 2)
-  margen                Float?
-  metodoPago            String?
+  cliente                Cliente?          @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  proveedorId            String?
+  proveedor              Proveedor?        @relation(fields: [proveedorId], references: [id])
+  userId                 String
+  user                   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt              DateTime          @default(now())
+  movimientosStock       MovimientoStock[]
+  costoUnitario          Decimal?          @db.Decimal(12, 2)
+  utilidad               Decimal?          @db.Decimal(12, 2)
+  margen                 Float?
+  metodoPago             String?
   // Quién lo hizo de verdad — solo se llena cuando fue un empleado (no el
   // dueño), y se guarda el nombre tal cual en ese momento (no una relación
   // a User), para que sobreviva aunque ese empleado se elimine después.
-  realizadoPorNombre    String?
+  realizadoPorNombre     String?
+  // Igual que realizadoPorNombre pero con el id real del empleado (en vez
+  // del nombre en texto libre) — se usa para decidir, al crear este
+  // movimiento, a cuál caja abierta pertenece (ver resolverCajaParaMovimiento
+  // en caja-acciones.ts). Null = lo hizo el dueño, igual que el campo de
+  // arriba. No se relaciona a User con @relation a propósito, mismo motivo
+  // que realizadoPorNombre: debe sobrevivir si el empleado se elimina.
+  realizadoPorEmpleadoId String?
+  // A qué turno de caja pertenece este movimiento — se fija UNA SOLA VEZ al
+  // crearlo (ver resolverCajaParaMovimiento), nunca se recalcula después.
+  // Reemplaza el cálculo anterior por rango de fechas (createdAt entre
+  // apertura y cierre), que dejó de alcanzar el día en que puede haber más
+  // de una caja abierta a la vez (una por operador) — con eso, un mismo
+  // movimiento podía quedar contado en más de una caja. Null = se creó sin
+  // ninguna caja abierta que lo recibiera (sigue existiendo igual, solo
+  // que no participa de ningún cuadre).
+  cierreCajaId           String?
+  cierreCaja             CierreCaja?       @relation(fields: [cierreCajaId], references: [id], onDelete: SetNull)
   // Cambio de producto (ver app/actions/acciones.ts → registrarCambioProducto):
   // enlaza la DEVOLUCION del producto viejo con la VENTA del producto nuevo
   // que la reemplaza, en ambos sentidos (cada fila apunta a la otra). Nunca
@@ -114,21 +131,22 @@ model Movimiento {
   // las dos filas (hoy no hay forma de hacerlo desde la UI, pero nada lo
   // impide a nivel de datos), la otra debe seguir existiendo con su propio
   // valor económico intacto, no desaparecer en cascada.
-  movimientoVinculadoId String?           @unique
-  movimientoVinculado   Movimiento?       @relation("CambioProducto", fields: [movimientoVinculadoId], references: [id], onDelete: SetNull)
-  movimientoVinculadoDe Movimiento?       @relation("CambioProducto")
+  movimientoVinculadoId  String?           @unique
+  movimientoVinculado    Movimiento?       @relation("CambioProducto", fields: [movimientoVinculadoId], references: [id], onDelete: SetNull)
+  movimientoVinculadoDe  Movimiento?       @relation("CambioProducto")
   // Parte de "monto" que NO debería bajar la Utilidad aunque sí sea plata
   // real que salió de la caja (sí cuenta en Disponible). Dos casos: el
   // capital de un pago de deuda (devolver algo que ya era tuyo no es un
   // gasto del negocio) y un Retiro completo (es tuyo, no un costo operativo).
   // Default 0 = todo el monto es gasto operativo, el comportamiento de
   // siempre para cualquier movimiento que no sea uno de esos dos casos.
-  montoNoOperativo      Decimal           @default(0) @db.Decimal(12, 2)
+  montoNoOperativo       Decimal           @default(0) @db.Decimal(12, 2)
 
   @@index([userId, fecha])
   @@index([userId, tipo, categoria])
   @@index([userId, tipo])
   @@index([productoId])
+  @@index([cierreCajaId])
 }
 
 enum TipoMovimiento {
@@ -579,18 +597,18 @@ model IntentoLoginFallido {
 // Solo aplica a cuentas dueñas (login por contraseña) — los empleados
 // entran por PIN, no por este flujo.
 model PasswordResetToken {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
   // true = este token viene de enviarInvitacionCliente (primera
   // contraseña de una cuenta nueva), no de "olvidé mi contraseña" — ahí,
   // y solo ahí, la página pide aceptar la Política de Privacidad antes de
   // activar la cuenta (ver resetearPassword).
-  esInvitacion Boolean @default(false)
+  esInvitacion Boolean   @default(false)
 
   @@index([userId, createdAt])
 }
@@ -838,39 +856,50 @@ model RegistroEliminacion {
 // efectivo de ese período (Movimiento.metodoPago === "Efectivo") dicen que
 // debería haber. Todo lo pagado con tarjeta, transferencia o crédito
 // pendiente no pasa por la caja física y no participa de este cálculo (ver
-// lib/caja.ts). Solo puede haber una caja ABIERTA (fechaCierre null) por
-// cuenta a la vez — se controla desde caja-acciones.ts, no acá.
+// lib/caja.ts). Puede haber más de una caja ABIERTA (fechaCierre null) a la
+// vez por cuenta, pero nunca dos del mismo operador (mismo userId +
+// empleadoId) — un dueño y uno o más empleados pueden tener cada uno su
+// propia caja abierta en paralelo (ej. feria con ayudantes, cada uno con su
+// propio fondo de cambio); se controla desde caja-acciones.ts, no acá.
 model CierreCaja {
-  id                     String    @id @default(cuid())
+  id                     String       @id @default(cuid())
   userId                 String
-  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  montoApertura          Decimal   @db.Decimal(12, 2)
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  montoApertura          Decimal      @db.Decimal(12, 2)
   abiertoPorNombre       String? // null = el dueño
-  fechaApertura          DateTime  @default(now())
+  // Id real del empleado que la abrió (null = el dueño) — identifica de
+  // quién es esta caja para poder tener varias abiertas a la vez sin que se
+  // mezclen. Mismo criterio que realizadoPorEmpleadoId en Movimiento: sin
+  // relación a User a propósito, para que sobreviva si el empleado se
+  // elimina (abiertoPorNombre ya guarda el nombre en texto para mostrarlo).
+  empleadoId             String?
+  fechaApertura          DateTime     @default(now())
   // Quedan null mientras la caja sigue abierta — recién se llenan al cerrarla.
-  montoEsperado          Decimal?  @db.Decimal(12, 2)
-  montoContado           Decimal?  @db.Decimal(12, 2)
+  montoEsperado          Decimal?     @db.Decimal(12, 2)
+  montoContado           Decimal?     @db.Decimal(12, 2)
   // contado - esperado: positivo = sobró plata, negativo = faltó.
-  diferencia             Decimal?  @db.Decimal(12, 2)
-  observacion            String?   @db.Text
+  diferencia             Decimal?     @db.Decimal(12, 2)
+  observacion            String?      @db.Text
   // Snapshot de lo vendido durante el turno por cada método de pago
   // (incluye tarjeta y transferencia, no solo efectivo) — puramente
   // informativo, no participa del cuadre de arriba. Ya formateado como
   // texto legible (mismo criterio que RegistroEliminacion.resumen), así
   // sobrevive intacto aunque algún Movimiento de ese turno se elimine
   // después. Null en cajas cerradas antes de que existiera este campo.
-  ventasPorMetodoResumen String?   @db.Text
+  ventasPorMetodoResumen String?      @db.Text
   // Mismo criterio que ventasPorMetodoResumen, pero para lo gastado del
   // turno (GASTO + COSTO_FIJO + RETIRO) — sin esto, quien cierra la caja
   // no tenía forma de VER que un costo fijo/gasto/retiro pagado en
   // efectivo quedó contado en el "esperado" de arriba, solo podía
   // confiar en el número final. Null en cajas cerradas antes de que
   // existiera este campo.
-  gastosPorMetodoResumen String?   @db.Text
+  gastosPorMetodoResumen String?      @db.Text
   cerradoPorNombre       String?
   fechaCierre            DateTime?
+  movimientos            Movimiento[]
 
   @@index([userId, fechaApertura])
+  @@index([userId, empleadoId, fechaCierre])
 }
 
 model CobroSumup {
