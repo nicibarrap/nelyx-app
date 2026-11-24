@@ -17,6 +17,11 @@ const TABLAS_A_LIMPIAR = [
   "Cliente",
   "Producto",
   "User",
+  // No cuelga de User (no tiene userId) — deleting User no la limpia en
+  // cascada como al resto, así que queda pegada entre tests si no se borra
+  // aparte. SuscripcionNelyx.planId es onDelete: SetNull, así que borrar
+  // acá no choca con suscripciones que la hayan estado usando.
+  "PlanNelyx",
 ]
 
 beforeEach(async () => {

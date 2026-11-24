@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
 import { randomBytes } from "crypto"
-import { PLANES, PlanKey, esPlanValido, precioDePlan, sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO, determinarEstadoAlReactivar, registrarEventoSuscripcion } from "@/lib/suscripciones"
+import { sumarMeses, DIAS_PRUEBA_GRATUITA, DIAS_GRACIA_PAGO, determinarEstadoAlReactivar, registrarEventoSuscripcion } from "@/lib/suscripciones"
 import { cancelarNotificacionesPorPrefijo } from "@/lib/notificaciones"
 import { formatCLP } from "@/lib/utils"
 import { verificarCuentaActivaOExpulsar } from "@/lib/sesion-activa"
@@ -34,10 +34,12 @@ export async function crearClienteNelyx(formData: FormData) {
   const email = formData.get("email") as string
   const negocio = formData.get("negocio") as string | null
   const telefono = formData.get("telefono") as string | null
-  const planSeleccionado = (formData.get("plan") as string) || "mensual"
+  const planId = formData.get("plan") as string
   const fechaInicioInput = formData.get("fechaInicio") as string | null
+  const esPrueba = formData.get("esPrueba") === "on"
 
-  const plan: PlanKey = esPlanValido(planSeleccionado) ? planSeleccionado : "mensual"
+  const plan = await db.planNelyx.findUnique({ where: { id: planId } })
+  if (!plan) throw new Error("Selecciona un plan válido")
   const fechaInicio = fechaInicioInput ? new Date(fechaInicioInput) : new Date()
 
   // Contraseña al azar que nadie conoce — solo para llenar la columna NOT
@@ -69,14 +71,15 @@ export async function crearClienteNelyx(formData: FormData) {
   const sus = await db.suscripcionNelyx.create({
     data: {
       userId: user.id,
-      plan,
+      planId: plan.id,
       estado: "prueba_gratuita",
       fechaInicio,
       fechaFinPrueba,
       precioPlan: 0,
+      esPrueba,
     },
   })
-  await registrarEventoSuscripcion(sus.id, "creada", `Cliente creado con plan ${PLANES[plan].label}`, session.user.name)
+  await registrarEventoSuscripcion(sus.id, "creada", `Cliente creado con plan ${plan.nombre}${esPrueba ? " (cuenta de prueba)" : ""}`, session.user.name)
 
   revalidatePath("/admin/clientes")
   return { id: user.id }
@@ -150,8 +153,15 @@ export async function registrarPagoCobro(formData: FormData) {
       },
     })
 
-    const plan: PlanKey = esPlanValido(cobro.plan) ? cobro.plan : "mensual"
-    const fechaProximoCobro = sumarMeses(new Date(), PLANES[plan].meses)
+    // La recurrencia (cada cuántos meses) se toma del plan QUE LA SUSCRIPCIÓN
+    // TIENE HOY, no del nombre guardado en este cobro — en el caso normal
+    // son el mismo, y si cambió de plan entremedio, lo correcto es agendar
+    // el próximo cobro según el plan vigente ahora. Sin plan asignado
+    // (no debería pasar), se asume mensual para no dejar la fecha sin agendar.
+    const planVigente = cobroBase.suscripcion.planId
+      ? await tx.planNelyx.findUnique({ where: { id: cobroBase.suscripcion.planId }, select: { meses: true } })
+      : null
+    const fechaProximoCobro = sumarMeses(new Date(), planVigente?.meses ?? 1)
 
     await tx.cobroNelyx.update({ where: { id: cobroId }, data: { estado: "pagado", pagoId: pago.id } })
     await tx.suscripcionNelyx.update({
@@ -175,26 +185,29 @@ export async function registrarPagoCobro(formData: FormData) {
 export async function actualizarSuscripcion(formData: FormData) {
   const session = await getAdminSession()
   const suscripcionId = formData.get("suscripcionId") as string
-  const plan = formData.get("plan") as string
+  const planId = formData.get("plan") as string
   const fechaProximoCobroRaw = formData.get("fechaProximoCobro") as string | null
   const renovacionAutomatica = formData.get("renovacionAutomatica") === "on"
   const generarCobroAhora = formData.get("generarCobroAhora") === "on"
 
   const sus = await db.suscripcionNelyx.findUnique({ where: { id: suscripcionId } })
   if (!sus) return
+  const plan = await db.planNelyx.findUnique({ where: { id: planId } })
+  if (!plan) return
 
-  const planFinal: PlanKey = esPlanValido(plan) ? plan : "mensual"
-  const nuevoPrecio = precioDePlan(planFinal)
+  const nuevoPrecio = Number(plan.precio)
   const fechaProximoCobro = fechaProximoCobroRaw ? new Date(fechaProximoCobroRaw) : sus.fechaProximoCobro
-  const cambioDePlan = esPlanValido(sus.plan) && sus.plan !== planFinal
+  const cambioDePlan = sus.planId !== plan.id
 
   await db.suscripcionNelyx.update({
     where: { id: suscripcionId },
-    data: { plan: planFinal, precioPlan: nuevoPrecio, fechaProximoCobro, renovacionAutomatica },
+    data: { planId: plan.id, precioPlan: nuevoPrecio, fechaProximoCobro, renovacionAutomatica },
   })
   if (cambioDePlan) {
-    const planAnterior = esPlanValido(sus.plan) ? PLANES[sus.plan].label : sus.plan
-    await registrarEventoSuscripcion(suscripcionId, "cambio_plan", `${planAnterior} → ${PLANES[planFinal].label}`, session.user.name)
+    const planAnteriorNombre = sus.planId
+      ? (await db.planNelyx.findUnique({ where: { id: sus.planId }, select: { nombre: true } }))?.nombre ?? "Sin plan"
+      : "Sin plan"
+    await registrarEventoSuscripcion(suscripcionId, "cambio_plan", `${planAnteriorNombre} → ${plan.nombre}`, session.user.name)
   }
 
   // Si cambió de plan y se pide generar el cobro del nuevo monto de inmediato
@@ -205,7 +218,7 @@ export async function actualizarSuscripcion(formData: FormData) {
       db.cobroNelyx.create({
         data: {
           suscripcionId,
-          plan: planFinal,
+          plan: plan.nombre,
           monto: nuevoPrecio,
           fechaEmision: new Date(),
           fechaVencimiento,
@@ -253,6 +266,17 @@ export async function actualizarNotaCliente(suscripcionId: string, nota: string)
   revalidatePath("/admin/clientes")
 }
 
+// ── Marcar/desmarcar como cuenta de prueba ─────────────────────────────
+// No afecta nada del funcionamiento de la cuenta — solo la excluye del MRR
+// y del monto pendiente que se muestra en /admin/clientes, para que una
+// cuenta piloto sin plata real no tergiverse esos números.
+export async function cambiarEsPruebaCliente(suscripcionId: string, esPrueba: boolean) {
+  const session = await getAdminSession()
+  await db.suscripcionNelyx.update({ where: { id: suscripcionId }, data: { esPrueba } })
+  await registrarEventoSuscripcion(suscripcionId, esPrueba ? "marcada_prueba" : "desmarcada_prueba", null, session.user.name)
+  revalidatePath("/admin/clientes")
+}
+
 export async function crearSuscripcionParaUsuario(userId: string) {
   const session = await getAdminSession()
   const existe = await db.suscripcionNelyx.findUnique({ where: { userId } })
@@ -260,8 +284,12 @@ export async function crearSuscripcionParaUsuario(userId: string) {
   const fechaInicio = new Date()
   const fechaFinPrueba = new Date(fechaInicio)
   fechaFinPrueba.setDate(fechaFinPrueba.getDate() + DIAS_PRUEBA_GRATUITA)
+  // Sin plan asignado a propósito — es una herramienta de reparación para
+  // un caso que no debería pasar (usuario sin ninguna suscripción), así que
+  // no corresponde adivinar cuál plan le toca. El admin le asigna uno desde
+  // "Editar suscripción" apenas la vea en el panel.
   const sus = await db.suscripcionNelyx.create({
-    data: { userId, plan: "mensual", estado: "prueba_gratuita", fechaInicio, fechaFinPrueba, precioPlan: 0 },
+    data: { userId, estado: "prueba_gratuita", fechaInicio, fechaFinPrueba, precioPlan: 0 },
   })
   await registrarEventoSuscripcion(sus.id, "creada", null, session.user.name)
   revalidatePath("/admin/clientes")

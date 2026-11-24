@@ -1,11 +1,5 @@
 import { db } from "@/lib/db"
 import * as Sentry from "@sentry/nextjs"
-import { type PlanKey, PLANES, esPlanValido, precioDePlan } from "@/lib/planes-nelyx"
-
-// Re-exportadas acá para no romper los imports existentes
-// (`from "@/lib/suscripciones"`) en el resto del código server-side — la
-// fuente real de estos tres vive en lib/planes-nelyx.ts (ver su comentario).
-export { type PlanKey, PLANES, esPlanValido, precioDePlan }
 
 export const DIAS_PRUEBA_GRATUITA = 30
 export const DIAS_GRACIA_PAGO = 5      // plazo para pagar un cobro antes de pasar a "vencido"
@@ -32,7 +26,7 @@ export type EstadoSuscripcion = typeof ESTADOS_SUSCRIPCION[number]
 type SusRow = {
   id: string
   userId: string
-  plan: string
+  planId: string | null
   estado: string
   fechaFinPrueba: Date | null
   fechaProximoCobro: Date | null
@@ -40,10 +34,13 @@ type SusRow = {
   cobros: { id: string; estado: string; fechaVencimiento: Date }[]
 }
 
+type PlanVigente = { nombre: string; precio: number }
+
 /**
  * Revisa todas las suscripciones activas (no suspendidas/canceladas) y aplica
  * las transiciones automáticas de estado + generación de cobros pendientes.
- * Se ejecuta al cargar /admin/clientes. Solo escribe en BD las filas que
+ * Corre todos los días desde el cron de notificaciones (antes solo se
+ * ejecutaba al cargar /admin/clientes). Solo escribe en BD las filas que
  * realmente cambiaron, para mantener el rendimiento con cientos de clientes.
  */
 export async function sincronizarSuscripciones() {
@@ -52,11 +49,20 @@ export async function sincronizarSuscripciones() {
   const suscripciones = await db.suscripcionNelyx.findMany({
     where: { estado: { notIn: ["suspendido", "cancelado"] } },
     select: {
-      id: true, userId: true, plan: true, estado: true,
+      id: true, userId: true, planId: true, estado: true,
       fechaFinPrueba: true, fechaProximoCobro: true, precioPlan: true,
       cobros: { where: { estado: "pendiente" }, select: { id: true, estado: true, fechaVencimiento: true } },
     },
   })
+
+  // Se traen de una sola vez todos los planes que de verdad están en uso
+  // acá (en vez de uno por suscripción) — con cientos de clientes pero un
+  // puñado de planes, esto evita un N+1 sin complicar aplicarTransicion.
+  const idsPlanes = [...new Set(suscripciones.map(s => s.planId).filter((id): id is string => id !== null))]
+  const planes = idsPlanes.length > 0
+    ? await db.planNelyx.findMany({ where: { id: { in: idsPlanes } }, select: { id: true, nombre: true, precio: true } })
+    : []
+  const planesPorId = new Map<string, PlanVigente>(planes.map(p => [p.id, { nombre: p.nombre, precio: Number(p.precio) }]))
 
   // Cada suscripción es independiente de las demás — se procesan en
   // paralelo (tandas acotadas) y se aísla el fallo de una sola en vez de
@@ -66,7 +72,7 @@ export async function sincronizarSuscripciones() {
   const TAMANO_LOTE = 10
   for (let i = 0; i < suscripciones.length; i += TAMANO_LOTE) {
     const lote = suscripciones.slice(i, i + TAMANO_LOTE) as SusRow[]
-    const resultados = await Promise.allSettled(lote.map(sus => aplicarTransicion(sus, hoy)))
+    const resultados = await Promise.allSettled(lote.map(sus => aplicarTransicion(sus, hoy, planesPorId)))
     for (const r of resultados) {
       if (r.status === "rejected") { console.error("Error al sincronizar suscripción:", r.reason); Sentry.captureException(r.reason) }
     }
@@ -110,11 +116,14 @@ export async function determinarEstadoAlReactivar(suscripcionId: string): Promis
   return "al_dia"
 }
 
-async function aplicarTransicion(sus: SusRow, hoy: Date) {
-  // 1) Prueba gratuita terminada → generar primer cobro (plan mensual por defecto)
+async function aplicarTransicion(sus: SusRow, hoy: Date, planesPorId: Map<string, PlanVigente>) {
+  // 1) Prueba gratuita terminada → generar primer cobro
   if (sus.estado === "prueba_gratuita" && sus.fechaFinPrueba && sus.fechaFinPrueba <= hoy) {
-    const planFinal: PlanKey = esPlanValido(sus.plan) ? sus.plan : "mensual"
-    const monto = precioDePlan(planFinal)
+    // Sin plan asignado no hay con qué facturar — queda tal cual hasta que
+    // el admin le asigne uno desde /admin/clientes (no debería pasar en el
+    // flujo normal, crearClienteNelyx siempre exige elegir un plan).
+    const plan = sus.planId ? planesPorId.get(sus.planId) : null
+    if (!plan) return
     const fechaVencimiento = new Date(sus.fechaFinPrueba)
     fechaVencimiento.setDate(fechaVencimiento.getDate() + DIAS_GRACIA_PAGO)
 
@@ -122,8 +131,8 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
       db.cobroNelyx.create({
         data: {
           suscripcionId: sus.id,
-          plan: planFinal,
-          monto,
+          plan: plan.nombre,
+          monto: plan.precio,
           fechaEmision: sus.fechaFinPrueba,
           fechaVencimiento,
           estado: "pendiente",
@@ -131,10 +140,10 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
       }),
       db.suscripcionNelyx.update({
         where: { id: sus.id },
-        data: { plan: planFinal, precioPlan: monto, estado: "pendiente" },
+        data: { precioPlan: plan.precio, estado: "pendiente" },
       }),
       db.suscripcionNelyxEvento.create({
-        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Terminó la prueba gratuita — primer cobro de ${PLANES[planFinal].label} por $${monto}` },
+        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Terminó la prueba gratuita — primer cobro de ${plan.nombre} por $${plan.precio}` },
       }),
     ])
     return
@@ -155,8 +164,8 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
 
   // 3) Al día y llegó la fecha de próximo cobro → generar nuevo cobro
   if (sus.estado === "al_dia" && sus.fechaProximoCobro && sus.fechaProximoCobro <= hoy) {
-    const planFinal: PlanKey = esPlanValido(sus.plan) ? sus.plan : "mensual"
-    const monto = precioDePlan(planFinal)
+    const plan = sus.planId ? planesPorId.get(sus.planId) : null
+    if (!plan) return
     const fechaVencimiento = new Date(sus.fechaProximoCobro)
     fechaVencimiento.setDate(fechaVencimiento.getDate() + DIAS_GRACIA_PAGO)
 
@@ -164,16 +173,19 @@ async function aplicarTransicion(sus: SusRow, hoy: Date) {
       db.cobroNelyx.create({
         data: {
           suscripcionId: sus.id,
-          plan: planFinal,
-          monto,
+          plan: plan.nombre,
+          monto: plan.precio,
           fechaEmision: sus.fechaProximoCobro,
           fechaVencimiento,
           estado: "pendiente",
         },
       }),
-      db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "pendiente" } }),
+      // precioPlan se refresca acá también: si el admin subió el precio del
+      // plan desde la última vez, este nuevo ciclo ya cobra el precio
+      // actual — nunca afecta cobros que ya se habían generado antes.
+      db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "pendiente", precioPlan: plan.precio } }),
       db.suscripcionNelyxEvento.create({
-        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Nuevo ciclo — cobro de ${PLANES[planFinal].label} por $${monto}` },
+        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Nuevo ciclo — cobro de ${plan.nombre} por $${plan.precio}` },
       }),
     ])
     return

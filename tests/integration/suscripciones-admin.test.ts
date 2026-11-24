@@ -30,20 +30,27 @@ async function crearAdmin() {
   return admin
 }
 
+async function crearPlanDePrueba(overrides?: { nombre?: string; precio?: number; meses?: number }) {
+  return db.planNelyx.create({
+    data: { nombre: overrides?.nombre ?? "Mensual", precio: overrides?.precio ?? 20000, meses: overrides?.meses ?? 1 },
+  })
+}
+
 async function crearClienteConSuscripcion(overrides?: { estado?: string; fechaFinPrueba?: Date | null }) {
   const cliente = await db.user.create({
     data: { nombre: "Cliente de prueba", email: `cliente-${Math.random()}@nelyx.cl`, password: await bcrypt.hash("x", 4), rol: "USER", activo: true },
   })
+  const plan = await crearPlanDePrueba()
   const sus = await db.suscripcionNelyx.create({
     data: {
       userId: cliente.id,
-      plan: "mensual",
+      planId: plan.id,
       estado: overrides?.estado ?? "al_dia",
       fechaFinPrueba: overrides?.fechaFinPrueba ?? null,
       precioPlan: 20000,
     },
   })
-  return { cliente, sus }
+  return { cliente, sus, plan }
 }
 
 // Bug real reportado: el admin suspendía una cuenta de cliente y luego la
