@@ -3,7 +3,9 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import { ClientesAdminClient } from "@/components/admin/clientes-admin-client"
-import { sincronizarSuscripciones, PLANES, esPlanValido } from "@/lib/suscripciones"
+import { sincronizarSuscripciones } from "@/lib/suscripciones"
+import { obtenerPlanes } from "@/app/actions/planes-acciones"
+import { calcularMetricasClientes } from "@/lib/metricas-clientes"
 
 export const metadata: Metadata = { title: "Clientes NELYX" }
 export const dynamic = "force-dynamic"
@@ -16,6 +18,7 @@ export default async function ClientesAdminPage() {
   await sincronizarSuscripciones()
 
   const hoy = new Date()
+  const planes = await obtenerPlanes()
 
   const usuarios = await db.user.findMany({
     // cuentaPrincipalId: null excluye a los empleados — son sub-cuentas de
@@ -26,6 +29,7 @@ export default async function ClientesAdminPage() {
     include: {
       suscripcionNelyx: {
         include: {
+          plan: true,
           pagos: { orderBy: { createdAt: "desc" }, take: 15 },
           cobros: { orderBy: { createdAt: "desc" }, take: 15 },
           eventos: { orderBy: { createdAt: "desc" }, take: 30 },
@@ -95,7 +99,7 @@ export default async function ClientesAdminPage() {
     const salud = calcularSalud(sus?.ultimoAcceso, u._count.movimientos, sus?.fechaInicio ?? u.createdAt)
     const cobroPendiente = sus?.cobros.find(c => c.estado === "pendiente" || c.estado === "vencido") ?? null
 
-    const planLabel = sus && esPlanValido(sus.plan) ? PLANES[sus.plan].label : "Mensual"
+    const planLabel = sus?.plan?.nombre ?? "Sin plan"
     const acceso = accesoPorUsuario.get(u.id)
     const cuentaAcceso: "activa" | "pendiente" | "sin_invitar" = acceso?.activada ? "activa" : acceso?.invitado ? "pendiente" : "sin_invitar"
 
@@ -109,13 +113,15 @@ export default async function ClientesAdminPage() {
       createdAt: u.createdAt.toISOString(),
       estado,
       suscripcionId: sus?.id ?? null,
-      plan: sus?.plan ?? "mensual",
+      plan: sus?.planId ?? "",
+      planMeses: sus?.plan?.meses ?? 1,
       planLabel,
       fechaInicio: sus?.fechaInicio?.toISOString() ?? u.createdAt.toISOString(),
       fechaFinPrueba: sus?.fechaFinPrueba?.toISOString() ?? null,
       fechaProximoCobro: sus?.fechaProximoCobro?.toISOString() ?? null,
       precioPlan: Number(sus?.precioPlan ?? 0),
       renovacionAutomatica: sus?.renovacionAutomatica ?? true,
+      esPrueba: sus?.esPrueba ?? false,
       ultimoAcceso: sus?.ultimoAcceso?.toISOString() ?? null,
       diasSinAcceso,
       notas: sus?.notas ?? null,
@@ -150,33 +156,7 @@ export default async function ClientesAdminPage() {
   })
 
   // ── Métricas ──────────────────────────────────────────────────────
-  const activos = clientes.filter(c => c.estado === "al_dia").length
-  const enPrueba = clientes.filter(c => c.estado === "prueba_gratuita").length
-  const proximosVencer = clientes.filter(c => c.estado === "proximo_vencer").length
-  const pendientes = clientes.filter(c => c.estado === "pendiente")
-  const vencidos = clientes.filter(c => c.estado === "vencido")
-  const suspendidos = clientes.filter(c => c.estado === "suspendido").length
-  const cancelados = clientes.filter(c => c.estado === "cancelado").length
-
-  // MRR normalizado a valor mensual según duración del plan
-  const mrr = clientes
-    .filter(c => ["al_dia", "proximo_vencer", "pendiente", "vencido"].includes(c.estado))
-    .reduce((acc, c) => {
-      const meses = esPlanValido(c.plan) ? PLANES[c.plan].meses : 1
-      return acc + c.precioPlan / meses
-    }, 0)
-
-  const pagosPendientes = [...pendientes, ...vencidos]
-  const montoPendiente = pagosPendientes.reduce((a, c) => a + (c.cobroPendiente?.monto ?? 0), 0)
-
-  const baseRenovacion = activos + proximosVencer + vencidos.length
-  const tasaRenovacion = baseRenovacion > 0 ? Math.round(((activos + proximosVencer) / baseRenovacion) * 100) : 100
-
-  const metricas = {
-    activos, enPrueba, proximosVencer, pendientes: pendientes.length, vencidos: vencidos.length,
-    suspendidos, cancelados, mrr, pagosPendientes: pagosPendientes.length, montoPendiente, tasaRenovacion,
-    total: clientes.length,
-  }
+  const metricas = calcularMetricasClientes(clientes)
 
   // ── Alertas (solo dentro de este panel admin) ──────────────────────
   const alertas = clientes.flatMap(c => {
@@ -193,5 +173,5 @@ export default async function ClientesAdminPage() {
     return items
   })
 
-  return <ClientesAdminClient clientes={clientes} metricas={metricas} alertas={alertas} />
+  return <ClientesAdminClient clientes={clientes} metricas={metricas} alertas={alertas} planes={planes} />
 }

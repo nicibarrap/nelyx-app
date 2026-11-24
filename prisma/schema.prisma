@@ -485,13 +485,29 @@ model SuscripcionNelyx {
   id                   String                   @id @default(cuid())
   userId               String                   @unique
   user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan                 String                   @default("mensual")
+  // Plan asignado — antes guardaba una clave fija ("mensual", "trimestral",
+  // ...) contra una tabla hardcodeada en el código; ahora apunta a un plan
+  // real y editable por el admin (ver PlanNelyx). Null solo puede pasar si
+  // el plan asignado se llegó a borrar (no debería ocurrir: los planes con
+  // suscripciones activas nunca se borran, solo se desactivan).
+  planId               String?
+  plan                 PlanNelyx?               @relation(fields: [planId], references: [id], onDelete: SetNull)
   estado               String                   @default("prueba_gratuita")
   fechaInicio          DateTime                 @default(now())
   fechaFinPrueba       DateTime?
   fechaProximoCobro    DateTime?
+  // Precio vigente de ESTA suscripción — se recalcula desde plan.precio
+  // cada vez que se genera un cobro nuevo (ver aplicarTransicion en
+  // lib/suscripciones.ts) o el admin cambia el plan a mano. Si el admin
+  // edita el precio del plan, el cambio aplica desde el próximo ciclo de
+  // cobro de cada cliente, nunca retroactivo a cobros ya generados.
   precioPlan           Decimal                  @default(0) @db.Decimal(12, 2)
   renovacionAutomatica Boolean                  @default(true)
+  // Cuenta de prueba/piloto, sin plata real de por medio (ej. una cuenta
+  // propia para probar algo) — queda excluida del MRR y del monto
+  // pendiente en /admin/clientes para no tergiversar esos números, pero
+  // sigue apareciendo en el listado con una marca visible.
+  esPrueba             Boolean                  @default(false)
   ultimoAcceso         DateTime?
   notas                String?
   createdAt            DateTime                 @default(now())
@@ -501,6 +517,30 @@ model SuscripcionNelyx {
   eventos              SuscripcionNelyxEvento[]
 
   @@index([estado])
+  @@index([planId])
+}
+
+// Plan de suscripción de Nelyx — creado y editado libremente por el admin
+// desde /admin/clientes (antes era una tabla fija de 4 planes en el código,
+// sin forma de tener un precio distinto para un segmento de clientes
+// distinto, ej. feriantes vs. almacenes).
+model PlanNelyx {
+  id            String             @id @default(cuid())
+  nombre        String
+  precio        Decimal            @db.Decimal(12, 2)
+  // Cada cuántos meses se cobra este plan (1 = mensual, 3 = trimestral, ...).
+  meses         Int
+  descripcion   String?
+  // Un plan desactivado no aparece como opción para una suscripción nueva
+  // ni para cambiar de plan, pero las suscripciones que ya lo tienen
+  // asignado lo siguen usando con normalidad — desactivar no es borrar, y
+  // un plan con suscripciones activas nunca se borra.
+  activo        Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  suscripciones SuscripcionNelyx[]
+
+  @@index([activo])
 }
 
 // Auditoría de /admin/clientes — "qué pasó y cuándo" con la suscripción

@@ -6,11 +6,11 @@ import { formatCLP } from "@/lib/utils"
 import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider"
 import {
   registrarPagoCobro, actualizarNotaCliente, crearSuscripcionParaUsuario, crearClienteNelyx,
-  actualizarSuscripcion, cambiarEstadoCliente, actualizarDatosCliente,
+  actualizarSuscripcion, cambiarEstadoCliente, actualizarDatosCliente, cambiarEsPruebaCliente,
 } from "@/app/actions/admin-acciones"
 import { enviarInvitacionCliente } from "@/app/actions/password-reset-acciones"
 import { CampoFecha } from "@/components/shared/campo-fecha"
-import { PLANES as PLANES_UI } from "@/lib/planes-nelyx"
+import { crearPlan, actualizarPlan, cambiarActivoPlan, type PlanDTO } from "@/app/actions/planes-acciones"
 import { generarLinkWhatsapp, generarLinkGmail } from "@/lib/cobranza"
 
 type Pago = { id: string; fecha: string; monto: number; metodoPago: string; observacion: string | null; estado: string }
@@ -18,9 +18,9 @@ type Cobro = { id: string; plan: string; monto: number; fechaEmision: string; fe
 type Evento = { id: string; tipo: string; detalle: string | null; adminNombre: string | null; createdAt: string }
 type Cliente = {
   id: string; nombre: string; email: string; negocio: string | null; telefono: string | null; activo: boolean
-  createdAt: string; estado: string; suscripcionId: string | null; plan: string; planLabel: string
+  createdAt: string; estado: string; suscripcionId: string | null; plan: string; planMeses: number; planLabel: string
   fechaInicio: string; fechaFinPrueba: string | null; fechaProximoCobro: string | null
-  precioPlan: number; renovacionAutomatica: boolean
+  precioPlan: number; renovacionAutomatica: boolean; esPrueba: boolean
   ultimoAcceso: string | null; diasSinAcceso: number | null; notas: string | null
   salud: number; movimientos: number; productos: number; clientesCount: number; ventas: number; equipo: number
   cuentaAcceso: "activa" | "pendiente" | "sin_invitar"
@@ -39,6 +39,8 @@ const EVENTO_CFG: Record<string, { label: string; icon: string }> = {
   pago_registrado:   { label: "Pago registrado",            icon: "💵" },
   cobro_generado:    { label: "Cobro generado",             icon: "🧾" },
   vencido:           { label: "Pasó a vencido",              icon: "⚠️" },
+  marcada_prueba:    { label: "Marcada como cuenta de prueba", icon: "🧪" },
+  desmarcada_prueba: { label: "Desmarcada como cuenta de prueba", icon: "🧪" },
 }
 type Metricas = {
   activos: number; enPrueba: number; proximosVencer: number; pendientes: number; vencidos: number
@@ -148,9 +150,15 @@ function FormPago({ cobro, onClose }: { cobro: Cobro; onClose: () => void }) {
   )
 }
 
-function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void }) {
+function FormEditarSuscripcion({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; onClose: () => void }) {
   const [pending, start] = useTransition()
-  const [plan, setPlan] = useState(c.plan in PLANES_UI ? c.plan : "mensual")
+  const [plan, setPlan] = useState(planes.some(p => p.id === c.plan) ? c.plan : (planes[0]?.id ?? ""))
+  // El plan actual de este cliente puede estar desactivado (ya no se ofrece
+  // a clientes nuevos) — igual tiene que aparecer en la lista para no
+  // perderlo de la selección al abrir el formulario.
+  const opciones = planes.some(p => p.id === c.plan) || !c.plan
+    ? planes
+    : [...planes, { id: c.plan, nombre: c.planLabel, precio: c.precioPlan, meses: c.planMeses, descripcion: null, activo: false }]
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!c.suscripcionId) return
@@ -160,14 +168,15 @@ function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void
   }
   const inp = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
   const proximoCobroDefault = c.fechaProximoCobro ? c.fechaProximoCobro.slice(0, 10) : ""
+  const precioPlanElegido = opciones.find(p => p.id === plan)?.precio ?? 0
   return (
     <form onSubmit={submit} className="space-y-3 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
       <p className="text-xs font-bold text-[var(--c-text)]">Editar suscripción</p>
       <div>
         <label className="text-[10px] text-[var(--c-text4)]">Plan</label>
         <select name="plan" value={plan} onChange={e => setPlan(e.target.value)} className={inp}>
-          {Object.entries(PLANES_UI).map(([key, p]) => (
-            <option key={key} value={key}>{p.label} — {formatCLP(p.precio)}</option>
+          {opciones.map(p => (
+            <option key={p.id} value={p.id}>{p.nombre} — {formatCLP(p.precio)}{!p.activo ? " (desactivado)" : ""}</option>
           ))}
         </select>
       </div>
@@ -181,7 +190,7 @@ function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void
       </label>
       <label className="flex items-center gap-2 text-xs text-[var(--c-text2)]">
         <input name="generarCobroAhora" type="checkbox" className="accent-sky-500" />
-        Generar cobro por el nuevo plan ahora ({formatCLP(PLANES_UI[plan]?.precio ?? 0)})
+        Generar cobro por el nuevo plan ahora ({formatCLP(precioPlanElegido)})
       </label>
       <div className="flex gap-2">
         <button type="button" onClick={onClose} className="flex-1 h-8 text-xs border border-[var(--c-border)] rounded-lg text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
@@ -193,9 +202,11 @@ function FormEditarSuscripcion({ c, onClose }: { c: Cliente; onClose: () => void
 
 function hoyISO() { return new Date().toISOString().slice(0, 10) }
 
-function FormNuevoCliente({ onClose }: { onClose: () => void }) {
+function FormNuevoCliente({ planes, onClose }: { planes: PlanDTO[]; onClose: () => void }) {
   const [pending, start] = useTransition()
-  const [plan, setPlan] = useState("mensual")
+  const planesActivos = planes.filter(p => p.activo)
+  const [plan, setPlan] = useState(planesActivos[0]?.id ?? "")
+  const planElegido = planesActivos.find(p => p.id === plan)
   const [creado, setCreado] = useState<{ id: string } | null>(null)
   const [invitando, setInvitando] = useState(false)
   const [invitada, setInvitada] = useState(false)
@@ -280,20 +291,151 @@ function FormNuevoCliente({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <label className="text-[10px] text-[var(--c-text4)]">Plan</label>
-          <select name="plan" value={plan} onChange={e => setPlan(e.target.value)} className={sel}>
-            {Object.entries(PLANES_UI).map(([key, p]) => (
-              <option key={key} value={key}>{p.label} — {formatCLP(p.precio)}</option>
-            ))}
-          </select>
-          <p className="text-[10px] text-blue-400 mt-1">
-            El primer mes es gratis — recién después se empieza a cobrar {formatCLP(PLANES_UI[plan].precio)} cada {PLANES_UI[plan].meses === 1 ? "mes" : `${PLANES_UI[plan].meses} meses`}.
-          </p>
+          {planesActivos.length === 0 ? (
+            <p className="text-[10px] text-red-400">No hay ningún plan activo todavía — crea uno primero con "Gestionar planes".</p>
+          ) : (
+            <select name="plan" value={plan} onChange={e => setPlan(e.target.value)} className={sel}>
+              {planesActivos.map(p => (
+                <option key={p.id} value={p.id}>{p.nombre} — {formatCLP(p.precio)}</option>
+              ))}
+            </select>
+          )}
+          {planElegido && (
+            <p className="text-[10px] text-blue-400 mt-1">
+              El primer mes es gratis — recién después se empieza a cobrar {formatCLP(planElegido.precio)} cada {planElegido.meses === 1 ? "mes" : `${planElegido.meses} meses`}.
+            </p>
+          )}
         </div>
+        <label className="flex items-center gap-2 text-xs text-[var(--c-text2)]">
+          <input name="esPrueba" type="checkbox" className="accent-sky-500" />
+          🧪 Cuenta de prueba (no se cuenta en el MRR ni en los montos pendientes)
+        </label>
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onClose} className="flex-1 h-10 text-sm border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
-          <button type="submit" disabled={pending} className="flex-1 h-10 text-sm bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl disabled:opacity-50">{pending ? "Creando..." : "Crear cliente"}</button>
+          <button type="submit" disabled={pending || planesActivos.length === 0} className="flex-1 h-10 text-sm bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl disabled:opacity-50">{pending ? "Creando..." : "Crear cliente"}</button>
         </div>
       </form>
+    </div>
+  )
+}
+
+// Fila de un plan existente — se edita in-line (sin modal aparte) para no
+// apilar diálogos; "Guardar" solo aparece si de verdad cambiaste algo.
+function FilaPlan({ p }: { p: PlanDTO }) {
+  const [pending, start] = useTransition()
+  const [editando, setEditando] = useState(false)
+  const inp = "w-full h-8 bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500"
+
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    fd.set("planId", p.id)
+    start(async () => {
+      const resultado = await actualizarPlan(fd)
+      if (resultado?.error) { toast.error(resultado.error); return }
+      toast.success("✅ Plan actualizado")
+      setEditando(false)
+    })
+  }
+
+  function toggleActivo() {
+    start(async () => {
+      const resultado = await cambiarActivoPlan(p.id, !p.activo)
+      if (resultado?.error) toast.error(resultado.error)
+    })
+  }
+
+  if (editando) {
+    return (
+      <form onSubmit={submit} className="space-y-2 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
+        <input name="nombre" required defaultValue={p.nombre} placeholder="Nombre del plan" className={inp} />
+        <div className="grid grid-cols-2 gap-2">
+          <input name="precio" type="number" min="0" step="1" required defaultValue={p.precio} placeholder="Precio ($)" className={inp} />
+          <input name="meses" type="number" min="1" step="1" required defaultValue={p.meses} placeholder="Cada cuántos meses" className={inp} />
+        </div>
+        <input name="descripcion" defaultValue={p.descripcion ?? ""} placeholder="Descripción (opcional)" className={inp} />
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={() => setEditando(false)} className="flex-1 h-7 text-[11px] border border-[var(--c-border)] rounded-lg text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
+          <button type="submit" disabled={pending} className="flex-1 h-7 text-[11px] bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-lg disabled:opacity-50">{pending ? "..." : "Guardar"}</button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div className={`flex items-center justify-between gap-2 p-3 rounded-xl border ${p.activo ? "bg-[var(--c-card2)] border-[var(--c-border)]" : "bg-[var(--c-card2)]/40 border-[var(--c-border)] opacity-60"}`}>
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-[var(--c-text)] truncate">{p.nombre} {!p.activo && <span className="text-[10px] font-normal text-[var(--c-text4)]">(desactivado)</span>}</p>
+        <p className="text-[11px] text-[var(--c-text3)]">{formatCLP(p.precio)} cada {p.meses === 1 ? "mes" : `${p.meses} meses`}</p>
+        {p.descripcion && <p className="text-[10px] text-[var(--c-text4)] mt-0.5 truncate">{p.descripcion}</p>}
+      </div>
+      <div className="flex gap-1.5 flex-shrink-0">
+        <button onClick={() => setEditando(true)} className="h-7 px-2.5 text-[11px] border border-[var(--c-border)] rounded-lg text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Editar</button>
+        <button onClick={toggleActivo} disabled={pending} className="h-7 px-2.5 text-[11px] border border-[var(--c-border)] rounded-lg text-[var(--c-text3)] hover:bg-[var(--c-hover)] disabled:opacity-50">
+          {p.activo ? "Desactivar" : "Activar"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ModalGestionarPlanes({ planes, onClose }: { planes: PlanDTO[]; onClose: () => void }) {
+  const [pending, start] = useTransition()
+  const [showNuevo, setShowNuevo] = useState(false)
+  const inp = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
+
+  function submitNuevo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    start(async () => {
+      const resultado = await crearPlan(fd)
+      if (resultado?.error) { toast.error(resultado.error); return }
+      toast.success("✅ Plan creado")
+      setShowNuevo(false)
+      ;(e.target as HTMLFormElement).reset()
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(0,0,0,0.7)"}}>
+      <div className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <p className="text-sm font-bold text-[var(--c-text)]">Planes de suscripción</p>
+            <p className="text-[11px] text-[var(--c-text3)] mt-0.5">Cambiar el precio no afecta cobros ya generados — aplica desde el próximo ciclo de cada cliente.</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-[var(--c-text4)] hover:text-[var(--c-text)] text-lg flex-shrink-0">✕</button>
+        </div>
+
+        <div className="space-y-2">
+          {planes.length === 0 ? (
+            <p className="text-xs text-[var(--c-text4)] text-center py-4">Todavía no tienes ningún plan creado.</p>
+          ) : (
+            planes.map(p => <FilaPlan key={p.id} p={p} />)
+          )}
+        </div>
+
+        {showNuevo ? (
+          <form onSubmit={submitNuevo} className="space-y-2 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
+            <p className="text-xs font-bold text-[var(--c-text)]">Nuevo plan</p>
+            <input name="nombre" required placeholder="Nombre (ej: Feria, Almacén)" className={inp} />
+            <div className="grid grid-cols-2 gap-2">
+              <input name="precio" type="number" min="0" step="1" required placeholder="Precio ($)" className={inp} />
+              <input name="meses" type="number" min="1" step="1" required defaultValue={1} placeholder="Cada cuántos meses" className={inp} />
+            </div>
+            <input name="descripcion" placeholder="Descripción (opcional)" className={inp} />
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setShowNuevo(false)} className="flex-1 h-9 text-xs border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
+              <button type="submit" disabled={pending} className="flex-1 h-9 text-xs bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl disabled:opacity-50">{pending ? "Creando..." : "Crear plan"}</button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" onClick={() => setShowNuevo(true)}
+            className="w-full h-9 border border-dashed border-[var(--c-border)] text-[var(--c-text3)] hover:bg-[var(--c-hover)] text-xs font-semibold rounded-xl transition-all">
+            + Crear nuevo plan
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -328,7 +470,7 @@ function FormEditarDatosCliente({ c, onClose }: { c: Cliente; onClose: () => voi
   )
 }
 
-function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
+function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; onClose: () => void }) {
   const [showPago, setShowPago] = useState(false)
   const [showEditar, setShowEditar] = useState(false)
   const [showEditarDatos, setShowEditarDatos] = useState(false)
@@ -369,6 +511,10 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
         toast.error(err instanceof Error ? err.message : "No se pudo enviar la invitación")
       }
     })
+  }
+  function toggleEsPrueba() {
+    if (!c.suscripcionId) return
+    start(async () => { await cambiarEsPruebaCliente(c.suscripcionId!, !c.esPrueba); toast.success(c.esPrueba ? "Ya no es cuenta de prueba" : "Marcada como cuenta de prueba") })
   }
   // Mismos helpers que ya usa Cuentas por cobrar (lib/cobranza.ts) para
   // contactar directo por WhatsApp/Gmail — acá sin plantilla ni registro de
@@ -428,6 +574,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
           <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${cfg.cls}`}>{cfg.label}</span>
           <span className="text-xs px-2.5 py-1 rounded-full border border-[var(--c-border)] text-[var(--c-text3)]">{c.planLabel}</span>
           <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${ACCESO_CFG[c.cuentaAcceso].cls}`}>{ACCESO_CFG[c.cuentaAcceso].label}</span>
+          {c.esPrueba && <span className="text-xs px-2.5 py-1 rounded-full border font-semibold bg-purple-500/10 text-purple-400 border-purple-500/20">🧪 Prueba</span>}
         </div>
         <button onClick={() => setShowEditarDatos(!showEditarDatos)} className="text-xs text-sky-400 hover:text-sky-300 whitespace-nowrap">✎ Editar datos</button>
       </div>
@@ -444,7 +591,7 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
               <button onClick={() => setShowEditar(!showEditar)} className="text-xs text-sky-400 hover:text-sky-300">✎ Editar suscripción</button>
             </div>
 
-            {showEditar && <div className="mb-3"><FormEditarSuscripcion c={c} onClose={() => setShowEditar(false)} /></div>}
+            {showEditar && <div className="mb-3"><FormEditarSuscripcion c={c} planes={planes} onClose={() => setShowEditar(false)} /></div>}
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
               {[
@@ -568,6 +715,13 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
                 <span className="text-[9px] font-semibold text-center text-zinc-400">Cancelar</span>
               </button>
             )}
+            {c.suscripcionId && (
+              <button onClick={toggleEsPrueba} disabled={pending}
+                className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
+                <span className="text-lg">🧪</span>
+                <span className={`text-[9px] font-semibold text-center ${c.esPrueba ? "text-purple-400" : "text-[var(--c-text3)]"}`}>{c.esPrueba ? "Quitar prueba" : "Marcar prueba"}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -584,11 +738,12 @@ function DetailPanel({ c, onClose }: { c: Cliente; onClose: () => void }) {
   )
 }
 
-export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes: Cliente[]; metricas: Metricas; alertas: Alerta[] }) {
+export function ClientesAdminClient({ clientes, metricas, alertas, planes }: { clientes: Cliente[]; metricas: Metricas; alertas: Alerta[]; planes: PlanDTO[] }) {
   const [filtro, setFiltro] = useState<Filtro>("todos")
   const [busqueda, setBusqueda] = useState("")
   const [selected, setSelected] = useState<Cliente | null>(null)
   const [showNuevo, setShowNuevo] = useState(false)
+  const [showPlanes, setShowPlanes] = useState(false)
 
   const filtrados = useMemo(() => {
     let list = clientes
@@ -619,7 +774,8 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
 
   return (
     <div className="space-y-4 animate-fade-up pb-6">
-      {showNuevo && <FormNuevoCliente onClose={() => setShowNuevo(false)} />}
+      {showNuevo && <FormNuevoCliente planes={planes} onClose={() => setShowNuevo(false)} />}
+      {showPlanes && <ModalGestionarPlanes planes={planes} onClose={() => setShowPlanes(false)} />}
 
       {/* Header */}
       <div className="flex flex-col gap-3">
@@ -638,6 +794,10 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
                 className="h-9 pl-8 pr-4 w-full sm:w-48 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm text-[var(--c-text)] outline-none focus:border-sky-500 placeholder:text-[var(--c-text4)]" />
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-text4)] text-sm">🔍</span>
             </div>
+            <button onClick={() => setShowPlanes(true)}
+              className="h-9 px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-hover)] text-sm font-semibold rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap">
+              ⚙️ Gestionar planes
+            </button>
             <button onClick={() => setShowNuevo(true)}
               className="h-9 px-4 bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap">
               + Nuevo cliente
@@ -705,7 +865,10 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${cfg.cls}`}>{cfg.label}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${cfg.cls}`}>{cfg.label}</span>
+                          {c.esPrueba && <span className="px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap bg-purple-500/10 text-purple-400 border-purple-500/20">🧪</span>}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${ACCESO_CFG[c.cuentaAcceso].cls}`}>{ACCESO_CFG[c.cuentaAcceso].label}</span>
@@ -755,7 +918,10 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
                         <p className="text-[var(--c-text4)] text-[11px] truncate">{c.email}</p>
                       </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap flex-shrink-0 ${cfg.cls}`}>{cfg.label}</span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {c.esPrueba && <span className="px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap bg-purple-500/10 text-purple-400 border-purple-500/20">🧪</span>}
+                      <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${cfg.cls}`}>{cfg.label}</span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between mt-2.5 text-[11px]">
                     <span className="text-[var(--c-text3)]">{c.planLabel} · {c.precioPlan > 0 ? formatCLP(c.precioPlan) : "Gratis"}</span>
@@ -781,7 +947,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
             {/* key remonta el panel al cambiar de cliente — evita que
                 showPago/showEditar/nota queden pegados del cliente anterior
                 (mismo fix que ClientePanel/ProveedorPanel). */}
-            <DetailPanel key={selectedUpdated.id} c={selectedUpdated} onClose={() => setSelected(null)} />
+            <DetailPanel key={selectedUpdated.id} c={selectedUpdated} planes={planes} onClose={() => setSelected(null)} />
           </div>
         )}
       </div>
@@ -792,7 +958,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas }: { clientes:
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelected(null)} />
           <div className="relative w-full max-h-[88vh] bg-[var(--c-card)] border-t border-[var(--c-border)] rounded-t-3xl overflow-hidden flex flex-col animate-fade-up">
             <div className="w-10 h-1 rounded-full bg-white/15 mx-auto mt-2.5 mb-1 flex-shrink-0" />
-            <DetailPanel key={selectedUpdated.id} c={selectedUpdated} onClose={() => setSelected(null)} />
+            <DetailPanel key={selectedUpdated.id} c={selectedUpdated} planes={planes} onClose={() => setSelected(null)} />
           </div>
         </div>
       )}
