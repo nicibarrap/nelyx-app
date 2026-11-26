@@ -1,8 +1,12 @@
 "use server"
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { registrarEventoSuscripcion } from "@/lib/suscripciones"
+import { notificar } from "@/lib/notificaciones"
+import { formatCLP } from "@/lib/utils"
+import * as Sentry from "@sentry/nextjs"
 
 // Igual que "Mi suscripción" conceptualmente: solo el dueño de la cuenta
 // ve y reporta pagos de SU PROPIA suscripción con Nelyx — un empleado no
@@ -130,4 +134,23 @@ export async function reportarPagoCliente(formData: FormData): Promise<{ error: 
 
   revalidatePath("/dashboard/configuracion")
   revalidatePath("/admin/clientes")
+
+  // Aviso instantáneo (push + campanita) al admin — igual que un mensaje
+  // nuevo de Soporte: no espera al cron, así se entera apenas el cliente
+  // sube el comprobante y no recién la próxima vez que abra el panel.
+  const negocio = session.user.negocio || session.user.name || "Un cliente"
+  after(async () => {
+    const admins = await db.user.findMany({ where: { rol: "ADMIN", cuentaPrincipalId: null }, select: { id: true } })
+    await Promise.all(admins.map(admin =>
+      notificar({
+        userId: admin.id,
+        categoria: "renovaciones",
+        prioridad: "alta",
+        titulo: `📎 ${negocio} subió un comprobante de pago`,
+        mensaje: `${formatCLP(Number(cobro.monto))} — pendiente de revisar`,
+        accionUrl: "/admin/clientes",
+        claveUnica: `nelyx:comprobante:${pago.id}`,
+      }).catch(err => Sentry.captureException(err, { extra: { pagoId: pago.id, adminId: admin.id, etapa: "notificar-comprobante" } }))
+    ))
+  })
 }

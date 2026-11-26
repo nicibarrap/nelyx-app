@@ -1,5 +1,5 @@
 "use client"
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useRef, useEffect } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { formatCLP } from "@/lib/utils"
@@ -165,6 +165,13 @@ function FormRevisarComprobante({ pagoId, comprobanteUrl, monto, onClose }: { pa
   const [pending, start] = useTransition()
   const [rechazando, setRechazando] = useState(false)
   const [motivo, setMotivo] = useState("")
+  const ref = useRef<HTMLDivElement>(null)
+
+  // El botón que abre este formulario vive bastante más abajo (en "Acciones
+  // rápidas"), lejos de donde el formulario aparece — y al insertarse arriba
+  // el scroll-anchoring del navegador mantiene la vista donde estaba, así
+  // que en celular queda fuera de pantalla y parece que no pasó nada.
+  useEffect(() => { ref.current?.scrollIntoView({ block: "nearest" }) }, [])
 
   function confirmar() {
     start(async () => { await confirmarPagoCliente(pagoId); toast.success("✅ Pago confirmado"); onClose() })
@@ -174,7 +181,7 @@ function FormRevisarComprobante({ pagoId, comprobanteUrl, monto, onClose }: { pa
   }
 
   return (
-    <div className="space-y-3 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
+    <div ref={ref} className="space-y-3 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
       <p className="text-xs font-bold text-[var(--c-text)]">📎 Comprobante recibido — {formatCLP(monto)}</p>
       {comprobanteUrl && <a href={comprobanteUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-400 hover:text-sky-300 inline-block">Ver comprobante</a>}
       {rechazando ? (
@@ -906,7 +913,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas, planes, datos
             <h1 className="text-2xl font-bold text-[var(--c-text)] tracking-tight">Clientes NELYX</h1>
             <p className="text-sm text-[var(--c-text3)] mt-0.5">Panel administrativo de suscripciones — solo visible para ti.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <div className="relative">
               <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar cliente..."
                 className="h-9 pl-8 pr-4 w-full sm:w-48 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm text-[var(--c-text)] outline-none focus:border-sky-500 placeholder:text-[var(--c-text4)]" />
