@@ -14,6 +14,9 @@ import { ProyectosTareaClient } from "@/components/configuracion/proyectos-tarea
 import { CategoriasConfigClient } from "@/components/configuracion/categorias-config-client"
 import { PrivacidadDatosClient } from "@/components/configuracion/privacidad-datos-client"
 import { ConfiguracionLayout, type SeccionConfig } from "@/components/configuracion/configuracion-layout"
+import { obtenerMiSuscripcion } from "@/app/actions/suscripcion-cliente-acciones"
+import { obtenerDatosBancarios } from "@/app/actions/datos-bancarios-acciones"
+import { MiSuscripcionClient } from "@/components/configuracion/mi-suscripcion-client"
 
 export const metadata: Metadata = { title: "Configuración" }
 export const dynamic = "force-dynamic"
@@ -46,10 +49,13 @@ export default async function ConfiguracionPage() {
     { id: "categorias", icon: "🏷️", titulo: "Categorías", content: <div className="space-y-5"><CategoriasConfigClient categorias={categorias} /><ProyectosTareaClient proyectos={proyectosTarea} /></div> },
     { id: "diagnostico", icon: "🔧", titulo: "Diagnóstico técnico", content: <DiagnosticoPushClient /> },
   ]
-  // Exportar/eliminar "mis datos" es una acción exclusiva del dueño sobre
-  // su propia cuenta — un empleado ni siquiera debería ver la opción,
-  // además de que la Server Action la rechaza igual si se invoca directo.
+  // "Mi suscripción" y "Privacidad y datos" son exclusivas del dueño sobre
+  // su propia cuenta — un empleado ni siquiera debería ver cuánto paga su
+  // jefe por Nelyx, además de que las Server Actions las rechazan igual
+  // si se invocan directo.
   if (!session?.user?.esEmpleado) {
+    const [miSuscripcion, datosBancarios] = await Promise.all([obtenerMiSuscripcion(), obtenerDatosBancarios()])
+    secciones.push({ id: "mi-suscripcion", icon: "🧾", titulo: "Mi suscripción", content: <MiSuscripcionClient suscripcion={miSuscripcion} datosBancarios={datosBancarios} /> })
     secciones.push({ id: "privacidad", icon: "🔒", titulo: "Privacidad y datos", content: <PrivacidadDatosClient email={session?.user?.email ?? ""} /> })
   }
 

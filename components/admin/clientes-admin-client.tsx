@@ -7,14 +7,19 @@ import { SincronizarPendiente } from "@/components/dashboard/navegacion-provider
 import {
   registrarPagoCobro, actualizarNotaCliente, crearSuscripcionParaUsuario, crearClienteNelyx,
   actualizarSuscripcion, cambiarEstadoCliente, actualizarDatosCliente, cambiarEsPruebaCliente,
+  confirmarPagoCliente, rechazarPagoCliente,
 } from "@/app/actions/admin-acciones"
 import { enviarInvitacionCliente } from "@/app/actions/password-reset-acciones"
 import { CampoFecha } from "@/components/shared/campo-fecha"
 import { crearPlan, actualizarPlan, cambiarActivoPlan, type PlanDTO } from "@/app/actions/planes-acciones"
+import { actualizarDatosBancarios, type DatosBancariosDTO } from "@/app/actions/datos-bancarios-acciones"
 import { generarLinkWhatsapp, generarLinkGmail } from "@/lib/cobranza"
 
-type Pago = { id: string; fecha: string; monto: number; metodoPago: string; observacion: string | null; estado: string }
-type Cobro = { id: string; plan: string; monto: number; fechaEmision: string; fechaVencimiento: string; estado: string }
+type Pago = { id: string; fecha: string; monto: number; metodoPago: string; observacion: string | null; estado: string; comprobanteUrl?: string | null; motivoRechazo?: string | null }
+type Cobro = {
+  id: string; plan: string; monto: number; fechaEmision: string; fechaVencimiento: string; estado: string
+  pagoPendienteRevision?: { id: string; comprobanteUrl: string | null; fecha: string } | null
+}
 type Evento = { id: string; tipo: string; detalle: string | null; adminNombre: string | null; createdAt: string }
 type Cliente = {
   id: string; nombre: string; email: string; negocio: string | null; telefono: string | null; activo: boolean
@@ -41,6 +46,9 @@ const EVENTO_CFG: Record<string, { label: string; icon: string }> = {
   vencido:           { label: "Pasó a vencido",              icon: "⚠️" },
   marcada_prueba:    { label: "Marcada como cuenta de prueba", icon: "🧪" },
   desmarcada_prueba: { label: "Desmarcada como cuenta de prueba", icon: "🧪" },
+  comprobante_subido: { label: "Cliente subió un comprobante", icon: "📎" },
+  pago_confirmado:    { label: "Pago confirmado",              icon: "✅" },
+  pago_rechazado:     { label: "Comprobante rechazado",        icon: "❌" },
 }
 type Metricas = {
   activos: number; enPrueba: number; proximosVencer: number; pendientes: number; vencidos: number
@@ -147,6 +155,44 @@ function FormPago({ cobro, onClose }: { cobro: Cobro; onClose: () => void }) {
         <button type="submit" disabled={pending} className="flex-1 h-8 text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg disabled:opacity-50">{pending ? "..." : "Confirmar pago"}</button>
       </div>
     </form>
+  )
+}
+
+// Comprobante que el cliente ya subió desde "Mi suscripción" — acá el
+// admin solo confirma o rechaza, nunca "registra" un monto a mano (ese es
+// FormPago, para cuando no hay comprobante de por medio, ej. efectivo).
+function FormRevisarComprobante({ pagoId, comprobanteUrl, monto, onClose }: { pagoId: string; comprobanteUrl: string | null; monto: number; onClose: () => void }) {
+  const [pending, start] = useTransition()
+  const [rechazando, setRechazando] = useState(false)
+  const [motivo, setMotivo] = useState("")
+
+  function confirmar() {
+    start(async () => { await confirmarPagoCliente(pagoId); toast.success("✅ Pago confirmado"); onClose() })
+  }
+  function rechazar() {
+    start(async () => { await rechazarPagoCliente(pagoId, motivo); toast.success("Comprobante rechazado"); onClose() })
+  }
+
+  return (
+    <div className="space-y-3 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
+      <p className="text-xs font-bold text-[var(--c-text)]">📎 Comprobante recibido — {formatCLP(monto)}</p>
+      {comprobanteUrl && <a href={comprobanteUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-400 hover:text-sky-300 inline-block">Ver comprobante</a>}
+      {rechazando ? (
+        <>
+          <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} placeholder="Motivo del rechazo (se le muestra al cliente)"
+            className="w-full bg-[var(--c-input)] border border-[var(--c-border)] rounded-lg px-3 py-2 text-xs text-[var(--c-text)] outline-none focus:border-sky-500 resize-none" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setRechazando(false)} className="flex-1 h-8 text-xs border border-[var(--c-border)] rounded-lg text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Volver</button>
+            <button type="button" onClick={rechazar} disabled={pending} className="flex-1 h-8 text-xs bg-red-500 hover:bg-red-400 text-white font-bold rounded-lg disabled:opacity-50">{pending ? "..." : "Rechazar"}</button>
+          </div>
+        </>
+      ) : (
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setRechazando(true)} disabled={pending} className="flex-1 h-8 text-xs border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/10 disabled:opacity-50">Rechazar</button>
+          <button type="button" onClick={confirmar} disabled={pending} className="flex-1 h-8 text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg disabled:opacity-50">{pending ? "..." : "Confirmar pago"}</button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -440,6 +486,46 @@ function ModalGestionarPlanes({ planes, onClose }: { planes: PlanDTO[]; onClose:
   )
 }
 
+function ModalDatosBancarios({ datos, onClose }: { datos: DatosBancariosDTO; onClose: () => void }) {
+  const [pending, start] = useTransition()
+  const inp = "w-full h-9 bg-[var(--c-input)] border border-[var(--c-border)] rounded-xl px-3 text-sm text-[var(--c-text)] outline-none focus:border-sky-500"
+
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    start(async () => {
+      const resultado = await actualizarDatosBancarios(fd)
+      if (resultado?.error) { toast.error(resultado.error); return }
+      toast.success("✅ Datos bancarios guardados")
+      onClose()
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(0,0,0,0.7)"}}>
+      <form onSubmit={submit} className="bg-[var(--c-card)] border border-[var(--c-border)] rounded-2xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <p className="text-sm font-bold text-[var(--c-text)]">🏦 Datos bancarios</p>
+            <p className="text-[11px] text-[var(--c-text3)] mt-0.5">Esto es lo que ven todos tus clientes en "Mi suscripción" para transferirte el pago.</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-[var(--c-text4)] hover:text-[var(--c-text)] text-lg flex-shrink-0">✕</button>
+        </div>
+        <input name="banco" defaultValue={datos.banco} placeholder="Banco" className={inp} />
+        <input name="tipoCuenta" defaultValue={datos.tipoCuenta} placeholder="Tipo de cuenta (ej: Cuenta Vista)" className={inp} />
+        <input name="numeroCuenta" defaultValue={datos.numeroCuenta} placeholder="Número de cuenta" className={inp} />
+        <input name="rutTitular" defaultValue={datos.rutTitular} placeholder="RUT del titular" className={inp} />
+        <input name="nombreTitular" defaultValue={datos.nombreTitular} placeholder="Nombre del titular" className={inp} />
+        <input name="email" type="email" defaultValue={datos.email} placeholder="Email de contacto" className={inp} />
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 h-10 text-sm border border-[var(--c-border)] rounded-xl text-[var(--c-text3)] hover:bg-[var(--c-hover)]">Cancelar</button>
+          <button type="submit" disabled={pending} className="flex-1 h-10 text-sm bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl disabled:opacity-50">{pending ? "Guardando..." : "Guardar"}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 function FormEditarDatosCliente({ c, onClose }: { c: Cliente; onClose: () => void }) {
   const [pending, start] = useTransition()
   function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -472,6 +558,7 @@ function FormEditarDatosCliente({ c, onClose }: { c: Cliente; onClose: () => voi
 
 function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; onClose: () => void }) {
   const [showPago, setShowPago] = useState(false)
+  const [showRevisar, setShowRevisar] = useState(false)
   const [showEditar, setShowEditar] = useState(false)
   const [showEditarDatos, setShowEditarDatos] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
@@ -532,8 +619,12 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
   const diasParaRenovar = (c.estado === "al_dia" || c.estado === "proximo_vencer") ? diasHasta(c.fechaProximoCobro) : null
 
   const historialCompleto = useMemo(() => {
-    const items: { fecha: string; label: string; monto: number | null; badge: string; badgeColor: string }[] = []
-    for (const p of c.pagos) items.push({ fecha: p.fecha, label: `Pago (${p.metodoPago})`, monto: p.monto, badge: "Pagado", badgeColor: "text-emerald-400" })
+    const items: { fecha: string; label: string; monto: number | null; badge: string; badgeColor: string; href?: string | null }[] = []
+    for (const p of c.pagos) {
+      const badge = p.estado === "pendiente_confirmacion" ? "En revisión" : p.estado === "rechazado" ? "Rechazado" : "Pagado"
+      const badgeColor = p.estado === "pendiente_confirmacion" ? "text-blue-400" : p.estado === "rechazado" ? "text-red-400" : "text-emerald-400"
+      items.push({ fecha: p.fecha, label: `Pago (${p.metodoPago})${p.motivoRechazo ? ` — ${p.motivoRechazo}` : ""}`, monto: p.monto, badge, badgeColor, href: p.comprobanteUrl })
+    }
     for (const cobro of c.historialCobros) {
       if (cobro.estado !== "pagado") {
         items.push({ fecha: cobro.fechaEmision, label: `Cobro ${cobro.plan}`, monto: cobro.monto, badge: cobro.estado === "vencido" ? "Vencido" : "Pendiente", badgeColor: cobro.estado === "vencido" ? "text-red-400" : "text-[var(--c-warning)]" })
@@ -612,6 +703,20 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
               <div className="mt-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
                 <p className="text-xs text-[var(--c-warning)] font-semibold">Monto próximo: {formatCLP(c.cobroPendiente.monto)}</p>
                 <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Vence {fmtDate(c.cobroPendiente.fechaVencimiento)}</p>
+                {c.cobroPendiente.pagoPendienteRevision && (
+                  <p className="text-[10px] text-blue-400 font-semibold mt-1">📎 El cliente subió un comprobante — pendiente de revisar</p>
+                )}
+              </div>
+            )}
+
+            {showRevisar && c.cobroPendiente?.pagoPendienteRevision && (
+              <div className="mt-3">
+                <FormRevisarComprobante
+                  pagoId={c.cobroPendiente.pagoPendienteRevision.id}
+                  comprobanteUrl={c.cobroPendiente.pagoPendienteRevision.comprobanteUrl}
+                  monto={c.cobroPendiente.monto}
+                  onClose={() => setShowRevisar(false)}
+                />
               </div>
             )}
 
@@ -626,7 +731,10 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
                     <div key={i} className="flex items-center justify-between bg-[var(--c-card2)] rounded-lg px-3 py-1.5 text-xs gap-2">
                       <div className="min-w-0">
                         <p className="text-[var(--c-text)] font-semibold truncate">{h.monto !== null ? `${formatCLP(h.monto)} · ` : ""}{h.label}</p>
-                        <p className="text-[var(--c-text4)]">{fmtDate(h.fecha)}</p>
+                        <p className="text-[var(--c-text4)]">
+                          {fmtDate(h.fecha)}
+                          {h.href && <a href={h.href} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 ml-1.5">Ver comprobante</a>}
+                        </p>
                       </div>
                       <span className={`font-semibold whitespace-nowrap flex-shrink-0 ${h.badgeColor}`}>{h.badge}</span>
                     </div>
@@ -673,7 +781,7 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
         </div>
 
         {/* Pago form */}
-        {showPago && c.cobroPendiente && (
+        {showPago && c.cobroPendiente && !c.cobroPendiente.pagoPendienteRevision && (
           <FormPago cobro={c.cobroPendiente} onClose={() => setShowPago(false)} />
         )}
 
@@ -682,11 +790,19 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
           <p className="text-xs font-bold text-[var(--c-text)] mb-2">Acciones rápidas</p>
           <div className="grid grid-cols-3 gap-2">
             {c.cobroPendiente && (
-              <button onClick={() => setShowPago(!showPago)} disabled={pending}
-                className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
-                <span className="text-lg">💵</span>
-                <span className="text-[9px] font-semibold text-center text-emerald-400">Registrar pago</span>
-              </button>
+              c.cobroPendiente.pagoPendienteRevision ? (
+                <button onClick={() => setShowRevisar(!showRevisar)} disabled={pending}
+                  className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
+                  <span className="text-lg">📎</span>
+                  <span className="text-[9px] font-semibold text-center text-blue-400">Revisar comprobante</span>
+                </button>
+              ) : (
+                <button onClick={() => setShowPago(!showPago)} disabled={pending}
+                  className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
+                  <span className="text-lg">💵</span>
+                  <span className="text-[9px] font-semibold text-center text-emerald-400">Registrar pago</span>
+                </button>
+              )
             )}
             <button onClick={invitar} disabled={pending}
               className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-[var(--c-card2)] border border-[var(--c-border)] hover:bg-[var(--c-hover)] transition-all disabled:opacity-50">
@@ -738,12 +854,13 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
   )
 }
 
-export function ClientesAdminClient({ clientes, metricas, alertas, planes }: { clientes: Cliente[]; metricas: Metricas; alertas: Alerta[]; planes: PlanDTO[] }) {
+export function ClientesAdminClient({ clientes, metricas, alertas, planes, datosBancarios }: { clientes: Cliente[]; metricas: Metricas; alertas: Alerta[]; planes: PlanDTO[]; datosBancarios: DatosBancariosDTO }) {
   const [filtro, setFiltro] = useState<Filtro>("todos")
   const [busqueda, setBusqueda] = useState("")
   const [selected, setSelected] = useState<Cliente | null>(null)
   const [showNuevo, setShowNuevo] = useState(false)
   const [showPlanes, setShowPlanes] = useState(false)
+  const [showBancarios, setShowBancarios] = useState(false)
 
   const filtrados = useMemo(() => {
     let list = clientes
@@ -776,6 +893,7 @@ export function ClientesAdminClient({ clientes, metricas, alertas, planes }: { c
     <div className="space-y-4 animate-fade-up pb-6">
       {showNuevo && <FormNuevoCliente planes={planes} onClose={() => setShowNuevo(false)} />}
       {showPlanes && <ModalGestionarPlanes planes={planes} onClose={() => setShowPlanes(false)} />}
+      {showBancarios && <ModalDatosBancarios datos={datosBancarios} onClose={() => setShowBancarios(false)} />}
 
       {/* Header */}
       <div className="flex flex-col gap-3">
@@ -794,6 +912,10 @@ export function ClientesAdminClient({ clientes, metricas, alertas, planes }: { c
                 className="h-9 pl-8 pr-4 w-full sm:w-48 bg-[var(--c-card)] border border-[var(--c-border)] rounded-xl text-sm text-[var(--c-text)] outline-none focus:border-sky-500 placeholder:text-[var(--c-text4)]" />
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-text4)] text-sm">🔍</span>
             </div>
+            <button onClick={() => setShowBancarios(true)}
+              className="h-9 px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-hover)] text-sm font-semibold rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap">
+              🏦 Datos bancarios
+            </button>
             <button onClick={() => setShowPlanes(true)}
               className="h-9 px-4 border border-[var(--c-border)] text-[var(--c-text2)] hover:bg-[var(--c-hover)] text-sm font-semibold rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap">
               ⚙️ Gestionar planes

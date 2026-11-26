@@ -22,6 +22,11 @@ const TABLAS_A_LIMPIAR = [
   // aparte. SuscripcionNelyx.planId es onDelete: SetNull, así que borrar
   // acá no choca con suscripciones que la hayan estado usando.
   "PlanNelyx",
+  // Fila única (sin userId tampoco) — sin limpiarla, el primer test que la
+  // cree con obtenerDatosBancarios()/actualizarDatosBancarios() deja esa
+  // misma fila para todos los tests siguientes, que entonces no arrancan
+  // desde los valores por defecto ("").
+  "DatosBancariosNelyx",
 ]
 
 beforeEach(async () => {
