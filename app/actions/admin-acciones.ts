@@ -277,6 +277,57 @@ export async function cambiarEsPruebaCliente(suscripcionId: string, esPrueba: bo
   revalidatePath("/admin/clientes")
 }
 
+// ── Revisar un comprobante que el cliente subió desde "Mi suscripción" ──
+// Nunca se confirma solo — siempre es un clic explícito del admin acá.
+export async function confirmarPagoCliente(pagoId: string) {
+  const session = await getAdminSession()
+
+  const resultado = await conTransaccionSerializable(async (tx) => {
+    const pago = await tx.pagoNelyx.findUnique({ where: { id: pagoId }, include: { cobro: true, suscripcion: true } })
+    if (!pago || pago.estado !== "pendiente_confirmacion" || !pago.cobro) return null
+
+    const planVigente = pago.suscripcion.planId
+      ? await tx.planNelyx.findUnique({ where: { id: pago.suscripcion.planId }, select: { meses: true } })
+      : null
+    const fechaProximoCobro = sumarMeses(new Date(), planVigente?.meses ?? 1)
+
+    await tx.pagoNelyx.update({ where: { id: pagoId }, data: { estado: "pagado" } })
+    await tx.cobroNelyx.update({ where: { id: pago.cobro.id }, data: { estado: "pagado" } })
+    await tx.suscripcionNelyx.update({ where: { id: pago.suscripcionId }, data: { estado: "al_dia", fechaProximoCobro } })
+    await tx.user.update({ where: { id: pago.suscripcion.userId }, data: { activo: true } })
+    await tx.suscripcionNelyxEvento.create({
+      data: { suscripcionId: pago.suscripcionId, tipo: "pago_confirmado", detalle: `${formatCLP(Number(pago.monto))} — comprobante confirmado`, adminNombre: session.user.name },
+    })
+    return pago.suscripcionId
+  })
+
+  if (!resultado) return
+  await cancelarNotificacionesPorPrefijo(`nelyx:${resultado}:pagopendiente`)
+  revalidatePath("/admin/clientes")
+  revalidatePath("/dashboard/configuracion")
+}
+
+export async function rechazarPagoCliente(pagoId: string, motivo: string) {
+  const session = await getAdminSession()
+  const pago = await db.pagoNelyx.findUnique({ where: { id: pagoId } })
+  if (!pago || pago.estado !== "pendiente_confirmacion") return
+
+  await db.$transaction([
+    db.pagoNelyx.update({ where: { id: pagoId }, data: { estado: "rechazado", motivoRechazo: motivo.trim() || null } }),
+    // Se desvincula del cobro (que sigue "pendiente"/"vencido" tal cual
+    // estaba) para que el cliente pueda subir un comprobante nuevo —
+    // CobroNelyx.pagoId es 1 a 1, así que mientras siga apuntando al
+    // rechazado no habría espacio para el siguiente intento.
+    db.cobroNelyx.updateMany({ where: { pagoId }, data: { pagoId: null } }),
+    db.suscripcionNelyxEvento.create({
+      data: { suscripcionId: pago.suscripcionId, tipo: "pago_rechazado", detalle: motivo.trim() || null, adminNombre: session.user.name },
+    }),
+  ])
+
+  revalidatePath("/admin/clientes")
+  revalidatePath("/dashboard/configuracion")
+}
+
 export async function crearSuscripcionParaUsuario(userId: string) {
   const session = await getAdminSession()
   const existe = await db.suscripcionNelyx.findUnique({ where: { userId } })

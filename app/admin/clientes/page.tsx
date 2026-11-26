@@ -6,6 +6,7 @@ import { ClientesAdminClient } from "@/components/admin/clientes-admin-client"
 import { sincronizarSuscripciones } from "@/lib/suscripciones"
 import { obtenerPlanes } from "@/app/actions/planes-acciones"
 import { calcularMetricasClientes } from "@/lib/metricas-clientes"
+import { obtenerDatosBancarios } from "@/app/actions/datos-bancarios-acciones"
 
 export const metadata: Metadata = { title: "Clientes NELYX" }
 export const dynamic = "force-dynamic"
@@ -18,7 +19,7 @@ export default async function ClientesAdminPage() {
   await sincronizarSuscripciones()
 
   const hoy = new Date()
-  const planes = await obtenerPlanes()
+  const [planes, datosBancarios] = await Promise.all([obtenerPlanes(), obtenerDatosBancarios()])
 
   const usuarios = await db.user.findMany({
     // cuentaPrincipalId: null excluye a los empleados — son sub-cuentas de
@@ -31,7 +32,7 @@ export default async function ClientesAdminPage() {
         include: {
           plan: true,
           pagos: { orderBy: { createdAt: "desc" }, take: 15 },
-          cobros: { orderBy: { createdAt: "desc" }, take: 15 },
+          cobros: { orderBy: { createdAt: "desc" }, take: 15, include: { pago: true } },
           eventos: { orderBy: { createdAt: "desc" }, take: 30 },
         },
       },
@@ -139,6 +140,14 @@ export default async function ClientesAdminPage() {
         fechaEmision: cobroPendiente.fechaEmision.toISOString(),
         fechaVencimiento: cobroPendiente.fechaVencimiento.toISOString(),
         estado: cobroPendiente.estado,
+        // Comprobante que el cliente subió desde "Mi suscripción" para
+        // este cobro, si hay uno pendiente de revisión — ver
+        // confirmarPagoCliente/rechazarPagoCliente en admin-acciones.ts.
+        pagoPendienteRevision: cobroPendiente.pago && cobroPendiente.pago.estado === "pendiente_confirmacion" ? {
+          id: cobroPendiente.pago.id,
+          comprobanteUrl: cobroPendiente.pago.comprobanteUrl,
+          fecha: cobroPendiente.pago.fecha.toISOString(),
+        } : null,
       } : null,
       historialCobros: (sus?.cobros ?? []).map(c => ({
         id: c.id, plan: c.plan, monto: Number(c.monto),
@@ -148,6 +157,7 @@ export default async function ClientesAdminPage() {
       pagos: (sus?.pagos ?? []).map(p => ({
         id: p.id, fecha: p.fecha.toISOString(), monto: Number(p.monto),
         metodoPago: p.metodoPago, observacion: p.observacion, estado: p.estado,
+        comprobanteUrl: p.comprobanteUrl, motivoRechazo: p.motivoRechazo,
       })),
       eventos: (sus?.eventos ?? []).map(e => ({
         id: e.id, tipo: e.tipo, detalle: e.detalle, adminNombre: e.adminNombre, createdAt: e.createdAt.toISOString(),
@@ -173,5 +183,5 @@ export default async function ClientesAdminPage() {
     return items
   })
 
-  return <ClientesAdminClient clientes={clientes} metricas={metricas} alertas={alertas} planes={planes} />
+  return <ClientesAdminClient clientes={clientes} metricas={metricas} alertas={alertas} planes={planes} datosBancarios={datosBancarios} />
 }
