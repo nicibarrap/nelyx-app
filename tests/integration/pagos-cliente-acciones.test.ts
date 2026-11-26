@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { obtenerMiSuscripcion, reportarPagoCliente } from "@/app/actions/suscripcion-cliente-acciones"
@@ -8,6 +8,18 @@ import { obtenerDatosBancarios, actualizarDatosBancarios } from "@/app/actions/d
 let sesionActual: any = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
+
+// Mismo patrón que soporte-acciones.test.ts: after() no corre en un request
+// real acá, así que se captura cada callback para poder esperarlo a
+// propósito (flushAfter) antes de revisar lo que escribió (el aviso al admin).
+const afterPromises: Promise<unknown>[] = []
+vi.mock("next/server", () => ({
+  after: (fn: () => unknown) => { afterPromises.push(Promise.resolve().then(fn)) },
+}))
+async function flushAfter() {
+  await Promise.all(afterPromises.splice(0))
+}
+beforeEach(() => { afterPromises.length = 0 })
 
 async function crearAdmin() {
   const admin = await db.user.create({
@@ -64,6 +76,7 @@ describe("obtenerMiSuscripcion", () => {
 
 describe("reportarPagoCliente", () => {
   it("el cliente sube un comprobante y el cobro queda pendiente igual (nunca se auto-aprueba)", async () => {
+    const admin = await crearAdmin()
     const { cliente, cobro } = await crearClienteConCobroPendiente()
     comoCliente(cliente)
 
@@ -75,6 +88,13 @@ describe("reportarPagoCliente", () => {
     expect(cobroActualizado.pago?.estado).toBe("pendiente_confirmacion")
     expect(cobroActualizado.pago?.comprobanteUrl).toBe("https://blob.vercel-storage.com/comprobante.png")
     expect(Number(cobroActualizado.pago?.monto)).toBe(10000) // el monto lo define el cobro, no el formulario
+
+    // El admin tiene que enterarse al instante (campanita + push), no recién
+    // la próxima vez que abra /admin/clientes.
+    await flushAfter()
+    const aviso = await db.notificacion.findFirst({ where: { userId: admin.id, categoria: "renovaciones" } })
+    expect(aviso?.titulo).toMatch(/comprobante/i)
+    expect(aviso?.accionUrl).toBe("/admin/clientes")
   })
 
   it("rechaza reportar el cobro de otro cliente", async () => {
@@ -90,6 +110,7 @@ describe("reportarPagoCliente", () => {
     const { cliente, cobro } = await crearClienteConCobroPendiente()
     comoCliente(cliente)
     await reportarPagoCliente(formData({ cobroId: cobro.id, comprobanteUrl: "https://x1.png" }))
+    await flushAfter()
 
     const resultado = await reportarPagoCliente(formData({ cobroId: cobro.id, comprobanteUrl: "https://x2.png" }))
     expect(resultado?.error).toMatch(/en revisión/i)
@@ -102,6 +123,7 @@ describe("confirmarPagoCliente / rechazarPagoCliente — revisión del admin", (
     const { cliente, cobro, plan } = await crearClienteConCobroPendiente()
     comoCliente(cliente)
     await reportarPagoCliente(formData({ cobroId: cobro.id, comprobanteUrl: "https://x.png" }))
+    await flushAfter()
 
     sesionActual = { user: { id: admin.id, name: admin.nombre, role: "ADMIN", esEmpleado: false } }
     const pagoPendiente = await db.pagoNelyx.findFirstOrThrow({ where: { suscripcionId: cobro.suscripcionId } })
@@ -123,6 +145,7 @@ describe("confirmarPagoCliente / rechazarPagoCliente — revisión del admin", (
     const { cliente, cobro } = await crearClienteConCobroPendiente()
     comoCliente(cliente)
     await reportarPagoCliente(formData({ cobroId: cobro.id, comprobanteUrl: "https://x.png" }))
+    await flushAfter()
 
     sesionActual = { user: { id: admin.id, name: admin.nombre, role: "ADMIN", esEmpleado: false } }
     const pagoPendiente = await db.pagoNelyx.findFirstOrThrow({ where: { suscripcionId: cobro.suscripcionId } })
@@ -137,6 +160,7 @@ describe("confirmarPagoCliente / rechazarPagoCliente — revisión del admin", (
 
     comoCliente(cliente)
     const segundoIntento = await reportarPagoCliente(formData({ cobroId: cobro.id, comprobanteUrl: "https://x2.png" }))
+    await flushAfter()
     expect(segundoIntento).toBeUndefined()
     const miSus = await obtenerMiSuscripcion()
     expect(miSus.cobroPendiente?.pagoEnRevision?.comprobanteUrl).toBe("https://x2.png")
