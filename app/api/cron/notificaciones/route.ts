@@ -5,6 +5,7 @@ import { hoyEnChile, diasEntreChile } from "@/lib/timezone"
 import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/lib/costos-fijos"
 import { sincronizarSuscripciones } from "@/lib/suscripciones"
 import { limpiarAdjuntosSoporte } from "@/lib/limpieza-adjuntos-soporte"
+import { limpiarComprobantesPago } from "@/lib/limpieza-comprobantes-pago"
 import * as Sentry from "@sentry/nextjs"
 
 export const dynamic = "force-dynamic"
@@ -259,10 +260,15 @@ async function ejecutarCron() {
   // días (ver lib/limpieza-adjuntos-soporte.ts) ───────────────────────────
   const adjuntosLimpiados = await limpiarAdjuntosSoporte(ahora)
 
+  // ── 10) LIMPIEZA DIARIA: comprobantes de pago con más de 5 días de
+  // vigencia (ver lib/limpieza-comprobantes-pago.ts) ──────────────────────
+  const comprobantesLimpiados = await limpiarComprobantesPago(ahora)
+
   return NextResponse.json({
     ok: true,
     revisadas: eventosHoy.length + tareasHoy.length + costosFijos.length + deudas.length + cuentas.length + productos.length + clientesCumpleanos.length,
     enviadas,
     adjuntosLimpiados,
+    comprobantesLimpiados,
   })
 }
