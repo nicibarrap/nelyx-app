@@ -17,7 +17,19 @@ async function configDe(userId: string) {
   // podían pasar el findUnique (sin config todavía) antes de que el primer
   // create confirmara, y el segundo create rompía el @unique de userId
   // (JAVASCRIPT-NEXTJS-G en Sentry).
-  return db.notificacionConfig.upsert({ where: { userId }, create: { userId }, update: {} })
+  //
+  // El upsert en sí no es 100% atómico bajo dos transacciones concurrentes
+  // (ver tests/integration/notificaciones.test.ts): ambas pueden ver "no
+  // existe todavía" e intentar el create, y la segunda choca igual contra el
+  // unique — mismo caso que el create() de abajo, mismo arreglo: si choca,
+  // es porque la otra ya ganó la carrera y la fila ya existe, así que
+  // simplemente se lee.
+  try {
+    return await db.notificacionConfig.upsert({ where: { userId }, create: { userId }, update: {} })
+  } catch (err: any) {
+    if (err?.code === "P2002") return db.notificacionConfig.findUniqueOrThrow({ where: { userId } })
+    throw err
+  }
 }
 
 /**
