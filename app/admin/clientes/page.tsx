@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import { ClientesAdminClient } from "@/components/admin/clientes-admin-client"
-import { sincronizarSuscripciones } from "@/lib/suscripciones"
+import { sincronizarSuscripciones, referenciaCobro } from "@/lib/suscripciones"
 import { obtenerPlanes } from "@/app/actions/planes-acciones"
 import { calcularMetricasClientes } from "@/lib/metricas-clientes"
 import { obtenerDatosBancarios } from "@/app/actions/datos-bancarios-acciones"
@@ -140,6 +140,7 @@ export default async function ClientesAdminPage() {
         fechaEmision: cobroPendiente.fechaEmision.toISOString(),
         fechaVencimiento: cobroPendiente.fechaVencimiento.toISOString(),
         estado: cobroPendiente.estado,
+        referencia: referenciaCobro(cobroPendiente.id),
         // Comprobante que el cliente subió desde "Mi suscripción" para
         // este cobro, si hay uno pendiente de revisión — ver
         // confirmarPagoCliente/rechazarPagoCliente en admin-acciones.ts.
@@ -147,6 +148,9 @@ export default async function ClientesAdminPage() {
           id: cobroPendiente.pago.id,
           comprobanteUrl: cobroPendiente.pago.comprobanteUrl,
           fecha: cobroPendiente.pago.fecha.toISOString(),
+          // Monto que la IA leyó del comprobante (lib/comprobante-ia.ts) —
+          // null mientras se analiza en segundo plano, o si no se pudo leer.
+          montoDetectadoIA: cobroPendiente.pago.montoDetectadoIA ? Number(cobroPendiente.pago.montoDetectadoIA) : null,
         } : null,
       } : null,
       historialCobros: (sus?.cobros ?? []).map(c => ({

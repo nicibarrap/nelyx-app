@@ -3,8 +3,9 @@ import { revalidatePath } from "next/cache"
 import { after } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { registrarEventoSuscripcion } from "@/lib/suscripciones"
+import { registrarEventoSuscripcion, referenciaCobro } from "@/lib/suscripciones"
 import { notificar } from "@/lib/notificaciones"
+import { analizarComprobante } from "@/lib/comprobante-ia"
 import { formatCLP } from "@/lib/utils"
 import * as Sentry from "@sentry/nextjs"
 
@@ -21,6 +22,9 @@ export type CobroPendienteDTO = {
   id: string
   monto: number
   fechaVencimiento: string
+  // Código corto para que el cliente lo ponga en el comentario de la
+  // transferencia — ver referenciaCobro() en lib/suscripciones.ts.
+  referencia: string
   // Si ya hay un comprobante subido para este cobro y en qué estado está.
   pagoEnRevision: { id: string; comprobanteUrl: string | null; fecha: string } | null
   pagoRechazado: { motivoRechazo: string | null } | null
@@ -68,6 +72,7 @@ export async function obtenerMiSuscripcion(): Promise<MiSuscripcionDTO> {
     id: cobro.id,
     monto: Number(cobro.monto),
     fechaVencimiento: cobro.fechaVencimiento.toISOString(),
+    referencia: referenciaCobro(cobro.id),
     pagoEnRevision: cobro.pago && cobro.pago.estado === "pendiente_confirmacion"
       ? { id: cobro.pago.id, comprobanteUrl: cobro.pago.comprobanteUrl, fecha: cobro.pago.fecha.toISOString() }
       : null,
@@ -152,5 +157,18 @@ export async function reportarPagoCliente(formData: FormData): Promise<{ error: 
         claveUnica: `nelyx:comprobante:${pago.id}`,
       }).catch(err => Sentry.captureException(err, { extra: { pagoId: pago.id, adminId: admin.id, etapa: "notificar-comprobante" } }))
     ))
+
+    // Ayuda visual para cuando el admin entre a revisar: si la IA logra leer
+    // el monto del comprobante, se lo mostramos de entrada ("✅ el monto
+    // coincide") en vez de que tenga que abrir la imagen y calcular a mano.
+    // Nunca aprueba nada — es solo lectura, la decisión sigue siendo manual.
+    try {
+      const analisis = await analizarComprobante(comprobanteUrl)
+      if (analisis) {
+        await db.pagoNelyx.update({ where: { id: pago.id }, data: { montoDetectadoIA: analisis.montoDetectado } })
+      }
+    } catch (err) {
+      Sentry.captureException(err, { extra: { pagoId: pago.id, etapa: "analizar-comprobante" } })
+    }
   })
 }
