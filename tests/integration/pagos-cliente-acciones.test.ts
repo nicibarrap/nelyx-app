@@ -71,6 +71,8 @@ describe("obtenerMiSuscripcion", () => {
     expect(resultado.tieneSuscripcion).toBe(true)
     expect(resultado.cobroPendiente?.id).toBe(cobro.id)
     expect(resultado.cobroPendiente?.pagoEnRevision).toBeNull()
+    // Código corto para que lo ponga en el comentario de la transferencia.
+    expect(resultado.cobroPendiente?.referencia).toMatch(/^NLX-[A-Z0-9]{6}$/)
   })
 })
 

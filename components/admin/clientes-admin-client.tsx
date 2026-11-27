@@ -18,7 +18,8 @@ import { generarLinkWhatsapp, generarLinkGmail } from "@/lib/cobranza"
 type Pago = { id: string; fecha: string; monto: number; metodoPago: string; observacion: string | null; estado: string; comprobanteUrl?: string | null; motivoRechazo?: string | null }
 type Cobro = {
   id: string; plan: string; monto: number; fechaEmision: string; fechaVencimiento: string; estado: string
-  pagoPendienteRevision?: { id: string; comprobanteUrl: string | null; fecha: string } | null
+  referencia?: string
+  pagoPendienteRevision?: { id: string; comprobanteUrl: string | null; fecha: string; montoDetectadoIA: number | null } | null
 }
 type Evento = { id: string; tipo: string; detalle: string | null; adminNombre: string | null; createdAt: string }
 type Cliente = {
@@ -161,7 +162,7 @@ function FormPago({ cobro, onClose }: { cobro: Cobro; onClose: () => void }) {
 // Comprobante que el cliente ya subió desde "Mi suscripción" — acá el
 // admin solo confirma o rechaza, nunca "registra" un monto a mano (ese es
 // FormPago, para cuando no hay comprobante de por medio, ej. efectivo).
-function FormRevisarComprobante({ pagoId, comprobanteUrl, monto, onClose }: { pagoId: string; comprobanteUrl: string | null; monto: number; onClose: () => void }) {
+function FormRevisarComprobante({ pagoId, comprobanteUrl, monto, montoDetectadoIA, onClose }: { pagoId: string; comprobanteUrl: string | null; monto: number; montoDetectadoIA: number | null; onClose: () => void }) {
   const [pending, start] = useTransition()
   const [rechazando, setRechazando] = useState(false)
   const [motivo, setMotivo] = useState("")
@@ -184,6 +185,11 @@ function FormRevisarComprobante({ pagoId, comprobanteUrl, monto, onClose }: { pa
     <div ref={ref} className="space-y-3 p-3 bg-[var(--c-card2)] rounded-xl border border-[var(--c-border)]">
       <p className="text-xs font-bold text-[var(--c-text)]">📎 Comprobante recibido — {formatCLP(monto)}</p>
       {comprobanteUrl && <a href={comprobanteUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-400 hover:text-sky-300 inline-block">Ver comprobante</a>}
+      {montoDetectadoIA != null && (
+        montoDetectadoIA === monto
+          ? <p className="text-[11px] text-emerald-400 font-semibold">✅ La IA leyó el comprobante — el monto coincide</p>
+          : <p className="text-[11px] text-amber-400 font-semibold">⚠️ La IA detectó {formatCLP(montoDetectadoIA)} en el comprobante — no coincide, revisa antes de confirmar</p>
+      )}
       {rechazando ? (
         <>
           <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} placeholder="Motivo del rechazo (se le muestra al cliente)"
@@ -709,7 +715,7 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
             {c.cobroPendiente && (
               <div className="mt-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
                 <p className="text-xs text-[var(--c-warning)] font-semibold">Monto próximo: {formatCLP(c.cobroPendiente.monto)}</p>
-                <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Vence {fmtDate(c.cobroPendiente.fechaVencimiento)}</p>
+                <p className="text-[10px] text-[var(--c-text4)] mt-0.5">Vence {fmtDate(c.cobroPendiente.fechaVencimiento)}{c.cobroPendiente.referencia ? ` — Ref. ${c.cobroPendiente.referencia}` : ""}</p>
                 {c.cobroPendiente.pagoPendienteRevision && (
                   <p className="text-[10px] text-blue-400 font-semibold mt-1">📎 El cliente subió un comprobante — pendiente de revisar</p>
                 )}
@@ -722,6 +728,7 @@ function DetailPanel({ c, planes, onClose }: { c: Cliente; planes: PlanDTO[]; on
                   pagoId={c.cobroPendiente.pagoPendienteRevision.id}
                   comprobanteUrl={c.cobroPendiente.pagoPendienteRevision.comprobanteUrl}
                   monto={c.cobroPendiente.monto}
+                  montoDetectadoIA={c.cobroPendiente.pagoPendienteRevision.montoDetectadoIA}
                   onClose={() => setShowRevisar(false)}
                 />
               </div>

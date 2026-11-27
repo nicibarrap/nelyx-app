@@ -16,6 +16,19 @@ const ESTADO_CFG: Record<string, { label: string; cls: string }> = {
   cancelado: { label: "Cancelada", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
 }
 
+function copiarTodosLosDatos(datos: DatosBancariosDTO, referencia?: string) {
+  const lineas = [
+    `Banco: ${datos.banco || "—"}`,
+    `Tipo de cuenta: ${datos.tipoCuenta || "—"}`,
+    `Número de cuenta: ${datos.numeroCuenta || "—"}`,
+    `RUT: ${datos.rutTitular || "—"}`,
+    `Nombre del titular: ${datos.nombreTitular || "—"}`,
+    `Email: ${datos.email || "—"}`,
+  ]
+  if (referencia) lineas.push(`Referencia: ${referencia}`)
+  navigator.clipboard?.writeText(lineas.join("\n")).then(() => toast.success("Datos copiados")).catch(() => {})
+}
+
 function CampoCopiable({ label, value }: { label: string; value: string }) {
   function copiar() {
     if (!value) return
@@ -120,7 +133,11 @@ export function MiSuscripcionClient({ suscripcion, datosBancarios }: { suscripci
       {sus.cobroPendiente && (
         <div>
           <p className="text-xs font-bold text-[var(--c-text)] mb-2">Pago pendiente — {formatCLP(sus.cobroPendiente.monto)}</p>
-          <p className="text-[11px] text-[var(--c-text4)] mb-3">Vence el {formatFechaCorta(sus.cobroPendiente.fechaVencimiento)}. Transfiere a los datos bancarios de abajo y adjunta el comprobante.</p>
+          <p className="text-[11px] text-[var(--c-text4)] mb-3">
+            Vence el {formatFechaCorta(sus.cobroPendiente.fechaVencimiento)}. Transfiere a los datos bancarios de abajo
+            indicando <span className="font-mono font-semibold text-[var(--c-text)]">{sus.cobroPendiente.referencia}</span> en
+            el comentario, y adjunta el comprobante.
+          </p>
 
           {sus.cobroPendiente.pagoEnRevision ? (
             <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
@@ -153,7 +170,12 @@ export function MiSuscripcionClient({ suscripcion, datosBancarios }: { suscripci
           <CampoCopiable label="RUT" value={datosBancarios.rutTitular} />
           <CampoCopiable label="Nombre del titular" value={datosBancarios.nombreTitular} />
           <CampoCopiable label="Email" value={datosBancarios.email} />
+          {sus.cobroPendiente && <CampoCopiable label="Referencia (ponla en el comentario)" value={sus.cobroPendiente.referencia} />}
         </div>
+        <button type="button" onClick={() => copiarTodosLosDatos(datosBancarios, sus.cobroPendiente?.referencia)}
+          className="w-full mt-2 h-9 text-xs border border-[var(--c-border)] rounded-lg text-sky-400 hover:bg-[var(--c-hover)] font-semibold">
+          📄 Copiar todos los datos
+        </button>
       </div>
 
       {sus.historialPagos.length > 0 && (

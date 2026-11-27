@@ -589,6 +589,12 @@ model PagoNelyx {
   // Motivo que dejó el admin al rechazar un comprobante — se le muestra al
   // cliente para que sepa qué corregir al reintentar.
   motivoRechazo       String?
+  // Monto que la IA detectó leyendo la imagen/PDF del comprobante al
+  // subirse (lib/comprobante-ia.ts) — null si no se pudo leer (sin
+  // comprobante, archivo ilegible, o sin ANTHROPIC_API_KEY configurada).
+  // Es solo una ayuda visual para el admin en la revisión ("✅ el monto
+  // coincide") — nunca aprueba el pago por sí sola.
+  montoDetectadoIA    Decimal?         @db.Decimal(12, 2)
   createdAt           DateTime         @default(now())
   cobro               CobroNelyx?
 

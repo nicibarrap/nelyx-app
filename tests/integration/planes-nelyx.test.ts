@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest"
 import { db } from "@/lib/db"
 import { crearPlan, actualizarPlan, cambiarActivoPlan, obtenerPlanes } from "@/app/actions/planes-acciones"
 import { registrarPagoCobro } from "@/app/actions/admin-acciones"
-import { sincronizarSuscripciones } from "@/lib/suscripciones"
+import { sincronizarSuscripciones, referenciaCobro, DIAS_ALERTA_PROXIMO } from "@/lib/suscripciones"
 
 let sesionActual: any = null
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(() => Promise.resolve(sesionActual)) }))
@@ -166,6 +166,85 @@ describe("sincronizarSuscripciones — usa el precio VIGENTE del plan, no uno fi
     expect(cobros).toHaveLength(0)
     const susFinal = await db.suscripcionNelyx.findUniqueOrThrow({ where: { id: sus.id } })
     expect(susFinal.estado).toBe("prueba_gratuita") // queda esperando a que el admin le asigne un plan
+  })
+})
+
+describe("sincronizarSuscripciones — genera el cobro con anticipación (ventana de aviso), no recién el día exacto", () => {
+  it("dentro de la ventana de DIAS_ALERTA_PROXIMO genera el cobro YA y pasa a pendiente, antes de la fecha de vencimiento", async () => {
+    await crearAdmin()
+    const plan = await db.planNelyx.create({ data: { nombre: "Feria", precio: 10000, meses: 1 } })
+    const cliente = await db.user.create({ data: { nombre: "Feriante", email: `ant-${Math.random()}@nelyx.cl`, password: "x", rol: "USER" } })
+    const fechaProximoCobro = new Date(Date.now() + 2 * 86400000) // vence en 2 días — dentro de la ventana de 5
+    const sus = await db.suscripcionNelyx.create({
+      data: { userId: cliente.id, planId: plan.id, estado: "al_dia", fechaProximoCobro, precioPlan: 10000 },
+    })
+
+    await sincronizarSuscripciones()
+
+    const susFinal = await db.suscripcionNelyx.findUniqueOrThrow({ where: { id: sus.id } })
+    expect(susFinal.estado).toBe("pendiente") // puede pagar por adelantado, no tiene que esperar al día exacto
+    const cobro = await db.cobroNelyx.findFirstOrThrow({ where: { suscripcionId: sus.id } })
+    expect(cobro.estado).toBe("pendiente")
+    expect(Number(cobro.monto)).toBe(10000)
+    expect(cobro.fechaVencimiento.getTime()).toBeGreaterThan(fechaProximoCobro.getTime()) // la fecha de vencimiento real no se adelanta, solo se genera antes
+  })
+
+  it("fuera de la ventana de aviso todavía no genera nada (sigue al día)", async () => {
+    await crearAdmin()
+    const plan = await db.planNelyx.create({ data: { nombre: "Feria", precio: 10000, meses: 1 } })
+    const cliente = await db.user.create({ data: { nombre: "Feriante", email: `lej-${Math.random()}@nelyx.cl`, password: "x", rol: "USER" } })
+    const fechaProximoCobro = new Date(Date.now() + (DIAS_ALERTA_PROXIMO + 10) * 86400000)
+    const sus = await db.suscripcionNelyx.create({
+      data: { userId: cliente.id, planId: plan.id, estado: "al_dia", fechaProximoCobro, precioPlan: 10000 },
+    })
+
+    await sincronizarSuscripciones()
+
+    const susFinal = await db.suscripcionNelyx.findUniqueOrThrow({ where: { id: sus.id } })
+    expect(susFinal.estado).toBe("al_dia")
+    const cobros = await db.cobroNelyx.findMany({ where: { suscripcionId: sus.id } })
+    expect(cobros).toHaveLength(0)
+  })
+
+  it("una fila que haya quedado en el estado legado 'proximo_vencer' se migra sola: genera el cobro si ya corresponde", async () => {
+    await crearAdmin()
+    const plan = await db.planNelyx.create({ data: { nombre: "Feria", precio: 10000, meses: 1 } })
+    const cliente = await db.user.create({ data: { nombre: "Feriante", email: `leg-${Math.random()}@nelyx.cl`, password: "x", rol: "USER" } })
+    const fechaProximoCobro = new Date(Date.now() + 1 * 86400000)
+    const sus = await db.suscripcionNelyx.create({
+      data: { userId: cliente.id, planId: plan.id, estado: "proximo_vencer", fechaProximoCobro, precioPlan: 10000 },
+    })
+
+    await sincronizarSuscripciones()
+
+    const susFinal = await db.suscripcionNelyx.findUniqueOrThrow({ where: { id: sus.id } })
+    expect(susFinal.estado).toBe("pendiente")
+    const cobros = await db.cobroNelyx.findMany({ where: { suscripcionId: sus.id } })
+    expect(cobros).toHaveLength(1)
+  })
+
+  it("una fila 'proximo_vencer' cuya fecha el admin corrió hacia adelante vuelve a 'al_dia'", async () => {
+    await crearAdmin()
+    const plan = await db.planNelyx.create({ data: { nombre: "Feria", precio: 10000, meses: 1 } })
+    const cliente = await db.user.create({ data: { nombre: "Feriante", email: `leg2-${Math.random()}@nelyx.cl`, password: "x", rol: "USER" } })
+    const fechaProximoCobro = new Date(Date.now() + (DIAS_ALERTA_PROXIMO + 20) * 86400000)
+    const sus = await db.suscripcionNelyx.create({
+      data: { userId: cliente.id, planId: plan.id, estado: "proximo_vencer", fechaProximoCobro, precioPlan: 10000 },
+    })
+
+    await sincronizarSuscripciones()
+
+    const susFinal = await db.suscripcionNelyx.findUniqueOrThrow({ where: { id: sus.id } })
+    expect(susFinal.estado).toBe("al_dia")
+    const cobros = await db.cobroNelyx.findMany({ where: { suscripcionId: sus.id } })
+    expect(cobros).toHaveLength(0)
+  })
+})
+
+describe("referenciaCobro", () => {
+  it("genera un código corto y estable a partir del id del cobro", () => {
+    expect(referenciaCobro("clx1234567890abcdef")).toBe("NLX-ABCDEF")
+    expect(referenciaCobro("clx1234567890abcdef")).toBe(referenciaCobro("clx1234567890abcdef"))
   })
 })
 

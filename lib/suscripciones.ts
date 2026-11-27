@@ -11,6 +11,17 @@ export function sumarMeses(fecha: Date, meses: number): Date {
   return d
 }
 
+/**
+ * Código corto para que el cliente lo ponga en el comentario de la
+ * transferencia (ej. "NLX-4F2A9C") — ayuda a calzar manualmente contra el
+ * extracto del banco. Se calcula a partir del propio id del cobro (sin
+ * columna ni generador nuevo): es estable y sirve también para cobros ya
+ * existentes.
+ */
+export function referenciaCobro(cobroId: string): string {
+  return `NLX-${cobroId.slice(-6).toUpperCase()}`
+}
+
 // ── Estados posibles de una suscripción ──────────────────────────────
 export const ESTADOS_SUSCRIPCION = [
   "prueba_gratuita",
@@ -162,49 +173,55 @@ async function aplicarTransicion(sus: SusRow, hoy: Date, planesPorId: Map<string
     return
   }
 
-  // 3) Al día y llegó la fecha de próximo cobro → generar nuevo cobro
-  if (sus.estado === "al_dia" && sus.fechaProximoCobro && sus.fechaProximoCobro <= hoy) {
-    const plan = sus.planId ? planesPorId.get(sus.planId) : null
-    if (!plan) return
-    const fechaVencimiento = new Date(sus.fechaProximoCobro)
-    fechaVencimiento.setDate(fechaVencimiento.getDate() + DIAS_GRACIA_PAGO)
-
-    await db.$transaction([
-      db.cobroNelyx.create({
-        data: {
-          suscripcionId: sus.id,
-          plan: plan.nombre,
-          monto: plan.precio,
-          fechaEmision: sus.fechaProximoCobro,
-          fechaVencimiento,
-          estado: "pendiente",
-        },
-      }),
-      // precioPlan se refresca acá también: si el admin subió el precio del
-      // plan desde la última vez, este nuevo ciclo ya cobra el precio
-      // actual — nunca afecta cobros que ya se habían generado antes.
-      db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "pendiente", precioPlan: plan.precio } }),
-      db.suscripcionNelyxEvento.create({
-        data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Nuevo ciclo — cobro de ${plan.nombre} por $${plan.precio}` },
-      }),
-    ])
-    return
-  }
-
-  // 4) Al día pero se acerca el próximo cobro → "próximo a vencer" (solo visual/estado, sin generar cobro aún)
+  // 3) Al día y ya se entró a la ventana de aviso (DIAS_ALERTA_PROXIMO días
+  // antes del próximo cobro, o ya se pasó la fecha) → generar el cobro YA,
+  // no recién el día exacto. Así el cliente puede pagar por adelantado
+  // desde "Mi suscripción" en vez de encontrarse sin nada que pagar
+  // todavía mientras ve el aviso de "próximo a vencer".
   if (sus.estado === "al_dia" && sus.fechaProximoCobro) {
     const diasRestantes = Math.ceil((sus.fechaProximoCobro.getTime() - hoy.getTime()) / 86400000)
-    if (diasRestantes >= 0 && diasRestantes <= DIAS_ALERTA_PROXIMO) {
-      await db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "proximo_vencer" } })
-      return
+    if (diasRestantes <= DIAS_ALERTA_PROXIMO) {
+      return generarCobroDeCiclo(sus, sus.fechaProximoCobro, hoy, planesPorId)
     }
   }
 
-  // 5) Estaba "próximo a vencer" pero el admin movió la fecha o pagó y ya no aplica → volver a "al_dia"
+  // 4) Compatibilidad con suscripciones que ya hubieran quedado en el
+  // estado legado "próximo a vencer" (este código ya no asigna ese estado
+  // desde el paso 3 de arriba, pero una fila vieja puede seguir así hasta
+  // que corra este sync de nuevo): generar el cobro si ya corresponde, o
+  // volver a "al día" si el admin corrió la fecha y ya no aplica.
   if (sus.estado === "proximo_vencer" && sus.fechaProximoCobro) {
     const diasRestantes = Math.ceil((sus.fechaProximoCobro.getTime() - hoy.getTime()) / 86400000)
-    if (diasRestantes > DIAS_ALERTA_PROXIMO) {
-      await db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "al_dia" } })
+    if (diasRestantes <= DIAS_ALERTA_PROXIMO) {
+      return generarCobroDeCiclo(sus, sus.fechaProximoCobro, hoy, planesPorId)
     }
+    await db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "al_dia" } })
   }
+}
+
+async function generarCobroDeCiclo(sus: SusRow, fechaProximoCobro: Date, hoy: Date, planesPorId: Map<string, PlanVigente>) {
+  const plan = sus.planId ? planesPorId.get(sus.planId) : null
+  if (!plan) return
+  const fechaVencimiento = new Date(fechaProximoCobro)
+  fechaVencimiento.setDate(fechaVencimiento.getDate() + DIAS_GRACIA_PAGO)
+
+  await db.$transaction([
+    db.cobroNelyx.create({
+      data: {
+        suscripcionId: sus.id,
+        plan: plan.nombre,
+        monto: plan.precio,
+        fechaEmision: hoy,
+        fechaVencimiento,
+        estado: "pendiente",
+      },
+    }),
+    // precioPlan se refresca acá también: si el admin subió el precio del
+    // plan desde la última vez, este nuevo ciclo ya cobra el precio
+    // actual — nunca afecta cobros que ya se habían generado antes.
+    db.suscripcionNelyx.update({ where: { id: sus.id }, data: { estado: "pendiente", precioPlan: plan.precio } }),
+    db.suscripcionNelyxEvento.create({
+      data: { suscripcionId: sus.id, tipo: "cobro_generado", detalle: `Nuevo ciclo — cobro de ${plan.nombre} por $${plan.precio}` },
+    }),
+  ])
 }

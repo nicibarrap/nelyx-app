@@ -6,6 +6,7 @@ import { diaOcurrenciaEnMes, esAplicableEnMes, type FrecuenciaCosto } from "@/li
 import { sincronizarSuscripciones } from "@/lib/suscripciones"
 import { limpiarAdjuntosSoporte } from "@/lib/limpieza-adjuntos-soporte"
 import { limpiarComprobantesPago } from "@/lib/limpieza-comprobantes-pago"
+import { formatCLP } from "@/lib/utils"
 import * as Sentry from "@sentry/nextjs"
 
 export const dynamic = "force-dynamic"
@@ -193,22 +194,48 @@ async function ejecutarCron() {
 
   const admin = await db.user.findFirst({ where: { rol: "ADMIN" } })
   if (admin) {
-    const suscripciones = await db.suscripcionNelyx.findMany({ where: { estado: { notIn: ["cancelado"] } }, include: { user: { select: { nombre: true, negocio: true } } } })
-    enviadas += await procesarEnLotes(suscripciones, 10, (s) => {
+    const suscripciones = await db.suscripcionNelyx.findMany({
+      where: { estado: { notIn: ["cancelado"] } },
+      include: { user: { select: { nombre: true, negocio: true } } },
+    })
+    enviadas += await procesarEnLotes(suscripciones, 10, async (s) => {
       const nombreCliente = s.user.negocio ?? s.user.nombre
+      const monto = formatCLP(Number(s.precioPlan))
+      // Mismo aviso que recibe el admin, pero al propio cliente — antes
+      // solo se enteraba el admin de que a alguien se le vencía el pago;
+      // el dueño del negocio nunca sabía que tenía que pagar hasta que
+      // entraba a mirar "Mi suscripción" por su cuenta.
       if (s.estado === "prueba_gratuita" && s.fechaFinPrueba) {
         const diff = diasEntreChile(ahora, s.fechaFinPrueba)
         if (diff >= 0 && diff <= 3) {
-          return notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "media", titulo: `${nombreCliente}: prueba termina en ${diff}d`, mensaje: "La prueba gratuita está por finalizar.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:pruebafin:${hoyStr}` })
+          const [av, cl] = await Promise.all([
+            notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "media", titulo: `${nombreCliente}: prueba termina en ${diff}d`, mensaje: "La prueba gratuita está por finalizar.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:pruebafin:${hoyStr}` }),
+            notificar({ userId: s.userId, categoria: "renovaciones", prioridad: "media", titulo: `Tu prueba gratuita termina en ${diff}d`, mensaje: "Elige un plan en Mi suscripción para seguir usando Nelyx sin interrupciones.", accionUrl: "/dashboard/configuracion", claveUnica: `nelyx:${s.id}:pruebafin:${hoyStr}:cliente` }),
+          ])
+          return av || cl
         }
       } else if (s.estado === "proximo_vencer") {
-        return notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "media", titulo: `${nombreCliente}: suscripción vence pronto`, mensaje: "Se acerca la fecha de renovación.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:proximovencer:${hoyStr}` })
+        const [av, cl] = await Promise.all([
+          notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "media", titulo: `${nombreCliente}: suscripción vence pronto`, mensaje: "Se acerca la fecha de renovación.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:proximovencer:${hoyStr}` }),
+          notificar({ userId: s.userId, categoria: "renovaciones", prioridad: "media", titulo: "Tu suscripción vence pronto", mensaje: "Revisa tu próximo cobro en Mi suscripción.", accionUrl: "/dashboard/configuracion", claveUnica: `nelyx:${s.id}:proximovencer:${hoyStr}:cliente` }),
+        ])
+        return av || cl
       } else if (s.estado === "pendiente" || s.estado === "vencido") {
-        return notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "alta", titulo: `${nombreCliente}: pago pendiente`, mensaje: "Tiene un cobro sin pagar.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:pagopendiente:${hoyStr}` })
+        const vencido = s.estado === "vencido"
+        const [av, cl] = await Promise.all([
+          notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "alta", titulo: `${nombreCliente}: pago pendiente`, mensaje: "Tiene un cobro sin pagar.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:pagopendiente:${hoyStr}` }),
+          notificar({
+            userId: s.userId, categoria: "renovaciones", prioridad: vencido ? "alta" : "media",
+            titulo: vencido ? `Tu pago está vencido — ${monto}` : `Tienes un pago pendiente — ${monto}`,
+            mensaje: vencido ? "Regulariza tu pago desde Mi suscripción para evitar la suspensión." : "Puedes pagarlo ya adjuntando el comprobante en Mi suscripción.",
+            accionUrl: "/dashboard/configuracion", claveUnica: `nelyx:${s.id}:pagopendiente:${hoyStr}:cliente`,
+          }),
+        ])
+        return av || cl
       } else if (s.estado === "suspendido") {
         return notificar({ userId: admin.id, categoria: "renovaciones", prioridad: "baja", titulo: `${nombreCliente}: cuenta suspendida`, mensaje: "El cliente está suspendido.", accionUrl: "/admin/clientes", claveUnica: `nelyx:${s.id}:suspendido:${hoyStr}` })
       }
-      return Promise.resolve(false)
+      return false
     })
   }
 
