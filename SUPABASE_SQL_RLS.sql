@@ -47,5 +47,11 @@ ALTER TABLE "ContactoCobranza" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "PlantillaCobranza" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ConexionPago" ENABLE ROW LEVEL SECURITY;
 
+-- Agregadas el 2026-11-27: quedaron afuera cuando se crearon sus tablas y
+-- recién se encontró el hueco al auditar la metodología del proyecto (ver
+-- CLAUDE.md, sección "Cómo trabajar en Nelyx (reglas del dueño)").
+ALTER TABLE "PlanNelyx" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "DatosBancariosNelyx" ENABLE ROW LEVEL SECURITY;
+
 -- Verificar — todas deberían mostrar rowsecurity = true
 -- SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
