@@ -50,7 +50,13 @@ test("el admin puede revisar y rechazar un comprobante subido por un cliente", a
   // El cobro vuelve a quedar pendiente SIN comprobante en revisión — el
   // panel debería ofrecer "Registrar pago" (no "Revisar comprobante") de
   // nuevo, confirmando que el estado se actualizó de verdad, no solo que
-  // apareció el toast.
-  await expect(page.getByText("📎 El cliente subió un comprobante — pendiente de revisar")).not.toBeVisible()
+  // apareció el toast. Se verifica con una espera positiva (no con
+  // ".not.toBeVisible()" sobre el texto viejo): el refresco del Server
+  // Component tarda un instante en llegar tras la Server Action, y
+  // mientras tanto el texto viejo sigue montado en las DOS copias del
+  // panel (ver más arriba) — un locator ambiguo con ".not.toBeVisible()"
+  // lanza un error de "strict mode" de inmediato en vez de esperar a que
+  // se resuelva, a diferencia de ".toBeVisible()" sobre contenido nuevo.
   await expect(page.getByRole("button", { name: "Registrar pago" }).first()).toBeVisible()
+  await expect(page.getByText("📎 El cliente subió un comprobante — pendiente de revisar")).not.toBeVisible()
 })
