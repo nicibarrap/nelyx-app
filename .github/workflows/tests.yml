@@ -42,6 +42,14 @@ jobs:
       - name: Verificar tipos (TypeScript)
         run: npx tsc --noEmit -p .
 
+      # tsc solo (con strict: false) no agarra todo lo que next build sí:
+      # límites "use client"/"use server" rotos, imports server-only dentro
+      # de un client component, etc. — errores que solo aparecen al compilar
+      # para producción de verdad. Corre con el mismo DATABASE_URL mínimo
+      # del resto del job (ya probado: no hace falta ningún secreto más).
+      - name: Compilar para producción (next build)
+        run: npm run build
+
       # Solo las dependencias de producción (--omit=dev): el toolchain de
       # desarrollo (vitest/tailwind/eslint) nunca corre en el servidor real,
       # así que sus vulnerabilidades no son parte de la superficie de ataque
