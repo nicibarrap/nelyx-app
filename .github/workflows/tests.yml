@@ -78,3 +78,88 @@ jobs:
 
       - name: Correr tests
         run: npx vitest run
+
+  # Job separado e informativo: corre la suite E2E (tests/e2e/, Playwright)
+  # contra un navegador real. "Informativo" = continue-on-error en el job,
+  # para que el resultado se vea en cada PR sin bloquear el merge todavía
+  # — la idea es dejarlo correr ~2 semanas en este runner real antes de
+  # pasarlo a bloqueante (ver tests/e2e/README.md sobre la flakiness
+  # conocida de venta.spec.ts, ya mitigada con 1 retry en playwright.config.ts).
+  e2e:
+    name: E2E (informativo)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nelyx_test
+          POSTGRES_PASSWORD: nelyx_test
+          POSTGRES_DB: nelyx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://nelyx_test:nelyx_test@localhost:5432/nelyx_test
+      # Solo para el servidor de Next que levanta Playwright en este job —
+      # ningún dato real, nunca se usa fuera de esta corrida de CI.
+      NEXTAUTH_SECRET: e2e-ci-test-secret-no-es-un-secreto-real
+      NEXTAUTH_URL: http://localhost:3109
+      AUTH_URL: http://localhost:3109
+      NEXT_PUBLIC_APP_URL: http://localhost:3109
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar el cliente de Prisma
+        run: npx prisma generate
+
+      - name: Aplicar el schema a la base de datos de pruebas
+        run: npx prisma db push --skip-generate
+
+      - name: Semilla de datos para E2E (cuenta + producto de prueba)
+        run: npm run test:e2e:seed
+
+      # Cachea el binario de Chromium entre corridas (evita descargarlo de
+      # nuevo en cada PR). Las dependencias de sistema (apt) que necesita
+      # para correr no viven en esta carpeta, así que se instalan aparte
+      # abajo — rápido con cache-hit, completo (--with-deps) sin él.
+      - name: Cache de navegadores de Playwright
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar navegador Chromium (con dependencias del sistema)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Instalar dependencias del sistema para Playwright
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Correr tests E2E (Playwright)
+        run: npx playwright test
+
+      # Trace y screenshot de cualquier test que falle (retain-on-failure /
+      # only-on-failure en playwright.config.ts) — para poder revisar qué
+      # pasó sin tener que reproducirlo localmente.
+      - name: Subir evidencia de fallos (traces/screenshots)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7
