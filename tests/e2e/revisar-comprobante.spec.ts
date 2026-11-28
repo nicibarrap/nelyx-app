@@ -34,11 +34,17 @@ test("el admin puede revisar y rechazar un comprobante subido por un cliente", a
   // en el DOM. La versión de escritorio es la primera en el documento
   // (viewport de los tests ya es "Desktop Chrome"), de ahí el .first() en
   // cada locator que sigue.
-  await expect(page.getByText("📎 El cliente subió un comprobante — pendiente de revisar").first()).toBeVisible()
+  //
+  // Ninguno de estos textos incluye el emoji con el que arrancan en el
+  // código: EmojiConsistente (components/shared/emoji-consistente.tsx)
+  // reemplaza todo emoji renderizado por un <img> (Twemoji) apenas se
+  // pinta — getByText mira el texto del nodo, que ya no lo incluye una
+  // vez reemplazado, así que buscarlo con el emoji adelante nunca matchea.
+  await expect(page.getByText("El cliente subió un comprobante — pendiente de revisar").first()).toBeVisible()
 
   await page.getByRole("button", { name: "Revisar comprobante" }).first().click()
 
-  await expect(page.getByText(`📎 Comprobante recibido — ${montoFormateado}`).first()).toBeVisible()
+  await expect(page.getByText(`Comprobante recibido — ${montoFormateado}`).first()).toBeVisible()
   await expect(page.getByRole("link", { name: "Ver comprobante" }).first()).toBeVisible()
 
   await page.getByRole("button", { name: "Rechazar", exact: true }).first().click()
@@ -58,5 +64,5 @@ test("el admin puede revisar y rechazar un comprobante subido por un cliente", a
   // lanza un error de "strict mode" de inmediato en vez de esperar a que
   // se resuelva, a diferencia de ".toBeVisible()" sobre contenido nuevo.
   await expect(page.getByRole("button", { name: "Registrar pago" }).first()).toBeVisible()
-  await expect(page.getByText("📎 El cliente subió un comprobante — pendiente de revisar")).not.toBeVisible()
+  await expect(page.getByText("El cliente subió un comprobante — pendiente de revisar")).not.toBeVisible()
 })

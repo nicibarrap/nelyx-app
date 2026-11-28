@@ -30,7 +30,12 @@ test("Mi suscripción muestra el cobro pendiente, los datos para transferir y el
 
   await expect(page.getByText(E2E_PLAN_NOMBRE)).toBeVisible()
   await expect(page.getByText(`Pago pendiente — ${montoFormateado}`)).toBeVisible()
-  await expect(page.getByText("🕐 Tu comprobante está en revisión")).toBeVisible()
+  // Sin el emoji en el texto buscado: EmojiConsistente (components/shared/
+  // emoji-consistente.tsx) reemplaza todo emoji renderizado por un <img>
+  // (Twemoji) en cuanto se pinta — getByText mira el texto del nodo, que
+  // ya no incluye el carácter una vez reemplazado, así que buscarlo con el
+  // emoji adelante nunca matchea.
+  await expect(page.getByText("Tu comprobante está en revisión")).toBeVisible()
 
   // Código de referencia (NLX-XXXXXX) que el cliente debe indicar en la
   // transferencia — se calcula a partir del id del cobro (no es un valor
