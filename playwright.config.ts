@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test"
+import { existsSync } from "fs"
 
 // E2E corre contra el servidor de desarrollo de Next, apuntando a la misma
 // Postgres de pruebas que usan los tests de Vitest (nunca Supabase/producción
@@ -6,6 +7,13 @@ import { defineConfig, devices } from "@playwright/test"
 // .env.local de este entorno.
 const PUERTO = 3109
 const BASE_URL = `http://localhost:${PUERTO}`
+
+// Este entorno de desarrollo trae Chromium preinstalado en esa ruta fija
+// (bloqueado para descargar uno nuevo — PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1);
+// en GitHub Actions no existe esa ruta — ahí se usa el que instala
+// "npx playwright install" en su ubicación por defecto.
+const CHROMIUM_SANDBOX = "/opt/pw-browsers/chromium"
+const executablePath = existsSync(CHROMIUM_SANDBOX) ? CHROMIUM_SANDBOX : undefined
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -24,11 +32,7 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // Este entorno trae Chromium preinstalado en una revisión que no
-        // siempre coincide con la que esta versión de @playwright/test
-        // intentaría descargar (bloqueado — PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
-        // Se usa el binario ya presente en vez de intentar bajar uno nuevo.
-        launchOptions: { executablePath: "/opt/pw-browsers/chromium" },
+        launchOptions: { executablePath },
       },
     },
   ],
