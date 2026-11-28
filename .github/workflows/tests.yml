@@ -163,3 +163,16 @@ jobs:
           name: playwright-test-results
           path: test-results/
           retention-days: 7
+
+      # Capturas de responsive.spec.ts (celular/tablet/escritorio) — se
+      # suben siempre, pasen o fallen los tests: son para revisión manual
+      # ("¿se ve bien?"), no algo que el chequeo automático pueda
+      # garantizar por sí solo (ver tests/e2e/responsive.spec.ts).
+      - name: Subir capturas responsive (revisión manual)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-responsive
+          path: capturas-responsive/
+          retention-days: 14
+          if-no-files-found: ignore

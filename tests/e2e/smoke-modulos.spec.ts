@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test"
 import { login } from "./helpers"
+import { MODULOS } from "./modulos"
 
 // Smoke test barato y de bajo mantenimiento: entra a cada módulo ya
 // auditado y confirma que la página responde 200 y renderiza su título real
@@ -7,21 +8,6 @@ import { login } from "./helpers"
 // negocio esté bien (para eso están los tests unitarios + las auditorías
 // manuales), pero sí detecta gratis el tipo de error que rompe TODA la
 // página: una Server Action que lanza, un import roto, una query que falla.
-
-const MODULOS: { ruta: string; tituloEsperado: string }[] = [
-  { ruta: "/dashboard/resumen", tituloEsperado: "Resumen" },
-  { ruta: "/dashboard/reportes", tituloEsperado: "Reportes" },
-  { ruta: "/dashboard/alertas", tituloEsperado: "Alertas" },
-  { ruta: "/dashboard/deudas", tituloEsperado: "Deudas" },
-  { ruta: "/dashboard/cuentas-cobrar", tituloEsperado: "Cuentas por Cobrar" },
-  { ruta: "/dashboard/venta", tituloEsperado: "Venta" },
-  { ruta: "/dashboard/movimientos", tituloEsperado: "Movimientos" },
-  { ruta: "/dashboard/costos-fijos", tituloEsperado: "Costos Fijos" },
-  { ruta: "/dashboard/productos", tituloEsperado: "Productos" },
-  { ruta: "/dashboard/clientes", tituloEsperado: "Clientes" },
-  { ruta: "/dashboard/proveedores", tituloEsperado: "Proveedores" },
-  { ruta: "/dashboard/aprende", tituloEsperado: "Centro de Aprendizaje" },
-]
 
 test.beforeEach(async ({ page }) => {
   await login(page)
